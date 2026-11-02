@@ -20,10 +20,20 @@ fn analyze_step(app: tauri::AppHandle, path: String) -> Result<String, String> {
     String::from_utf8(result.stdout).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn extract_pdf_text(path: String) -> Result<String, String> {
+    let input = PathBuf::from(&path);
+    if !input.is_file() { return Err("Nie znaleziono pliku PDF".into()); }
+    if input.extension().and_then(|x| x.to_str()).map(|x| !x.eq_ignore_ascii_case("pdf")).unwrap_or(true) {
+        return Err("Wymagany plik PDF".into());
+    }
+    pdf_extract::extract_text(&input).map_err(|e| format!("Błąd odczytu tekstu PDF: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![analyze_step])
+        .invoke_handler(tauri::generate_handler![analyze_step, extract_pdf_text])
         .run(tauri::generate_context!())
         .expect("Błąd uruchamiania DS Estimate");
 }
