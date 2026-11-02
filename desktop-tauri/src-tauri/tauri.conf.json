@@ -1,1 +1,35 @@
-{"$schema":"https://schema.tauri.app/config/2","productName":"DS Estimate","version":"0.2.1","identifier":"pl.dsestimate.desktop","build":{"beforeDevCommand":"npm run dev","devUrl":"http://localhost:1420","beforeBuildCommand":"npm run build","frontendDist":"../dist"},"app":{"windows":[{"title":"DS Estimate","width":1200,"height":800,"minWidth":750,"minHeight":550}]},"bundle":{"active":true,"targets":["nsis"],"icon":["icons/icon.ico"]}}
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DS Estimate",
+  "version": "0.2.1",
+  "identifier": "pl.dsestimate.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "DS Estimate",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 750,
+        "minHeight": 550
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "cad-backend/ds-cad-engine.exe": "cad-backend/ds-cad-engine.exe"
+    }
+  }
+}
