@@ -1,0 +1,23 @@
+name: Public quote benchmark comparisons
+on:
+  push:
+    paths:
+      - 'desktop-tauri/tests/public-quote-benchmarks.test.mjs'
+      - 'desktop-tauri/src/lib/kwantflow/**'
+      - '.github/workflows/public-quote-benchmarks.yml'
+  workflow_dispatch:
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Compare public quote benchmarks
+        run: node --test tests/public-quote-benchmarks.test.mjs
