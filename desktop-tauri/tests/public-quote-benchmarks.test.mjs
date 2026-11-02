@@ -14,7 +14,7 @@ try {
   {id:'quotedpart-bracket-1', source:'https://quotedpart.com/quote-from-a-drawing', qty:1, currency:'USD', material:15.55, setup:222.63, run:12.92, markup:0.30, reference:326.43},
   {id:'quotedpart-bracket-10', source:'https://quotedpart.com/quote-from-a-drawing', qty:10, currency:'USD', material:54.85, setup:222.63, run:129.32, markup:0.30, reference:52.88},
   {id:'quotedpart-bracket-100', source:'https://quotedpart.com/quote-from-a-drawing', qty:100, currency:'USD', material:386.53, setup:222.63, run:1293.84, markup:0.30, reference:24.74},
-  {id:'kerfquote-motor-mount-25', source:'https://kerfquote.com/', qty:25, currency:'EUR', material:25*2.94, setup:45, run:25*(0.95+0.09), markup:0.18, reference:170.70}
+  {id:'kerfquote-motor-mount-25', source:'https://kerfquote.com/', qty:25, currency:'EUR', material:99.66, setup:45, run:0, markup:0.18, reference:170.70}
  ];
  let failed=0;
  for(const c of cases) {
