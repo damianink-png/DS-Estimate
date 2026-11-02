@@ -1,0 +1,221 @@
+{
+  "schema": 1,
+  "about": "Niezależny szacunek TECHNOLOGA oparty na publicznych rysunkach i instrukcjach. Zakresy nie są czasami zmierzonymi, nie są 'ground truth'. Osobno testujemy DS Estimate bez wstrzykiwania ręcznych godzin.",
+  "cases": [
+    {
+      "id": "portal-frame",
+      "name": "Steel portal frame",
+      "repo": "Krrish777/FOSSEE-TASK-STEEL-PORTAL-FRAME",
+      "sha": "a66051d72e0ce81066995ccc25e8b03c3c0aeb08",
+      "step": "portal_frame.stp",
+      "drawings": [
+        "STEEL PORTAL FRAME DESIGN.pdf"
+      ],
+      "bom": null,
+      "build_plan": null,
+      "source_scope": "Model ramy portalowej; PDF to raport projektowy, nie pełna dokumentacja technologiczna",
+      "manual": {
+        "status": "insufficient-fabrication-data",
+        "operations": [],
+        "basis": "Brak zweryfikowanego BOM i zestawienia połączeń. Nie wymyślam czasów."
+      }
+    },
+    {
+      "id": "stepgen-frame",
+      "name": "StepGen welded steel chassis",
+      "repo": "BoujeeEnjinia1701/stepgen",
+      "sha": "f7de7a149a6aa672ef976042ea5419e98828c000",
+      "step": "cad/step/stepgen-frame.step",
+      "drawings": [
+        "cad/drawings/SGN-DWG-001.pdf",
+        "cad/drawings/SGN-DWG-101.pdf",
+        "cad/drawings/SGN-DWG-102.pdf",
+        "cad/drawings/SGN-DWG-103.pdf",
+        "cad/drawings/SGN-DWG-104.pdf",
+        "cad/drawings/SGN-DWG-105.pdf",
+        "cad/drawings/SGN-DWG-106.pdf"
+      ],
+      "bom": "bom/bom.csv",
+      "build_plan": "docs/05-build-plan.md",
+      "source_scope": "Tylko spawana rama: wyklucza silnik, koła, elektronikę i resztę wyrobu",
+      "manual": {
+        "status": "preliminary-estimate-not-observed",
+        "basis": "Sekcja 3.1 planu StepGen + BOM pozycja 1. 2 szyny RHS 1150, 2 poprzecznice, belka czołowa, rura ukośna, 4 wsporniki/stays, płytki i liczne otwory; zakresy obejmują przygotowanie i przestawianie",
+        "operations": [
+          {
+            "id": "cutting",
+            "low": 1,
+            "high": 3,
+            "assumption": "12–25 cięć profili/rur i małych płytek, ustawienie pilarki i gratowanie"
+          },
+          {
+            "id": "cnc",
+            "low": 1.5,
+            "high": 4,
+            "assumption": "Otwory, długie szczeliny osi, nitonakrętki, podcięcia i kontrola wymiarów"
+          },
+          {
+            "id": "welding",
+            "low": 2,
+            "high": 5,
+            "assumption": "Łączenie szyn, poprzecznic, belki, rur i uchwytów; MAG + przestawianie"
+          },
+          {
+            "id": "assembly",
+            "low": 2,
+            "high": 4,
+            "assumption": "Ustawienie w przyrządzie, sczepianie, osiowanie, pasowanie"
+          },
+          {
+            "id": "finishing",
+            "low": 1,
+            "high": 2.5,
+            "assumption": "Oczyszczenie, zeszlifowanie punktów spoin i zabezpieczenie"
+          },
+          {
+            "id": "inspection",
+            "low": 0.5,
+            "high": 1.5,
+            "assumption": "Kontrola wymiarowa, spoin, prostoliniowości ramy"
+          }
+        ]
+      }
+    },
+    {
+      "id": "earthpress",
+      "name": "EarthPress welded steel frame and press",
+      "repo": "BoujeeEnjinia1701/earthpress",
+      "sha": "db0b337b0cc07171f0ebcd389aafe40456970bbb",
+      "step": "cad/step/A-assembly.step",
+      "drawings": [
+        "cad/drawings/EPR-DWG-001.pdf",
+        "cad/drawings/EPR-DWG-101.pdf",
+        "cad/drawings/EPR-DWG-102.pdf",
+        "cad/drawings/EPR-DWG-103.pdf",
+        "cad/drawings/EPR-DWG-104.pdf",
+        "cad/drawings/EPR-DWG-105.pdf",
+        "cad/drawings/EPR-DWG-106.pdf",
+        "cad/drawings/EPR-DWG-107.pdf",
+        "cad/drawings/EPR-DWG-108.pdf",
+        "cad/drawings/EPR-DWG-109.pdf",
+        "cad/drawings/EPR-DWG-110.pdf"
+      ],
+      "bom": "bom/bom.csv",
+      "build_plan": "docs/05-build-plan.md",
+      "source_scope": "Rama i cała stalowa prasa; części kupowane i niemodelowane wymagają odrębnego rozliczenia",
+      "manual": {
+        "status": "preliminary-estimate-not-observed",
+        "basis": "EarthPress plan §3: 2 płozy 1000, 4 poprzecznice 460, profile UPN80, wiele płyt 10–28 mm, otwory 13.5–46, gwinty M10/M16, spoiny, pasowanie",
+        "operations": [
+          {
+            "id": "cutting",
+            "low": 7,
+            "high": 15,
+            "assumption": "Piła + płomień/plazma: profile, mocowania, żebra, 12–28 mm blachy; w tym ustawienia"
+          },
+          {
+            "id": "cnc",
+            "low": 10,
+            "high": 22,
+            "assumption": "Wiercenie, rozwiercanie i wytaczanie otworów 13.5–46 mm, M10/M16, obróbka płaszczyzn"
+          },
+          {
+            "id": "welding",
+            "low": 12,
+            "high": 26,
+            "assumption": "Rama drabinowa, wsporniki, skrzynia formy, popychacz i wzmocnienia; elektroda 111"
+          },
+          {
+            "id": "assembly",
+            "low": 8,
+            "high": 17,
+            "assumption": "Pasowanie, ustalenie osi, montaż mechanizmu, łączenie podzespołów"
+          },
+          {
+            "id": "finishing",
+            "low": 5,
+            "high": 12,
+            "assumption": "Szlifowanie żużla, korekty krawędzi i powierzchni współpracujących, powłoki"
+          },
+          {
+            "id": "inspection",
+            "low": 2.5,
+            "high": 6,
+            "assumption": "Kontrola wymiarów, pasowania, współosiowości, szczelin i ruchu"
+          }
+        ]
+      }
+    },
+    {
+      "id": "dockhub",
+      "name": "DockHub steel cabinet with welded plinth",
+      "repo": "BoujeeEnjinia1701/dockhub",
+      "sha": "aeb530c0681ec56ae47d31fde2b8cc35f0040d9e",
+      "step": "cad/step/A-assembly.step",
+      "drawings": [
+        "cad/drawings/DKH-DWG-001.pdf",
+        "cad/drawings/DKH-DWG-101.pdf",
+        "cad/drawings/DKH-DWG-102.pdf",
+        "cad/drawings/DKH-DWG-103.pdf",
+        "cad/drawings/DKH-DWG-104.pdf",
+        "cad/drawings/DKH-DWG-105.pdf",
+        "cad/drawings/DKH-DWG-106.pdf",
+        "cad/drawings/DKH-DWG-107.pdf",
+        "cad/drawings/DKH-DWG-108.pdf",
+        "cad/drawings/DKH-DWG-109.pdf",
+        "cad/drawings/DKH-DWG-110.pdf"
+      ],
+      "bom": "bom/bom.csv",
+      "build_plan": "docs/05-build-plan.md",
+      "source_scope": "Konstrukcja stalowa szafy (rama/panele/zawiasy); bez kosztowania elektroniki, instalacji i budowlanki",
+      "manual": {
+        "status": "preliminary-estimate-not-observed",
+        "basis": "DockHub plinth 4 profile 100x50x5 ze skosem, panele z blach 1.5 i 2 mm, gięcie, nity, drzwi, spawana podstawa",
+        "operations": [
+          {
+            "id": "cutting",
+            "low": 4,
+            "high": 9,
+            "assumption": "Cięcie blach konturowych, otworów i 4 profilowych elementów cokołu"
+          },
+          {
+            "id": "bending",
+            "low": 3,
+            "high": 8,
+            "assumption": "Gięcie wielu paneli galwanizowanych 1.5 mm, zmiany narzędzi i ustawienia"
+          },
+          {
+            "id": "cnc",
+            "low": 2,
+            "high": 5,
+            "assumption": "Otwory pod zawiasy, kołki, zamki i mocowania wykończeniowe"
+          },
+          {
+            "id": "welding",
+            "low": 2,
+            "high": 6,
+            "assumption": "Spawanie ramy cokołu, wsporników; bez przypisywania spawania nitowanym panelom"
+          },
+          {
+            "id": "assembly",
+            "low": 8,
+            "high": 18,
+            "assumption": "Mocowanie paneli, zawiasów, zamków, elementów mechanicznych; bez elektryki"
+          },
+          {
+            "id": "finishing",
+            "low": 1,
+            "high": 4,
+            "assumption": "Gratowanie i obróbka narożników oraz spoin cokołu; blacha fabrycznie ocynkowana"
+          },
+          {
+            "id": "inspection",
+            "low": 2,
+            "high": 4,
+            "assumption": "Sprawdzenie przekątnych, szczelin drzwi i otworów pod mocowania"
+          }
+        ]
+      }
+    }
+  ]
+}
