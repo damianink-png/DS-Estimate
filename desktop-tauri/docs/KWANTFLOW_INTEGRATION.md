@@ -3,7 +3,7 @@
 Source: https://github.com/muicci/kwantflow (GPL-3.0). DS Estimate is the host application; Deepnest is a secondary cutting-layout engine.
 
 ## Actual repository status
-- `src/lib/kwantflow/estimate-template-normalisation.ts`: copied from Kwantflow upstream, **not yet invoked by DS Estimate**. Its type imports (`$lib/types/index.js`) require adaptation before compilation.
+- `src/lib/kwantflow/estimate-template-normalisation.ts`: upstream module with adapted type imports; still **not invoked by the active UI**. This is source availability, not an integrated template workflow.
 - `src/lib/cnc-quote.mjs`: DS Estimate's own operation calculator, **not Kwantflow**.
 - `src/lib/nesting.mjs`: accepts externally verified Deepnest placements, **does not run Deepnest**.
 - `cad_backend/step_inventory.py`: OCCT STEP inventory with known grouping limitations.
@@ -44,3 +44,10 @@ No percentage is a pass criterion. A successful CI build alone is not proof of e
 - Deepnest: **5%** — boundary and validation only; no upstream nesting algorithm executing.
 - Overall combined engines and CAD-to-quote workflow: **20%** (qualitative estimate).
 - Blockers: original Kwantflow quote state depends on SvelteKit/dbService and app schema; Deepnest relies on Electron/native modules; no verified PDF welding annotation extraction, no production price book; GPL-3.0 redistribution and dependency licenses must be audited.
+
+## 2026-11-02: upstream category markup pricing wired into STEP quotes
+- Original GPL-3.0 Kwantflow `estimateCategoryCost` and `estimateTotalPrice` logic from `src/lib/state/quote.svelte.ts` now executes in `estimate-calculation.ts`.
+- `step-quote.ts` returns both direct cost and selling price using Kwantflow's general and per-category markups; input validation rejects nonfinite or below -100% rates.
+- Svelte STEP quote UI exposes general markup and opt-in material/labour/equipment overrides; no category override is silently enabled.
+- Linux CI tests upstream arithmetic, STEP-to-quote adapter, Svelte build and TypeScript. This does not establish project persistence, revision history, PDF extraction, or Deepnest runtime.
+- Full Windows workflow switched to manual dispatch only until both engines are actually integrated. Previous push-triggered runs may still be finishing.
