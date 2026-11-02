@@ -18,6 +18,64 @@ except ImportError:
     from rigid_match import equivalent_rigid
 from pathlib import Path
 
+
+def planar_plate_cutting_hint(solid, dimensions):
+    """Conservative plate cut-loop measurements, not a raw-stock classifier.
+
+    Looks for two similarly sized primary planar faces and takes outer+inner
+    wire lengths from one primary face. Unsuitable B-Reps return None rather
+    than fabricating a cutting contour. For machined/pocketed parts the result
+    is only a *proposal* and still requires drawing verification.
+    """
+    dims = sorted(dimensions)
+    if dims[0] <= 0 or dims[1] / dims[0] < 5:
+        return None
+    try:
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_WIRE
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+        from OCC.Core.GeomAbs import GeomAbs_Plane
+        from OCC.Core.GProp import GProp_GProps
+        from OCC.Core.BRepGProp import brepgprop_SurfaceProperties, brepgprop_LinearProperties
+
+        faces = []
+        ex = TopExp_Explorer(solid, TopAbs_FACE)
+        while ex.More():
+            face = ex.Current()
+            if BRepAdaptor_Surface(face).GetType() == GeomAbs_Plane:
+                area_props = GProp_GProps()
+                brepgprop_SurfaceProperties(face, area_props)
+                area = float(area_props.Mass())
+                if area > 1e-5:
+                    faces.append((area, face))
+            ex.Next()
+        faces.sort(key=lambda f: f[0], reverse=True)
+        if len(faces) < 2 or abs(faces[0][0] - faces[1][0]) > max(1e-4, faces[0][0] * 0.005):
+            return None
+        main_face = faces[0][1]
+        wires = TopExp_Explorer(main_face, TopAbs_WIRE)
+        contour = 0.0
+        pierces = 0
+        while wires.More():
+            length = GProp_GProps()
+            brepgprop_LinearProperties(wires.Current(), length)
+            linear_mm = float(length.Mass())
+            if linear_mm <= 0 or not math.isfinite(linear_mm):
+                return None
+            contour += linear_mm
+            pierces += 1
+            wires.Next()
+        if pierces < 1 or not math.isfinite(contour) or contour <= 0:
+            return None
+        return {"kind": "plate-outline", "thicknessMm": dims[0],
+                "contourMm": contour, "pierces": pierces,
+                "source": "main planar face of STEP B-Rep",
+                "limitations": "Main face wires may differ from stock laser/plasma toolpath; verify 2D drawing."}
+    except Exception:
+        # Measurement must not prevent mass/BOM computation.
+        return None
+
+
 def inventory(path, density=7850.0):
     from OCC.Core.STEPControl import STEPControl_Reader
     from OCC.Core.IFSelect import IFSelect_RetDone
@@ -66,11 +124,13 @@ def inventory(path, density=7850.0):
             existing = len(originals)
             originals.append(solid)
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
+        cut_hint = planar_plate_cutting_hint(solid, dims)
         solids.append({
             "id": f"solid-{len(solids)+1}",
             "volumeMm3": volume,
             "areaMm2": float(ap.Mass()),
             "bboxMm": dims,
+            "cuttingHint": cut_hint,
             "densityKgM3": density,
             "massKg": volume * density * 1e-9,
             "verifiedShapeKey": f"shared-tshape-{existing}",
@@ -82,7 +142,7 @@ def inventory(path, density=7850.0):
             "totalMassKg": sum(x["massKg"] for x in solids),
             "limitations": ["STEPControl does not preserve complete XCAF BOM metadata",
                             "Inertia-degenerate symmetric shapes may remain ungrouped; false negatives are possible",
-                            "The UI is not yet wired to this Python backend"]}
+                            "Cutting hints are proposals and require 2D drawing validation"]}
 
 def main():
     p = argparse.ArgumentParser()
