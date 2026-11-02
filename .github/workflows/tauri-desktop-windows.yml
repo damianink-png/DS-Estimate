@@ -1,5 +1,5 @@
 name: DS Estimate Tauri Windows
-# Manual only until both original Kwantflow and Deepnest runtimes are integrated.
+# Build is a packaged-backend smoke test, not certification of fully automatic quoting.
 on:
   workflow_dispatch:
   push:
@@ -10,6 +10,11 @@ on:
       - 'desktop-tauri/src-tauri/**'
       - 'desktop-tauri/cad_backend/**'
       - 'desktop-tauri/package.json'
+      - 'desktop-tauri/tests/compiled_step_suite.py'
+      - 'desktop-tauri/tests/cutting-plan.test.mjs'
+concurrency:
+  group: ds-estimate-windows-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
