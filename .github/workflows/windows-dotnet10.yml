@@ -69,6 +69,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/verify_dotnet_trx.py TestResults/ds-estimate-xunit.trx --require-results --min-executed 60 --reject-skipped
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish portable Windows x64 EXE
+        shell: pwsh
+        run: |
+          dotnet publish src/DSEstimate.App/DSEstimate.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o Publish/DS-Estimate-win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path 'Publish/DS-Estimate-win-x64/DSEstimate.exe')) { throw 'Missing DSEstimate.exe after publish' }
+          Copy-Item -LiteralPath 'engines' -Destination 'Publish/DS-Estimate-win-x64/engines' -Recurse -Force
+          Compress-Archive -Path 'Publish/DS-Estimate-win-x64/*' -DestinationPath 'Publish/DS-Estimate-FIX82-win-x64.zip' -Force
+      - name: Upload Windows EXE ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: DS-Estimate-FIX82-Windows-x64
+          path: Publish/DS-Estimate-FIX82-win-x64.zip
+          if-no-files-found: error
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
