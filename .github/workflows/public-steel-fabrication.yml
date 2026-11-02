@@ -1,0 +1,79 @@
+name: DS Estimate public steel frames vs manual estimates
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/public-steel-fabrication.yml'
+      - 'desktop-tauri/tests/public_fabrication_projects.json'
+      - 'desktop-tauri/tests/public_fabrication_benchmark.py'
+      - 'desktop-tauri/tests/public_fabrication_compare.mjs'
+permissions:
+  contents: read
+concurrency:
+  group: ds-public-steel-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  benchmark:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: desktop-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install JS dependencies
+        run: npm install --no-audit --no-fund
+      - name: Existing quote and cutting regression tests
+        run: npm test
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          activate-environment: ds-cad
+          python-version: '3.11'
+          channels: conda-forge
+          channel-priority: strict
+      - name: Install production CAD engine dependencies
+        shell: pwsh
+        run: |
+          conda install -n ds-cad -c conda-forge -y pythonocc-core numpy pyinstaller
+          if ($LASTEXITCODE -ne 0) { throw 'CAD engine dependency installation failed' }
+      - name: Build the genuine DS Estimate CAD engine EXE
+        shell: pwsh
+        run: |
+          conda run -n ds-cad python -m PyInstaller --onefile --collect-all OCC --name ds-cad-engine --distpath src-tauri/cad-backend --workpath build/cad-pyinstaller --specpath build/cad-spec cad_backend/step_inventory.py
+          if ($LASTEXITCODE -ne 0) { throw 'Engine compilation failed' }
+          if (!(Test-Path src-tauri/cad-backend/ds-cad-engine.exe)) { throw 'Missing compiled DS Estimate CAD engine' }
+      - name: Install PDF text extraction for the independently published drawings
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check pymupdf
+          if ($LASTEXITCODE -ne 0) { throw 'PyMuPDF unavailable' }
+      - name: Benchmark four real public STEP assemblies against original PDFs and BOM
+        shell: pwsh
+        id: actual_projects
+        run: |
+          python tests/public_fabrication_benchmark.py --engine src-tauri/cad-backend/ds-cad-engine.exe --out public_fabrication_output --timeout 240
+          if ($LASTEXITCODE -ne 0) { throw 'Real public source benchmark gate failed: fewer than two CAD models completed' }
+      - name: Run DS Estimate automatic cutting-time planner and compare independent manual time ranges
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path public_fabrication_output/public_cases.json) {
+            node tests/public_fabrication_compare.mjs public_fabrication_output
+            if ($LASTEXITCODE -ne 0) { throw 'DS Estimate public reference comparison failed' }
+          } else {
+            Write-Host 'No result JSON: previous setup failed. Check the logged reason.'
+          }
+      - name: Upload reproducible benchmark, source SHA256, independent/manual comparison and error logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DS-Estimate-REAL-PUBLIC-FRAMES-STEP-PDF-BOM
+          path: |
+            desktop-tauri/public_fabrication_output/**
+            desktop-tauri/tests/public_fabrication_projects.json
+          if-no-files-found: warn
