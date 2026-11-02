@@ -2,6 +2,14 @@ name: DS Estimate Tauri Windows
 # Manual only until both original Kwantflow and Deepnest runtimes are integrated.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tauri-desktop-windows.yml'
+      - 'desktop-tauri/src/**'
+      - 'desktop-tauri/src-tauri/**'
+      - 'desktop-tauri/cad_backend/**'
+      - 'desktop-tauri/package.json'
 permissions:
   contents: read
 jobs:
