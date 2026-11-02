@@ -1,0 +1,69 @@
+/**
+ * Batch-aware scheduling for one project. Geometry groups do NOT each require a
+ * fresh laser/plasma/oxy setup. A setup is paid once per machine, material and
+ * nominal thickness (0.1 mm), unless the operator changes the routing.
+ *
+ * Does not infer nesting, NC moves, saw stock cuts or unknown cut lengths.
+ * It operates on the existing B-Rep cutting hints; unknown stays unknown.
+ */
+import {recommendCutting, SAMPLE_MACHINE_SETTINGS} from './cutting-plan.mjs';
+
+const valid=(n)=>typeof n==='number' && Number.isFinite(n) && n>=0;
+const thicknessBucket=(n)=>Math.round(n*10)/10;
+
+export function planCuttingBatches({
+  groups, material='unknown', machines=SAMPLE_MACHINE_SETTINGS,
+  overrides={}
+}={}){
+ if(!Array.isArray(groups))throw new TypeError('groups must be an array');
+ const seen=new Set(), charged=new Set();
+ let knownTimeOccurrences=0,pendingOccurrences=0,setupMinutes=0,runMinutes=0;
+ let totalCostPln=0,hasUnpriced=false;
+ const output=[];
+ for(const group of groups){
+  if(!group || typeof group.key!=='string' || !group.key || seen.has(group.key))
+   throw new Error('Missing or duplicate geometry group key');
+  seen.add(group.key);
+  if(!Number.isSafeInteger(group.quantity) || group.quantity<1)throw new RangeError('quantity');
+  const manual=overrides[group.key]??{};
+  const manuallyAccepted=manual.minutes!==null && manual.minutes!==undefined;
+  if(manuallyAccepted && !valid(manual.minutes))throw new RangeError('manual minutes');
+  // Per-part operation is independent from the grouping of geometry duplicates.
+  const prediction=recommendCutting({solid:group.solid,quantity:group.quantity,
+   material,machines,overrideMethod:manual.method??null});
+  const canCalculate=prediction.perPieceMin!==null && prediction.perPieceMin!==undefined;
+  const groupSetup=canCalculate ? (prediction.setupMin??0) : 0;
+  const thickness=prediction.hint.thicknessMm;
+  const nominalThickness=Number.isFinite(thickness)?thicknessBucket(thickness):null;
+  const batchId=canCalculate && nominalThickness!==null ?
+   [prediction.method,material,nominalThickness].join('|'):null;
+  // Do not create setup for an unknown/unpriced operation.
+  // Manual complete time has priority and does not consume the automatic setup
+  // for other groups in the same machine/material batch.
+  let chargedSetup=0;
+  if(!manuallyAccepted && batchId && !charged.has(batchId)){
+   charged.add(batchId);
+   chargedSetup=groupSetup;
+  }
+  const calculatedMin=canCalculate ?
+   Number((chargedSetup+prediction.perPieceMin*group.quantity).toFixed(9)):null;
+  const acceptedMin=manuallyAccepted?manual.minutes:calculatedMin;
+  const rate=prediction.ratePlnHour;
+  const costPln=acceptedMin===null||rate===null?null:acceptedMin*rate/60;
+  if(acceptedMin===null)pendingOccurrences+=group.quantity;
+  else{
+   knownTimeOccurrences+=group.quantity;
+   if(costPln!==null)totalCostPln+=costPln;
+   else hasUnpriced=true;
+  }
+  if(calculatedMin!==null){setupMinutes+=chargedSetup;runMinutes+=prediction.perPieceMin*group.quantity;}
+  output.push({...group,cut:{...prediction,batchId,nominalThicknessMm:nominalThickness,
+   setupAllocatedMin:chargedSetup,calculatedMin,acceptedMin,costPln,
+   warnings:manuallyAccepted?[...prediction.warnings,'Czas zmieniony ręcznie']:prediction.warnings}});
+ }
+ return {rows:output,knownTimeOccurrences,pendingOccurrences,setupMinutes,runMinutes,
+  calculatedTimeMin:setupMinutes+runMinutes,acceptedCostPln:hasUnpriced?null:totalCostPln,
+  batchCount:charged.size,coveragePct:output.reduce((s,x)=>s+x.quantity,0)>0?
+   Number((knownTimeOccurrences/output.reduce((s,x)=>s+x.quantity,0)*100).toFixed(1)):0,
+  complete:pendingOccurrences===0&&!hasUnpriced};
+}
