@@ -5,7 +5,11 @@
 import type { CostComponent, TakeoffItem, Estimate } from './types.js';
 import { Decimal } from 'decimal.js';
 Decimal.set({ precision: 20, rounding: Decimal.ROUND_HALF_UP });
-const dec = (value: number | string | Decimal) => new Decimal(value);
+const dec = (value: number | string | Decimal) => {
+ const parsed = new Decimal(value);
+ if (!parsed.isFinite()) throw new RangeError('Kwantflow estimate input must be finite');
+ return parsed;
+};
 
 export function costComponentUnitCost(component: CostComponent): number {
  return dec(component.quantity).mul(component.unit_rate).toNumber();
