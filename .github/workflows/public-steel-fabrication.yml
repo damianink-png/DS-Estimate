@@ -10,6 +10,8 @@ on:
       - 'desktop-tauri/tests/public_fabrication_compare.mjs'
       - 'desktop-tauri/src/lib/cutting-plan.mjs'
       - 'desktop-tauri/src/lib/cutting-batch.mjs'
+      - 'desktop-tauri/src/lib/public-comparison-gate.mjs'
+      - 'desktop-tauri/tests/public-comparison-gate.test.mjs'
       - 'desktop-tauri/src/QuickEstimate.svelte'
       - 'desktop-tauri/cad_backend/step_inventory.py'
       - 'desktop-tauri/cad_backend/rigid_match.py'
