@@ -107,10 +107,16 @@ def main():
                     result['status']='ENGINE_OK'
                     result['engine']={'solids':data['count'],'groups':len(data['groups']),
                                       'massKgAssumed7850':data['totalMassKg'],
-                                      'cutHints':sum(1 for s in data['solids'] if s.get('cuttingHint'))}
+                                      'cutHints':sum(1 for s in data['solids'] if s.get('cuttingHint')),
+                                      'matchingDiagnostics':data.get('matchingDiagnostics',{}),
+                                      'limitations':data.get('limitations',[])}
             except subprocess.TimeoutExpired as exc:
                 result['status']='ENGINE_TIMEOUT'
                 result['errors'].append(f'Compiled DS Estimate engine exceeded {args.timeout} s')
+                stderr=exc.stderr or b''
+                if isinstance(stderr,bytes):
+                    stderr=stderr.decode('utf-8','replace')
+                (folder/'engine_stderr.txt').write_text(stderr[-50000:],encoding='utf-8')
             except Exception as exc:
                 result['status']='ENGINE_OUTPUT_INVALID'
                 result['errors'].append(safe_error(exc))
@@ -126,6 +132,6 @@ def main():
             'errors':result['errors'][:3]},ensure_ascii=False),flush=True)
     (args.out/'public_cases.json').write_text(json.dumps(summaries,ensure_ascii=False,indent=2),encoding='utf-8')
     print('PUBLIC_CASES_COMPLETED',len(summaries),'ENGINE_OK',sum(x['status']=='ENGINE_OK' for x in summaries),flush=True)
-    if sum(x['status']=='ENGINE_OK' for x in summaries)<2:
-        sys.exit('PUBLIC_GATE_FAIL: fewer than two genuine public models analyzed by compiled DS Estimate CAD EXE')
+    if sum(x['status']=='ENGINE_OK' for x in summaries)!=len(summaries):
+        sys.exit('PUBLIC_GATE_FAIL: Not all 4 genuine public models analyzed by compiled DS Estimate CAD EXE. See artifacts; partial results are NOT a PASS.')
 if __name__=='__main__':main()
