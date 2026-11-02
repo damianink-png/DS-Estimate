@@ -26,8 +26,10 @@ jobs:
           workspaces: desktop-tauri/src-tauri -> target
       - name: Install frontend dependencies
         run: npm install
-      - name: Test welding calculations
+      - name: Test cost and geometry calculations
         run: npm test
+      - name: Check STEP backend Python syntax
+        run: python -m compileall -q cad_backend
       - name: Build Svelte
         run: npm run build
       - name: Generate Windows icon
