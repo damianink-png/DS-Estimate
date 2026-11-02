@@ -28,7 +28,12 @@ def planar_plate_cutting_hint(solid, dimensions):
     is only a *proposal* and still requires drawing verification.
     """
     dims = sorted(dimensions)
-    if dims[0] <= 0 or dims[1] / dims[0] < 5:
+    # Bnd_Box adds a small OCCT tolerance to each extreme, and STEP import
+    # rounds the bounds. A nominal 50/10 plate is then reported as
+    # 50.0000002/10.0000002 = 4.99999992: use a tight relative tolerance.
+    plate_aspect_threshold = 5.0
+    ratio_epsilon = 1e-5
+    if dims[0] <= 0 or dims[1] / dims[0] < plate_aspect_threshold - ratio_epsilon:
         return None
     try:
         from OCC.Core.TopExp import TopExp_Explorer
@@ -72,8 +77,15 @@ def planar_plate_cutting_hint(solid, dimensions):
                 "contourMm": contour, "pierces": pierces,
                 "source": "main planar face of STEP B-Rep",
                 "limitations": "Main face wires may differ from stock laser/plasma toolpath; verify 2D drawing."}
-    except Exception:
-        # Measurement must not prevent mass/BOM computation.
+    except Exception as exc:
+        # Measurement must not prevent mass/BOM computation. Diagnostics are
+        # opt-in because most assemblies legitimately contain non-plate solids.
+        import os
+        if os.environ.get("DS_CAD_DEBUG_CUTTING_HINT") == "1":
+            import traceback
+            import sys
+            print(f"[STEP cutting hint] {type(exc).__name__}: {exc}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
         return None
 
 
