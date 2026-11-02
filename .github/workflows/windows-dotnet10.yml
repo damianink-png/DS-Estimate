@@ -7,6 +7,7 @@ on:
       - 'tests/**'
       - 'engines/python/**'
       - 'DS_Estimate.sln'
+      - 'DS_Estimate_1.2_FIX81_LOCAL_DOTNET10_SDK_GATE_SOURCE-1.zip'
 jobs:
   build-and-test:
     runs-on: windows-latest
@@ -19,6 +20,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Extract FIX81 source archive
+        shell: pwsh
+        run: |
+          $archive = 'DS_Estimate_1.2_FIX81_LOCAL_DOTNET10_SDK_GATE_SOURCE-1.zip'
+          if (!(Test-Path $archive)) { throw "Missing source archive: $archive" }
+          Expand-Archive -LiteralPath $archive -DestinationPath extracted -Force
+          $root = 'extracted/DS_Estimate_1.2_BUILD_READY'
+          if (!(Test-Path "$root/DS_Estimate.sln")) { throw 'Solution missing from archive' }
+          Get-ChildItem -LiteralPath $root -Force | Move-Item -Destination . -Force
       - name: Verify SDK
         shell: pwsh
         run: |
