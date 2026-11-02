@@ -6,7 +6,7 @@ export function extractManufacturingRequirements(text){
  if(typeof text!=='string')throw new TypeError('document text');
  const lines=text.split(/\r?\n/).map((x,i)=>({line:i+1,text:x.trim()})).filter(x=>x.text);
  const rules=[
-  {id:'steel-grade',category:'material',label:'Gatunek stali / materiał',pattern:/\b(?:S(?:235|275|355|420|460|500|690|700|890|960)(?:J0|JR|J2|J2\+N|QL|M|ML)?|C45|42CrMo4|1[.,]4301)\b/ig,review:'Zweryfikuj cenę, atest i gęstość materiału'},
+  {id:'steel-grade',category:'material',label:'Gatunek stali / materiał',pattern:/\b(?:S(?:235|275|355|420|460|500|690|700|890|960)(?:J2\+N|J2|J0|JR|QL|ML|M)?|C45|42CrMo4|1[.,]4301)\b/ig,review:'Zweryfikuj cenę, atest i gęstość materiału'},
   {id:'welding-quality',category:'welding-quality',label:'Klasa jakości spoin ISO 5817',pattern:/\b(?:EN\s*)?ISO\s*5817(?:\s*[-:]?\s*[BCD])?\b/ig,review:'Sprawdź klasę spoin i koszt kontroli VT / NDT'},
   {id:'welding-process',category:'welding',label:'Proces spawania',pattern:/\b(?:MAG\s*135|MIG\s*131|proces\s*135|ISO\s*4063|spawanie\s*135)\b/ig,review:'Wymagane są rzeczywista długość, typ i a spoiny'},
   {id:'ultrasonic-test',category:'inspection',label:'Kontrola ultradźwiękowa',pattern:/\b(?:UT\s*(?:100\s*%|[ABC]\b)?|ISO\s*17640)\b/ig,review:'Dodaj odrębną operację NDT, zakres i koszt badania'},
