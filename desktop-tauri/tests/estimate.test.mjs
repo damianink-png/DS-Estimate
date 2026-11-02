@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {estimateCnc,estimateCut,estimateBending,estimateProject} from '../src/lib/estimate.mjs';
+test('CNC milling + drilling + setup',()=>{const r=estimateCnc({removedCm3:80,removalCm3Min:10,holes:[{depthMm:20,feedMmMin:100,count:5}],setupMin:12,toolChanges:2,toolChangeMin:1});assert.equal(r.totalMin,23)});
+test('Cut includes pierces and rapid',()=>{assert.equal(estimateCut({contourMm:3000,feedMmMin:1000,pierces:6,pierceSec:10,rapidMm:1000,rapidMmMin:1000,setupMin:5}).totalMin,10)});
+test('Bending includes setup',()=>{assert.equal(estimateBending({bends:6,secondsPerBend:30,setupMin:10}).totalMin,13)});
+test('Same geometry computed once',()=>{const features={cnc:{removedCm3:100,removalCm3Min:10,setupMin:0}};const r=estimateProject({parts:[{geometryId:'A',quantity:3,features},{geometryId:'A',quantity:2,features}]});assert.equal(r.uniqueCalculations,1);assert.equal(r.totalMin,50)});
+test('Invalid feed rejected',()=>assert.throws(()=>estimateCut({feedMmMin:0}),RangeError));
