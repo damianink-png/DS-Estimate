@@ -3,7 +3,7 @@
  * STEP only supplies verified group quantity and unit mass. Rates and routing
  * are explicit user inputs; no welding, machining or PDF features are inferred.
  */
-import { estimateTotalCost, takeoffItemTotal } from './estimate-calculation.js';
+import { estimateTotalCost, estimateTotalPrice, takeoffItemTotal } from './estimate-calculation.js';
 import { cloneEstimateSnapshot } from './estimate-snapshot.js';
 import type { CostComponent, Estimate, TakeoffItem } from './types.js';
 
@@ -19,10 +19,13 @@ export interface QuoteRouting {
 export interface StepQuoteInputs {
  materialRatePlnKg: number; ratePlnHour: number;
  routing?: QuoteRouting;
+ markup?: { generalPercent?: number; materialPercent?: number | null; labourPercent?: number | null; equipmentPercent?: number | null; subcontractPercent?: number | null };
 }
 export interface StepQuoteResult {
  estimate: Estimate;
  totalCostPln: number;
+ sellingPricePln: number;
+ markupAmountPln: number;
  materialCostPln: number;
  routingCostPln: number;
  groups: Array<{ geometryId: string; quantity: number; unitMassKg: number; totalMassKg: number; costPln: number }>;
@@ -98,9 +101,21 @@ export function buildStepQuote(inventory: StepInventory, inputs: StepQuoteInputs
  });
  const materialCostPln=groups.reduce((s,g)=>s+g.totalMassKg*inputs.materialRatePlnKg,0);
  const totalCostPln=estimateTotalCost(estimate);
+ const markup=inputs.markup??{};
+ const validMarkup=(v: number | null | undefined, name: string): number | null => {
+  if (v == null) return null;
+  if (!Number.isFinite(v) || v < -100) throw new RangeError(name);
+  return v;
+ };
+ const general=validMarkup(markup.generalPercent??0,'generalPercent')??0;
+ const material=validMarkup(markup.materialPercent,'materialPercent');
+ const labour=validMarkup(markup.labourPercent,'labourPercent');
+ const equipment=validMarkup(markup.equipmentPercent,'equipmentPercent');
+ const subcontract=validMarkup(markup.subcontractPercent,'subcontractPercent');
+ const sellingPricePln=estimateTotalPrice(estimate,general,material,labour,equipment,subcontract);
  if (Math.abs(totalCostPln-materialCostPln-routingCostPln)>Math.max(1e-6,totalCostPln*1e-9))
   throw new Error('Niespójność składników kosztorysu');
- return {estimate,totalCostPln,materialCostPln,routingCostPln,
+ return {estimate,totalCostPln,sellingPricePln,markupAmountPln:sellingPricePln-totalCostPln,materialCostPln,routingCostPln,
   groups:groups.map(g=>({geometryId:g.geometryId,quantity:g.quantity,unitMassKg:g.unitMassKg,totalMassKg:g.totalMassKg,costPln:g.totalMassKg*inputs.materialRatePlnKg})),
   provenance:['B-Rep STEP: ilość, grupowanie i masa','Kwantflow GPL-3.0: wycena pozycji i snapshot','DS Estimate: jawne normy technologiczne i stawki (nieodczytane z STEP/PDF)']};
 }
