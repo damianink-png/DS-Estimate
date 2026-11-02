@@ -146,6 +146,11 @@ def inventory(path, density=7850.0):
     skipped_rigid = 0
     partner_hits = 0
     rigid_hits = 0
+    signature_seconds = 0.0
+    translation_verification_seconds = 0.0
+    rigid_verification_seconds = 0.0
+    cutting_hint_seconds = 0.0
+    candidate_pairs = 0
     max_translation_checks = max(0, int(os.environ.get("DS_CAD_MAX_TRANSLATION_CHECKS", "600")))
     max_translation_seconds = max(0.0, float(os.environ.get("DS_CAD_MAX_TRANSLATION_SECONDS", "95")))
     max_rigid_checks = max(0, int(os.environ.get("DS_CAD_MAX_RIGID_CHECKS", "120")))
@@ -166,6 +171,7 @@ def inventory(path, density=7850.0):
         # Volume/area only generate candidates. Never merge by fingerprints.
         area = float(ap.Mass())
         candidates = index.candidates(volume, area)
+        candidate_pairs += len(candidates)
         existing = None
         method = "OCCT_UniqueShape"
         for i in candidates:
@@ -178,7 +184,9 @@ def inventory(path, density=7850.0):
         signature = None
         rigid_eligible = None
         if existing is None:
+            stage_start = time.perf_counter()
             signature = translation_signature(solid, center)
+            signature_seconds += time.perf_counter() - stage_start
             for i in candidates:
                 if any(abs(a-b) > 0.01 for a, b in zip(dims, original_dims[i])):
                     continue
@@ -192,8 +200,11 @@ def inventory(path, density=7850.0):
                     skipped_translation += 1
                     continue
                 attempted_translation += 1
-                if equivalent_translation(originals[i], solid, original_centers[i],
-                                          center, original_mass[i], volume):
+                stage_start = time.perf_counter()
+                equivalent = equivalent_translation(originals[i], solid, original_centers[i],
+                                                    center, original_mass[i], volume)
+                translation_verification_seconds += time.perf_counter() - stage_start
+                if equivalent:
                     existing = i
                     translation_hits += 1
                     method = "OCCT_Translation_BRep_Common"
@@ -209,7 +220,10 @@ def inventory(path, density=7850.0):
                     skipped_rigid += 1
                     continue
                 attempted_rigid += 1
-                if equivalent_rigid(originals[i], solid):
+                stage_start = time.perf_counter()
+                equivalent = equivalent_rigid(originals[i], solid)
+                rigid_verification_seconds += time.perf_counter() - stage_start
+                if equivalent:
                     existing = i
                     rigid_hits += 1
                     method = "OCCT_Rigid_BRep_Cut"
@@ -219,12 +233,18 @@ def inventory(path, density=7850.0):
             originals.append(solid)
             original_centers.append(center)
             original_dims.append(dims)
-            original_signatures.append(signature if signature is not None else translation_signature(solid, center))
+            if signature is None:
+                stage_start = time.perf_counter()
+                signature = translation_signature(solid, center)
+                signature_seconds += time.perf_counter() - stage_start
+            original_signatures.append(signature)
             original_rigid_eligible.append(rigid_eligible if rigid_eligible is not None else has_unique_inertia_axes(vp))
             original_mass.append(volume)
             index.insert(existing, volume, area)
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
+        stage_start = time.perf_counter()
         cut_hint = planar_plate_cutting_hint(solid, dims)
+        cutting_hint_seconds += time.perf_counter() - stage_start
         solids.append({
             "id": f"solid-{len(solids)+1}",
             "volumeMm3": volume,
@@ -242,7 +262,12 @@ def inventory(path, density=7850.0):
               for i, count in occurrence_count.items()]
     timings["totalSeconds"] = round(time.perf_counter()-t_start, 3)
     timings["comparisonWindowSeconds"] = round(time.perf_counter()-compare_start, 3)
-    diagnostics = {"translationChecks": attempted_translation,
+    diagnostics = {"candidatePairs": candidate_pairs,
+                   "signatureSeconds": round(signature_seconds, 3),
+                   "translationVerificationSeconds": round(translation_verification_seconds, 3),
+                   "rigidVerificationSeconds": round(rigid_verification_seconds, 3),
+                   "cuttingHintSeconds": round(cutting_hint_seconds, 3),
+                   "translationChecks": attempted_translation,
                    "translationMatches": translation_hits,
                    "translationBudgetSkippedCandidates": skipped_translation,
                    "translationComplexitySkippedCandidates": skipped_complex,
