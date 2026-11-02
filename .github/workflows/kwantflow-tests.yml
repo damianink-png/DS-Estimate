@@ -4,7 +4,9 @@ on:
     paths:
       - 'desktop-tauri/src/lib/kwantflow/**'
       - 'desktop-tauri/src/lib/estimate.mjs'
+      - 'desktop-tauri/src/lib/milling-physics.mjs'
       - 'desktop-tauri/tests/estimate.test.mjs'
+      - 'desktop-tauri/tests/milling-physics.test.mjs'
       - 'desktop-tauri/src/App.svelte'
       - 'desktop-tauri/tests/kwantflow-upstream.test.mjs'
       - 'desktop-tauri/tests/step-kwantflow-quote.test.mjs'
