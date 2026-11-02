@@ -52,3 +52,35 @@ test('original Kwantflow category markups override general markup',()=>{
  assert.ok(Math.abs(r.sellingPricePln-1474.2)<1e-9);
  assert.throws(()=>buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,markup:{generalPercent:Number.NaN}}),RangeError);
 });
+
+test('purchased stock, not finished mass, drives raw material cost',()=>{
+ const r=buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,stockAllowancePercent:20});
+ assert.ok(Math.abs(r.purchasedStockMassKg-21)<1e-8);
+ assert.ok(Math.abs(r.stockWasteMassKg-3.5)<1e-8);
+ assert.ok(Math.abs(r.materialCostPln-252)<1e-8);
+ assert.equal(r.routingCostPln,0);
+ const manual=buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,stockKgPerPart:{a:3,b:12}});
+ assert.equal(manual.materialCostPln,252);
+ assert.throws(()=>buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,stockKgPerPart:{a:1}}),/Półfabrykat/);
+});
+test('one setup per geometry and per-part CNC cycles, not one setup per duplicate',()=>{
+ const r=buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:60,groupOperations:{
+  a:[{name:'Frezowanie',setupMin:30,cycleMinPerPart:10,ratePlnHour:120,toolingPlnBatch:45,consumablesPlnPart:2}],
+  b:[{name:'Wiercenie',setupMin:15,cycleMinPerPart:12,ratePlnHour:60}]
+ }});
+ assert.equal(r.setupCostPln,75); // 30 min at 120 + 15 min at 60
+ assert.equal(r.perPartOperationCostPln,72); // 3*10 min at 120 + 1*12 min at 60
+ assert.equal(r.toolingCostPln,45);
+ assert.equal(r.consumablesCostPln,6);
+ assert.equal(r.routingCostPln,198);
+ assert.equal(r.totalCostPln,408);
+ assert.equal(r.estimate.takeoff_items.filter(x=>x.properties.source==='manual once per geometry group').length,2);
+});
+test('group-specific workstations, unsupported groups and unsafe process parameters rejected',()=>{
+ const base={materialRatePlnKg:12,ratePlnHour:388};
+ assert.throws(()=>buildStepQuote(fixture,{...base,groupOperations:{unknown:[{name:'CNC',cycleMinPerPart:10}]}}),/Nieznana/);
+ assert.throws(()=>buildStepQuote(fixture,{...base,stockAllowancePercent:-2}),RangeError);
+ assert.throws(()=>buildStepQuote(fixture,{...base,groupOperations:{a:[{name:'',setupMin:10}]}}),TypeError);
+ assert.throws(()=>buildStepQuote(fixture,{...base,groupOperations:{a:[{name:'CNC',cycleMinPerPart:-1}]}}),RangeError);
+ assert.throws(()=>buildStepQuote(fixture,{...base,groupOperations:{a:[{name:'CNC',category:'material'}]}}),RangeError);
+});
