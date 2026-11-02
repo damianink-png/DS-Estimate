@@ -12,6 +12,10 @@ rigid B-Rep equivalence verifier from DS Compare.
 import argparse
 import json
 import math
+try:
+    from .rigid_match import equivalent_rigid
+except ImportError:
+    from rigid_match import equivalent_rigid
 from pathlib import Path
 
 def inventory(path, density=7850.0):
@@ -51,6 +55,13 @@ def inventory(path, density=7850.0):
         # IsPartner tests shared TShape independent of TopLoc_Location.
         # No claim of equivalence for distinct B-Rep objects.
         existing = next((i for i, prev in enumerate(originals) if solid.IsPartner(prev)), None)
+        method = "OCCT_IsPartner"
+        if existing is None:
+            for i, prev in enumerate(originals):
+                if equivalent_rigid(prev, solid):
+                    existing = i
+                    method = "OCCT_Rigid_BRep_Cut"
+                    break
         if existing is None:
             existing = len(originals)
             originals.append(solid)
@@ -63,14 +74,14 @@ def inventory(path, density=7850.0):
             "densityKgM3": density,
             "massKg": volume * density * 1e-9,
             "verifiedShapeKey": f"shared-tshape-{existing}",
-            "verificationMethod": "OCCT_IsPartner",
+            "verificationMethod": method,
         })
         explorer.Next()
     groups = [{"geometryId": f"shared-tshape-{i}", "quantity": count, "massKg": solids[next(j for j, s in enumerate(solids) if s["verifiedShapeKey"] == f"shared-tshape-{i}")]["massKg"]} for i, count in occurrence_count.items()]
     return {"source": str(path), "solids": solids, "groups": groups, "count": len(solids),
             "totalMassKg": sum(x["massKg"] for x in solids),
             "limitations": ["STEPControl does not preserve complete XCAF BOM metadata",
-                            "Distinct B-Rep solids with identical geometry are not yet verified",
+                            "Inertia-degenerate symmetric shapes may remain ungrouped; false negatives are possible",
                             "The UI is not yet wired to this Python backend"]}
 
 def main():
