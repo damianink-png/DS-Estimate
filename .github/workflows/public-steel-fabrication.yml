@@ -8,6 +8,14 @@ on:
       - 'desktop-tauri/tests/public_fabrication_projects.json'
       - 'desktop-tauri/tests/public_fabrication_benchmark.py'
       - 'desktop-tauri/tests/public_fabrication_compare.mjs'
+      - 'desktop-tauri/src/lib/cutting-plan.mjs'
+      - 'desktop-tauri/src/lib/cutting-batch.mjs'
+      - 'desktop-tauri/src/QuickEstimate.svelte'
+      - 'desktop-tauri/cad_backend/step_inventory.py'
+      - 'desktop-tauri/cad_backend/rigid_match.py'
+      - 'desktop-tauri/cad_backend/shape_index.py'
+      - 'desktop-tauri/tests/test_shape_index.py'
+      - 'desktop-tauri/tests/cutting-batch.test.mjs'
 permissions:
   contents: read
 concurrency:
@@ -29,6 +37,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Existing quote and cutting regression tests
         run: npm test
+      - name: Regression tests for indexed STEP duplicate lookup
+        run: python tests/test_shape_index.py
       - uses: conda-incubator/setup-miniconda@v3
         with:
           miniforge-version: latest
@@ -56,8 +66,9 @@ jobs:
         shell: pwsh
         id: actual_projects
         run: |
+          $env:DS_CAD_PROFILE = '1'
           python tests/public_fabrication_benchmark.py --engine src-tauri/cad-backend/ds-cad-engine.exe --out public_fabrication_output --timeout 240
-          if ($LASTEXITCODE -ne 0) { throw 'Real public source benchmark gate failed: fewer than two CAD models completed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Real public STEP benchmark gate failed: all four genuine CAD models must import successfully' }
       - name: Run DS Estimate automatic cutting-time planner and compare independent manual time ranges
         if: always()
         shell: pwsh
