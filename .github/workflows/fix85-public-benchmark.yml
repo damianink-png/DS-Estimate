@@ -1,0 +1,32 @@
+name: FIX85 public PDF and scan benchmark
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install OCR and PDF runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-pol tesseract-ocr-eng tesseract-ocr-deu tesseract-ocr-fra poppler-utils
+          python -m pip install --upgrade pip
+          python -m pip install pymupdf pillow pytesseract pypdf pdfplumber
+      - name: Verify FIX85 engine is included
+        run: |
+          test -f desktop-tauri/cad_backend/legacy_fix85/analyze_document.py || { echo "::error::FIX85 source is not yet vendored in this repository. Benchmark cannot claim PASS."; exit 1; }
+      - name: Download public source drawings and execute FIX85
+        run: python desktop-tauri/tests/fix85_public_benchmark.py
+      - name: Upload original drawings and machine results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FIX85-public-drawings-and-results
+          path: desktop-tauri/tests/fix85_benchmark_output/
+          if-no-files-found: warn
