@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - 'desktop-tauri/src/lib/kwantflow/**'
+      - 'desktop-tauri/src/App.svelte'
       - 'desktop-tauri/tests/kwantflow-upstream.test.mjs'
       - 'desktop-tauri/package.json'
       - '.github/workflows/kwantflow-tests.yml'
@@ -24,5 +25,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Run upstream Kwantflow calculation tests
         run: node --test tests/kwantflow-upstream.test.mjs
+      - name: Build Svelte frontend using Kwantflow costing
+        run: npm run build
       - name: Typecheck Kwantflow integration
         run: npx tsc --noEmit --skipLibCheck --moduleResolution bundler --module esnext --target es2022 src/lib/kwantflow/types.ts src/lib/kwantflow/estimate-calculation.ts src/lib/kwantflow/estimate-template-normalisation.ts src/lib/kwantflow/estimate-snapshot.ts
