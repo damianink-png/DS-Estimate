@@ -32,6 +32,7 @@ def planar_plate_cutting_hint(solid, dimensions):
         return None
     try:
         from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopoDS import topods
         from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_WIRE
         from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
         from OCC.Core.GeomAbs import GeomAbs_Plane
@@ -41,7 +42,7 @@ def planar_plate_cutting_hint(solid, dimensions):
         faces = []
         ex = TopExp_Explorer(solid, TopAbs_FACE)
         while ex.More():
-            face = ex.Current()
+            face = topods.Face(ex.Current())
             if BRepAdaptor_Surface(face).GetType() == GeomAbs_Plane:
                 area_props = GProp_GProps()
                 brepgprop_SurfaceProperties(face, area_props)
@@ -58,7 +59,7 @@ def planar_plate_cutting_hint(solid, dimensions):
         pierces = 0
         while wires.More():
             length = GProp_GProps()
-            brepgprop_LinearProperties(wires.Current(), length)
+            brepgprop_LinearProperties(topods.Wire(wires.Current()), length)
             linear_mm = float(length.Mass())
             if linear_mm <= 0 or not math.isfinite(linear_mm):
                 return None
