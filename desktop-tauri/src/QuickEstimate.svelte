@@ -2,7 +2,8 @@
  import { onMount } from 'svelte';
  import { getCurrentWebview } from '@tauri-apps/api/webview';
  import { invoke } from '@tauri-apps/api/core';
- import { recommendCutting, partCuttingHint, CUTTING_METHODS, SAMPLE_MACHINE_SETTINGS } from './lib/cutting-plan.mjs';
+ import { partCuttingHint, CUTTING_METHODS, SAMPLE_MACHINE_SETTINGS } from './lib/cutting-plan.mjs';
+ import { planCuttingBatches } from './lib/cutting-batch.mjs';
  import { extractManufacturingRequirements } from './lib/document-requirements.mjs';
  import { validateStepBom } from './lib/inventory-validate.mjs';
 
@@ -89,22 +90,20 @@
  });
 
  let requirements=$derived(extractManufacturingRequirements(projectText).requirements);
- let rows=$derived.by(()=>{
-  if(!inventory)return [];
-  return inventory.groups.map(g=>{
-   const solid=inventory!.solids.find(s=>s.verifiedShapeKey===g.geometryId)??null;
+ let cuttingPlan=$derived.by(()=>{
+  if(!inventory)return {rows:[],batchCount:0,knownTimeOccurrences:0,pendingOccurrences:0};
+  const solids=new Map(inventory.solids.map(s=>[s.verifiedShapeKey,s]));
+  const groups=inventory.groups.map(g=>{
+   const solid=solids.get(g.geometryId)??null;
    const hint=partCuttingHint(solid);
-   const choice=overrides[g.geometryId]??{};
-   let cut:any;
-   try{cut=recommendCutting({solid,quantity:g.quantity,material,machines,
-     overrideMethod:choice.method??null,overrideMinutes:choice.minutes??null});}
-   catch{cut=recommendCutting({solid,quantity:g.quantity,material,machines});}
    const label=hint.kind==='possible-plate'?'Blacha, t≈'+fmt(hint.thicknessMm)+' mm':
     hint.kind==='possible-profile'?'Profil / rura, L≈'+fmt(hint.lengthMm)+' mm':'Detal nieokreślony';
-   return {key:g.geometryId,label,quantity:g.quantity,massKg:g.massKg,totalMassKg:g.massKg*g.quantity,
-     cut,origin:solid?.id??g.geometryId};
+   return {key:g.geometryId,solid,label,quantity:g.quantity,massKg:g.massKg,
+    totalMassKg:g.massKg*g.quantity,origin:solid?.id??g.geometryId};
   });
+  return planCuttingBatches({groups,material,machines,overrides});
  });
+ let rows=$derived(cuttingPlan.rows);
  let cutHours=$derived(rows.reduce((sum,r)=>sum+(r.cut.acceptedMin??0)/60,0));
  let cutCost=$derived(rows.reduce((sum,r)=>sum+(r.cut.costPln??0),0));
  let additionalHours=$derived(extraTimes.reduce((sum,r)=>sum+(r.hours??0),0));
@@ -183,6 +182,7 @@
   </details>
 
   <h3>Cięcie — automatyczny wybór i edycja czasów</h3>
+  <p class="muted">Przezbrojenia naliczane wspólnie według metody, materiału i grubości. Partie z wyliczonym konturem: {cuttingPlan.batchCount}; liczba detali bez obliczonego czasu: {cuttingPlan.pendingOccurrences}. Ręczne zmiany czasu mają pierwszeństwo.</p>
   <div class="table-wrap"><table>
    <thead><tr><th>Detal</th><th>Il.</th><th>Masa/szt.</th><th>Metoda</th><th>Obliczono [h]</th><th>Przyjęto [h]</th><th>Koszt</th></tr></thead>
    <tbody>
