@@ -61,3 +61,14 @@ test('invalid dimensions and missing geometry do not invent a method',()=>{
  assert.throws(()=>recommendCutting({solid:plate(10),quantity:0}),RangeError);
  assert.throws(()=>recommendCutting({solid:plate(10),overrideMinutes:-1}),RangeError);
 });
+
+test('OCCT Bnd_Box rounding near 5:1 still recognises nominal plate',()=>{
+ const solid={volumeMm3:50000,bboxMm:[100.0000002,50.0000002,10.0000002],
+  cuttingHint:{kind:'plate-outline',thicknessMm:10.0000002,contourMm:300,pierces:1}};
+ const hint=partCuttingHint(solid);
+ assert.equal(hint.kind,'possible-plate');
+ assert.equal(hint.contourMm,300);
+ const route=recommendCutting({solid,material:'S355'});
+ assert.equal(route.method,'laser');
+ assert.ok(route.calculatedMin>0);
+});
