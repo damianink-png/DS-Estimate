@@ -1,9 +1,5 @@
 name: DS Estimate Tauri Windows
 on:
-  push:
-    paths:
-      - 'desktop-tauri/**'
-      - '.github/workflows/tauri-desktop-windows.yml'
   workflow_dispatch:
 permissions:
   contents: read
