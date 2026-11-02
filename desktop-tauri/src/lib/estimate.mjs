@@ -18,15 +18,23 @@ export function estimateBending({bends=0,secondsPerBend=25,setupMin=15,handlingM
  const totalMin=bends*secondsPerBend/60+setupMin+handlingMin;return {totalMin,cost:totalMin*ratePerHour/60};
 }
 export function estimateProject({parts=[],ratePerHour=388}={}){
- const cache=new Map();let totalMin=0,totalCost=0,occurrences=0;
+ const cache=new Map(),setupsCharged=new Set();let totalMin=0,totalCost=0,occurrences=0;
  const rows=parts.map(({geometryId,quantity=1,features={}})=>{
   if(!geometryId||!Number.isInteger(quantity)||quantity<1)throw new RangeError('geometryId/quantity');
   const key=JSON.stringify([geometryId,features,ratePerHour]);let unit=cache.get(key);
   if(!unit){const cnc=features.cnc?estimateCnc({...features.cnc,ratePerHour}):null;
    const cut=features.cut?estimateCut({...features.cut,ratePerHour}):null;
    const bend=features.bend?estimateBending({...features.bend,ratePerHour}):null;
-   unit={cnc,cut,bend,unitMin:[cnc,cut,bend].reduce((s,x)=>s+(x?.totalMin||0),0),unitCost:[cnc,cut,bend].reduce((s,x)=>s+(x?.cost||0),0)};cache.set(key,unit)}
-  const row={geometryId,quantity,...unit,totalMin:unit.unitMin*quantity,totalCost:unit.unitCost*quantity};
+   const unitSetupMin=(cnc?(features.cnc.setupMin??20):0)+(cut?(features.cut.setupMin??10):0)+(bend?(features.bend.setupMin??15):0);
+   const unitMin=[cnc,cut,bend].reduce((s,x)=>s+(x?.totalMin||0),0);
+   unit={cnc,cut,bend,unitMin,unitCost:unitMin*ratePerHour/60,unitSetupMin,unitRunMin:unitMin-unitSetupMin};
+   cache.set(key,unit)}
+  // Setup is paid once per distinct geometry/routing batch, even if the same
+  // geometry occurs in several rows. Machine cycles scale with occurrences.
+  const setupMin=setupsCharged.has(key)?0:unit.unitSetupMin;
+  setupsCharged.add(key);
+  const rowMin=setupMin+unit.unitRunMin*quantity;
+  const row={geometryId,quantity,...unit,batchSetupMin:setupMin,totalMin:rowMin,totalCost:rowMin*ratePerHour/60};
   totalMin+=row.totalMin;totalCost+=row.totalCost;occurrences+=quantity;return row;
  });return {rows,totalMin,totalCost,occurrences,uniqueCalculations:cache.size};
 }
