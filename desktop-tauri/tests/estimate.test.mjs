@@ -4,3 +4,23 @@ test('Cut includes pierces and rapid',()=>{assert.equal(estimateCut({contourMm:3
 test('Bending includes setup',()=>{assert.equal(estimateBending({bends:6,secondsPerBend:30,setupMin:10}).totalMin,13)});
 test('Same geometry computed once',()=>{const features={cnc:{removedCm3:100,removalCm3Min:10,setupMin:0}};const r=estimateProject({parts:[{geometryId:'A',quantity:3,features},{geometryId:'A',quantity:2,features}]});assert.equal(r.uniqueCalculations,1);assert.equal(r.totalMin,50)});
 test('Invalid feed rejected',()=>assert.throws(()=>estimateCut({feedMmMin:0}),RangeError));
+test('duplicate parts share one setup, not setup multiplied by quantity',()=>{
+ const r=estimateProject({ratePerHour:60,parts:[
+  {geometryId:'plate',quantity:3,features:{cnc:{removedCm3:60,removalCm3Min:10,setupMin:30}}},
+  {geometryId:'plate',quantity:2,features:{cnc:{removedCm3:60,removalCm3Min:10,setupMin:30}}}
+ ]});
+ assert.equal(r.rows[0].totalMin,48); // 30 + 3 * 6
+ assert.equal(r.rows[1].totalMin,12); // 2 * 6, no second setup
+ assert.equal(r.rows[1].batchSetupMin,0);
+ assert.equal(r.totalMin,60);
+ assert.equal(r.totalCost,60);
+ assert.equal(r.uniqueCalculations,1);
+});
+test('different technology routings require separate setup, valid defaults preserved',()=>{
+ const r=estimateProject({ratePerHour:60,parts:[
+  {geometryId:'part',quantity:2,features:{cut:{contourMm:1000,feedMmMin:1000,setupMin:10}}},
+  {geometryId:'part',quantity:3,features:{bend:{bends:2,secondsPerBend:30,setupMin:15}}}
+ ]});
+ assert.equal(r.totalMin,10+2+15+3);
+ assert.equal(r.uniqueCalculations,2);
+});
