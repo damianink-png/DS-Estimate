@@ -99,8 +99,13 @@ def equivalent_translation(a, b, center_a, center_b, volume_a, volume_b,
     try:
         transform = gp_Trsf()
         transform.SetTranslation(gp_Vec(center_b, center_a))
-        moved = BRepBuilderAPI_Transform(b, transform, True).Shape()
+        # A pure translation is a direct isometry. With copyGeom=False,
+        # OCCT reuses the original geometry and changes only TopLoc_Location
+        # rather than cloning every face/edge/curve of every STEP occurrence.
+        # This is safe because Common below is read-only for the inputs.
+        moved = BRepBuilderAPI_Transform(b, transform, False).Shape()
         common = BRepAlgoAPI_Common(a, moved)
+        common.SetNonDestructive(True)
         common.Build()
         if not common.IsDone():
             return False
