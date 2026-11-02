@@ -32,10 +32,10 @@ for(const c of cases){
    // Deliberately no manual time inputs or BOM-derived grade here.
    // Mirror QuickEstimate's actual PDF text -> material heuristic and default.
    const pdfTexts=(c.pdf??[]).slice(0,15).map(p=>{
-    const textFile=join(root,c.id,p.path.split('/').pop().replace(/\\.pdf$/i,'.txt'));
+    const textFile=join(root,c.id,p.path.split('/').pop().replace(/\.pdf$/i,'.txt'));
     return existsSync(textFile)?readFileSync(textFile,'utf8').slice(0,30000):'';
-   }).join('\\n');
-   const grade=pdfTexts.match(/\\b(?:S355(?:J2(?:\\+N)?|J0|JR)?|S235(?:JR)?|S690QL|S960QL)\\b/i);
+   }).join('\n');
+   const grade=pdfTexts.match(/\b(?:S355(?:J2(?:\+N)?|J0|JR)?|S235(?:JR)?|S690QL|S960QL)\b/i);
    const material=grade?(grade[0].toUpperCase().startsWith('S355')?'S355':
       grade[0].toUpperCase().startsWith('S235')?'S235':grade[0].toUpperCase()):'S355';
    r.cut.materialAssumption=material;
