@@ -35,6 +35,7 @@ def inventory(path, density=7850.0):
     explorer = TopExp_Explorer(shape, TopAbs_SOLID)
     solids = []
     originals = []
+    occurrence_count = {}
     while explorer.More():
         solid = explorer.Current()
         vp, ap = GProp_GProps(), GProp_GProps()
@@ -53,6 +54,7 @@ def inventory(path, density=7850.0):
         if existing is None:
             existing = len(originals)
             originals.append(solid)
+        occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
         solids.append({
             "id": f"solid-{len(solids)+1}",
             "volumeMm3": volume,
@@ -64,7 +66,8 @@ def inventory(path, density=7850.0):
             "verificationMethod": "OCCT_IsPartner",
         })
         explorer.Next()
-    return {"source": str(path), "solids": solids, "count": len(solids),
+    groups = [{"geometryId": f"shared-tshape-{i}", "quantity": count, "massKg": solids[next(j for j, s in enumerate(solids) if s["verifiedShapeKey"] == f"shared-tshape-{i}")]["massKg"]} for i, count in occurrence_count.items()]
+    return {"source": str(path), "solids": solids, "groups": groups, "count": len(solids),
             "totalMassKg": sum(x["massKg"] for x in solids),
             "limitations": ["STEPControl does not preserve complete XCAF BOM metadata",
                             "Distinct B-Rep solids with identical geometry are not yet verified",
