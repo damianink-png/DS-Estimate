@@ -65,3 +65,19 @@ test('unknown saw machining time remains unknown; no fake zero from partial cove
  assert.equal(r.complete,false);
  assert.throws(()=>planCuttingBatches({material:'S355',groups:[group('a',10),group('a',10)]}),/duplicate/);
 });
+
+
+test('disabling a manually chosen machine never crashes quote or silently changes its route',()=>{
+ const machines={
+  laser:{enabled:false,maxThicknessMm:15,feedMmMin:1400,pierceSec:3,setupMin:15,ratePlnHour:388},
+  plasma:{enabled:true,maxThicknessMm:35,feedMmMin:900,pierceSec:5,setupMin:18,ratePlnHour:388}
+ };
+ const result=planCuttingBatches({material:'S355',machines,groups:[group('part',10)],
+  overrides:{part:{method:'laser'}}});
+ assert.equal(result.rows[0].cut.method,null);
+ assert.equal(result.rows[0].cut.acceptedMin,null);
+ assert.equal(result.rows[0].cut.costPln,null);
+ assert.equal(result.pendingOccurrences,1);
+ assert.equal(result.complete,false);
+ assert.ok(result.rows[0].cut.warnings.some(w=>w.includes('niedostępna')));
+});
