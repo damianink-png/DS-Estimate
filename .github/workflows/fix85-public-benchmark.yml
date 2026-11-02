@@ -1,6 +1,12 @@
 name: FIX85 public PDF and scan benchmark
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix85-public-benchmark.yml'
+      - 'FIX85_DO_POBRANIA.zip'
+      - 'desktop-tauri/tests/fix85_public_benchmark.py'
 permissions:
   contents: read
 jobs:
