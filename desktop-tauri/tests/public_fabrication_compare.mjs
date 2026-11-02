@@ -29,12 +29,17 @@ for(const c of cases){
  if(existsSync(inventoryFile)&&c.status==='ENGINE_OK'){
   try{
    const data=validateStepBom(JSON.parse(readFileSync(inventoryFile,'utf8')));
-   // Deliberately no manual time inputs here. We use the same defaults that
-   // QuickEstimate currently proposes for each newly imported source.
-   const materialByProject={'stepgen-frame':'S235','earthpress':'S235',
-     'dockhub':'S355','portal-frame':'unknown'};
-   const material=materialByProject[c.id]||'unknown';
+   // Deliberately no manual time inputs or BOM-derived grade here.
+   // Mirror QuickEstimate's actual PDF text -> material heuristic and default.
+   const pdfTexts=(c.pdf??[]).slice(0,15).map(p=>{
+    const textFile=join(root,c.id,p.path.split('/').pop().replace(/\\.pdf$/i,'.txt'));
+    return existsSync(textFile)?readFileSync(textFile,'utf8').slice(0,30000):'';
+   }).join('\\n');
+   const grade=pdfTexts.match(/\\b(?:S355(?:J2(?:\\+N)?|J0|JR)?|S235(?:JR)?|S690QL|S960QL)\\b/i);
+   const material=grade?(grade[0].toUpperCase().startsWith('S355')?'S355':
+      grade[0].toUpperCase().startsWith('S235')?'S235':grade[0].toUpperCase()):'S355';
    r.cut.materialAssumption=material;
+   r.cut.materialSource=grade?'PDF text match (unverified)':'DS Estimate default S355 (unverified)';
    for(const group of data.groups){
     const solid=data.solids.find(s=>s.verifiedShapeKey===group.geometryId);
     const prediction=recommendCutting({solid,quantity:group.quantity,material});
