@@ -27,7 +27,7 @@ def check(name, shapes, count, volume, density=7850):
         assert abs(sum(x['volumeMm3'] for x in d['solids'])-volume)<max(1e-3,volume*1e-5)
         if name == 'plate_100x50x10':
             hint=d['solids'][0].get('cuttingHint')
-            assert hint is not None, ('missing measured plate cut loops',d['solids'][0])
+            assert hint is not None, ('missing measured plate cut loops',d['solids'][0], 'CAD stderr:', p.stderr)
             assert hint['kind']=='plate-outline',hint
             assert abs(hint['thicknessMm']-10.0)<1e-5,hint
             assert abs(hint['contourMm']-300.0)<1e-3,hint
