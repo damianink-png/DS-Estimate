@@ -18,6 +18,22 @@ jobs:
           sudo apt-get install -y tesseract-ocr tesseract-ocr-pol tesseract-ocr-eng tesseract-ocr-deu tesseract-ocr-fra poppler-utils
           python -m pip install --upgrade pip
           python -m pip install pymupdf pillow pytesseract pypdf pdfplumber
+      - name: Unpack original FIX85 package from repository
+        run: |
+          python - <<'PY'
+          import pathlib, zipfile
+          source=pathlib.Path("FIX85_DO_POBRANIA.zip")
+          assert source.is_file(), "FIX85 ZIP missing from repository"
+          with zipfile.ZipFile(source) as archive:
+              archive.testzip()
+              entries=[name for name in archive.namelist() if pathlib.PurePosixPath(name).name == "analyze_document.py"]
+              print("FIX85 entrypoints:", entries)
+              assert len(entries)==1, "Expected exactly one analyze_document.py in FIX85 archive"
+              destination=pathlib.Path("desktop-tauri/cad_backend/legacy_fix85/analyze_document.py")
+              destination.parent.mkdir(parents=True,exist_ok=True)
+              destination.write_bytes(archive.read(entries[0]))
+              print("Extracted", destination, destination.stat().st_size, "bytes")
+          PY
       - name: Verify FIX85 engine is included
         run: |
           test -f desktop-tauri/cad_backend/legacy_fix85/analyze_document.py || { echo "::error::FIX85 source is not yet vendored in this repository. Benchmark cannot claim PASS."; exit 1; }
