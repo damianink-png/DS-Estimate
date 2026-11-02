@@ -1,13 +1,6 @@
 name: DS Estimate Tauri Windows
+# Manual only until both original Kwantflow and Deepnest runtimes are integrated.
 on:
-  push:
-    paths:
-      - '.github/workflows/tauri-desktop-windows.yml'
-      - 'desktop-tauri/tests/compiled_step_suite.py'
-      - 'desktop-tauri/tests/welded-crane-frame.test.mjs'
-      - 'desktop-tauri/tests/fabrication-routing.test.mjs'
-      - 'desktop-tauri/src/lib/estimate.mjs'
-      - 'desktop-tauri/src/App.svelte'
   workflow_dispatch:
 permissions:
   contents: read
