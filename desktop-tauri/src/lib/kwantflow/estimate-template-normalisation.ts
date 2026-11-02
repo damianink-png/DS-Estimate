@@ -2,7 +2,7 @@
  * Source: src/lib/utils/estimate-template-normalisation.ts
  * Preserve attribution and GPL obligations when distributing.
  */
-import type { CostComponent, Estimate, EstimateTemplatePayload } from '$lib/types/index.js';
+import type { CostComponent, Estimate, EstimateTemplatePayload } from './types.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
