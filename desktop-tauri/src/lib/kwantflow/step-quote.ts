@@ -31,13 +31,14 @@ export interface StepQuoteInputs {
  /** Setup is charged once per distinct geometry and operation; cycle is per occurrence. */
  groupOperations?: Record<string, ProductionOperation[]>;
  routing?: QuoteRouting;
- markup?: { generalPercent?: number; materialPercent?: number | null; labourPercent?: number | null; equipmentPercent?: number | null; subcontractPercent?: number | null };
+ markup?: { mode?: 'markup' | 'grossMargin'; generalPercent?: number; materialPercent?: number | null; labourPercent?: number | null; equipmentPercent?: number | null; subcontractPercent?: number | null };
 }
 export interface StepQuoteResult {
  estimate: Estimate;
  totalCostPln: number;
  sellingPricePln: number;
  markupAmountPln: number;
+ achievedGrossMarginPercent: number;
  materialCostPln: number;
  routingCostPln: number;
  purchasedStockMassKg: number;
@@ -172,15 +173,26 @@ export function buildStepQuote(inventory: StepInventory, inputs: StepQuoteInputs
   if (!Number.isFinite(v) || v < -100) throw new RangeError(name);
   return v;
  };
- const general=validMarkup(markup.generalPercent??0,'generalPercent')??0;
- const material=validMarkup(markup.materialPercent,'materialPercent');
- const labour=validMarkup(markup.labourPercent,'labourPercent');
- const equipment=validMarkup(markup.equipmentPercent,'equipmentPercent');
- const subcontract=validMarkup(markup.subcontractPercent,'subcontractPercent');
+ const mode=markup.mode??'markup';
+ if(!['markup','grossMargin'].includes(mode))throw new RangeError('pricing mode');
+ const effectiveMarkup=(value: number | null): number | null=>{
+  if(value==null)return null;
+  if(mode==='grossMargin'){
+   if(value<0||value>=100)throw new RangeError('grossMargin must be 0.. <100');
+   return value/(100-value)*100;
+  }
+  return value;
+ };
+ const general=effectiveMarkup(validMarkup(markup.generalPercent??0,'generalPercent'))??0;
+ const material=effectiveMarkup(validMarkup(markup.materialPercent,'materialPercent'));
+ const labour=effectiveMarkup(validMarkup(markup.labourPercent,'labourPercent'));
+ const equipment=effectiveMarkup(validMarkup(markup.equipmentPercent,'equipmentPercent'));
+ const subcontract=effectiveMarkup(validMarkup(markup.subcontractPercent,'subcontractPercent'));
  const sellingPricePln=estimateTotalPrice(estimate,general,material,labour,equipment,subcontract);
+ const achievedGrossMarginPercent=sellingPricePln>0?100*(sellingPricePln-totalCostPln)/sellingPricePln:0;
  if (Math.abs(totalCostPln-materialCostPln-routingCostPln)>Math.max(1e-6,totalCostPln*1e-9))
   throw new Error('Niespójność składników kosztorysu');
- return {estimate,totalCostPln,sellingPricePln,markupAmountPln:sellingPricePln-totalCostPln,materialCostPln,routingCostPln,
+ return {estimate,totalCostPln,sellingPricePln,markupAmountPln:sellingPricePln-totalCostPln,achievedGrossMarginPercent,materialCostPln,routingCostPln,
   purchasedStockMassKg,stockWasteMassKg,setupCostPln,perPartOperationCostPln,consumablesCostPln,toolingCostPln,
   groups:purchasedGroups.map(g=>({geometryId:g.geometryId,quantity:g.quantity,unitMassKg:g.unitMassKg,totalMassKg:g.totalMassKg,stockKgPerPart:g.stockKgPerPart,costPln:g.stockKgPerPart*g.quantity*inputs.materialRatePlnKg})),
   provenance:['B-Rep STEP: ilość, grupowanie i masa','Kwantflow GPL-3.0: wycena pozycji i snapshot','DS Estimate: koszt masy zakupu, przezbrojenie na partię, cykl na sztukę, normy i stawki podane jawnie (nieodczytane z STEP/PDF)']};
