@@ -32,17 +32,30 @@ jobs:
         run: python -m compileall -q cad_backend
       - name: Build Svelte
         run: npm run build
+      - name: Install Miniforge for OCCT
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          activate-environment: ds-cad
+          python-version: '3.11'
+          channels: conda-forge
+          channel-priority: strict
       - name: Install CAD engine dependencies
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install numpy pyinstaller
-          python -m pip install pythonocc-core
+          conda install -n ds-cad -c conda-forge -y pythonocc-core numpy pyinstaller
+          if ($LASTEXITCODE -ne 0) { throw 'OCCT conda installation failed' }
       - name: Bundle offline CAD engine
         shell: pwsh
         run: |
-          python -m PyInstaller --onefile --name ds-cad-engine --distpath src-tauri/cad-backend --workpath build/cad-pyinstaller --specpath build/cad-spec cad_backend/step_inventory.py
+          conda run -n ds-cad python -m PyInstaller --onefile --collect-all OCC --name ds-cad-engine --distpath src-tauri/cad-backend --workpath build/cad-pyinstaller --specpath build/cad-spec cad_backend/step_inventory.py
+          if ($LASTEXITCODE -ne 0) { throw 'CAD engine build failed' }
           if (!(Test-Path src-tauri/cad-backend/ds-cad-engine.exe)) { throw 'CAD engine missing' }
+      - name: Smoke test bundled CAD engine
+        shell: pwsh
+        run: |
+          & src-tauri/cad-backend/ds-cad-engine.exe --help
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled CAD engine failed to start' }
       - name: Generate Windows icon
         shell: pwsh
         run: |
