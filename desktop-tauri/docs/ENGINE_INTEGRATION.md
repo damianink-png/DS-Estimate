@@ -5,7 +5,7 @@
 - Deepnest: https://github.com/deepnest-next/deepnest ; package version 1.5.6; MIT (repository LICENSE); Electron, native geometry modules, DXF conversion.
 
 ## Licensing gate
-Do NOT copy Kwantflow GPL-3.0 implementation into DS Estimate or bundle it into a proprietary binary without resolving the GPL obligations. Study its data model and estimator features; implement independent interoperable data adapters where appropriate. If direct GPL code is used/distributed, review corresponding-source and derivative-work obligations first.
+User has authorized private/personal use of GPL-3.0 Kwantflow code and modifications. Direct reuse is permissible for private use. Before publishing modified source, public CI artifacts or distributing installer to others, review GPL-3.0 source and notice obligations and all third-party dependencies. Do not commit copied GPL code into a public repository without appropriate license compliance. Preserve upstream copyright notices and provenance.
 Deepnest MIT components may be reused subject to copyright/license notices and dependency-specific licenses (see upstream LICENSES).
 
 ## Architecture
