@@ -4,6 +4,7 @@ on:
     paths:
       - '.github/workflows/tauri-desktop-windows.yml'
       - 'desktop-tauri/tests/compiled_step_suite.py'
+      - 'desktop-tauri/tests/welded-crane-frame.test.mjs'
   workflow_dispatch:
 permissions:
   contents: read
