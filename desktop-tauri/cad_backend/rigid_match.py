@@ -23,6 +23,97 @@ def _properties(shape):
     return props.Mass(), np.array([center.X(),center.Y(),center.Z()]), axes
 
 
+def has_unique_inertia_axes(props):
+    """Cheap invariant gate: degenerate inertia cannot define principal axes.
+
+    Such parts are still eligible for *translation* equivalence; they must
+    not exhaust the expensive general rigid-match budget.
+    """
+    matrix = props.MatrixOfInertia()
+    tensor = np.array([[matrix.Value(i, j) for j in range(1, 4)]
+                       for i in range(1, 4)], dtype=float)
+    eigenvalues = np.linalg.eigvalsh(tensor)
+    if not np.all(np.isfinite(eigenvalues)):
+        return False
+    gap = min(abs(eigenvalues[0]-eigenvalues[1]),
+              abs(eigenvalues[1]-eigenvalues[2]))
+    return gap >= max(1e-8, max(abs(eigenvalues))*1e-7)
+
+
+def translation_signature(shape, center, max_vertices=128):
+    """Necessary (not sufficient) condition for translation-only equivalence.
+
+    Coordinates relative to the volume centroid are sorted independently per
+    axis. This is insensitive to STEP vertex traversal order and rounding-bin
+    boundaries. A B-Rep Common check is STILL REQUIRED before merging.
+    Very complex shapes are excluded from this fast path to bound OCCT time.
+    """
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopAbs import TopAbs_VERTEX
+    from OCC.Core.TopoDS import topods
+    from OCC.Core.BRep import BRep_Tool
+
+    xs, ys, zs = [], [], []
+    explorer = TopExp_Explorer(shape, TopAbs_VERTEX)
+    while explorer.More():
+        if len(xs) >= max_vertices:
+            return None
+        point = BRep_Tool.Pnt(topods.Vertex(explorer.Current()))
+        xs.append(point.X()-center.X())
+        ys.append(point.Y()-center.Y())
+        zs.append(point.Z()-center.Z())
+        explorer.Next()
+    return (tuple(sorted(xs)), tuple(sorted(ys)), tuple(sorted(zs)))
+
+
+def translation_signatures_match(a, b, tolerance_mm=0.01):
+    """Only reject impossible translations; never assert identity from signature."""
+    if a is None or b is None:
+        return False
+    for va, vb in zip(a, b):
+        if len(va) != len(vb) or any(abs(x-y) > tolerance_mm for x, y in zip(va, vb)):
+            return False
+    return True
+
+
+def equivalent_translation(a, b, center_a, center_b, volume_a, volume_b,
+                           tolerance_mm=0.01, relative_volume_tol=1e-6):
+    """Verify pure translation by a REAL OCCT B-Rep Common volume operation.
+
+    Handles symmetric fasteners/plates/cylinders for which inertia eigenvectors
+    are degenerate and the general rigid matcher cannot determine orientation.
+    One Common is symmetric: intersection must equal BOTH input volumes.
+    This function must only run after cheap signature/complexity screening.
+    """
+    from OCC.Core.gp import gp_Trsf, gp_Vec
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+    from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Common
+    from OCC.Core.GProp import GProp_GProps
+    from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+
+    if not (volume_a > 0 and volume_b > 0):
+        return False
+    threshold = max(tolerance_mm**3, max(volume_a, volume_b)*relative_volume_tol)
+    if abs(volume_a-volume_b) > threshold:
+        return False
+    try:
+        transform = gp_Trsf()
+        transform.SetTranslation(gp_Vec(center_b, center_a))
+        moved = BRepBuilderAPI_Transform(b, transform, True).Shape()
+        common = BRepAlgoAPI_Common(a, moved)
+        common.Build()
+        if not common.IsDone():
+            return False
+        properties = GProp_GProps()
+        brepgprop_VolumeProperties(common.Shape(), properties)
+        shared_volume = float(properties.Mass())
+        return (np.isfinite(shared_volume) and shared_volume > 0
+                and abs(volume_a-shared_volume) <= threshold
+                and abs(volume_b-shared_volume) <= threshold)
+    except Exception:
+        return False
+
+
 def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6):
     """True only when a rigid transform makes the solids materially equivalent."""
     from OCC.Core.gp import gp_Trsf
