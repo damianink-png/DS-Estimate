@@ -104,6 +104,7 @@
   return planCuttingBatches({groups,material,machines,overrides});
  });
  let rows=$derived(cuttingPlan.rows);
+ let dominantSolidKg=$derived(inventory?Math.max(0,...inventory.solids.map(s=>s.volumeMm3*7850e-9)):0);
  let cutHours=$derived(rows.reduce((sum,r)=>sum+(r.cut.acceptedMin??0)/60,0));
  let cutCost=$derived(rows.reduce((sum,r)=>sum+(r.cut.costPln??0),0));
  let additionalHours=$derived(extraTimes.reduce((sum,r)=>sum+(r.hours??0),0));
@@ -152,10 +153,14 @@
    </label>
   {/if}
   <div class="figures">
-   <div><small>Łączna masa gotowa</small><strong>{fmt(inventory.totalMassKg)} kg</strong></div>
+   <div><small>Masa teoretyczna STEP (7850 kg/m³)</small><strong>{fmt(inventory.totalMassKg)} kg</strong></div>
    <div><small>Czas przyjęty (niepełny)</small><strong>{fmt(cutHours+additionalHours)} h</strong></div>
    <div><small>Koszt z określonych czasów</small><strong>{fmt(cutCost+additionalCost)} zł</strong></div>
   </div>
+  <p class="muted">Masa nie jest zweryfikowaną masą wyrobu: wszystkie bryły przeliczono jak stal, bez rozpoznania materiałów i elementów spoza zakresu produkcji.</p>
+  {#if dominantSolidKg>100 && dominantSolidKg/inventory.totalMassKg>0.75}
+   <p class="problem">Jedna bryła odpowiada za {fmt(dominantSolidKg)} kg ({fmt(dominantSolidKg/inventory.totalMassKg*100)}% masy). Sprawdź, czy to fundament, wyposażenie kupowane lub materiał inny niż stal.</p>
+  {/if}
   {#if unresolved>0}<p class="problem">To nie jest kompletna wycena: {unresolved} pozycji ma nieustalony czas. Nie zaliczono ich jako 0 h.</p>{:else}<p class="good">Wszystkie czasy wpisane. Zweryfikuj technologię i stawki przed ofertą.</p>{/if}
 
   <details class="panel">
@@ -223,7 +228,7 @@
    <div class="table-wrap"><table>
     <thead><tr><th>Grupa</th><th>Szt.</th><th>Masa/szt.</th><th>Razem</th></tr></thead>
     <tbody>{#each rows as r}<tr><td>{r.origin} · {r.label}</td><td>{r.quantity}</td><td>{fmt(r.massKg)} kg</td><td>{fmt(r.totalMassKg)} kg</td></tr>{/each}</tbody>
-    <tfoot><tr><th colspan="3">Masa złożenia</th><th>{fmt(inventory.totalMassKg)} kg</th></tr></tfoot>
+    <tfoot><tr><th colspan="3">Masa teoretyczna (stal 7850 kg/m³)</th><th>{fmt(inventory.totalMassKg)} kg</th></tr></tfoot>
    </table></div>
   </details>
   {#if requirements.length||technicalNotes.length}
@@ -232,7 +237,7 @@
     {#each technicalNotes as note}<p class="muted">{note}</p>{/each}
    </details>
   {/if}
-  <div class="footnote">Propozycje metod wynikają z reguł i geometrii B-Rep; nie są wynikiem pełnej technologii CAM. Bez potwierdzonego konturu, parametrów lub dokumentacji czas pozostaje nieustalony. Masa STEP to masa gotowych części, nie masa materiału zakupionego.</div>
+  <div class="footnote">Propozycje metod wynikają z reguł i geometrii B-Rep; nie są wynikiem pełnej technologii CAM. Bez potwierdzonego konturu, parametrów lub dokumentacji czas pozostaje nieustalony. Masa STEP jest tylko ekwiwalentem przyjętej gęstości; nie oznacza masy gotowych części ani masy materiału zakupionego.</div>
  {/if}
 </section>
 
