@@ -84,3 +84,14 @@ test('group-specific workstations, unsupported groups and unsafe process paramet
  assert.throws(()=>buildStepQuote(fixture,{...base,groupOperations:{a:[{name:'CNC',cycleMinPerPart:-1}]}}),RangeError);
  assert.throws(()=>buildStepQuote(fixture,{...base,groupOperations:{a:[{name:'CNC',category:'material'}]}}),RangeError);
 });
+
+test('true 20% gross margin differs from 20% markup',()=>{
+ const byMarkup=buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,markup:{mode:'markup',generalPercent:20}});
+ const byMargin=buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,markup:{mode:'grossMargin',generalPercent:20}});
+ assert.equal(byMarkup.totalCostPln,210);
+ assert.equal(byMarkup.sellingPricePln,252);
+ assert.equal(byMargin.sellingPricePln,262.5);
+ assert.ok(Math.abs(byMargin.achievedGrossMarginPercent-20)<1e-8);
+ assert.throws(()=>buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,markup:{mode:'grossMargin',generalPercent:100}}),RangeError);
+ assert.throws(()=>buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,markup:{mode:'invalid',generalPercent:20}}),RangeError);
+});
