@@ -54,7 +54,7 @@ fn collect_documents(path: &std::path::Path, depth: usize, out: &mut Vec<String>
         let mut children = std::fs::read_dir(path)
             .map_err(|e| format!("Nie można otworzyć folderu {}: {e}", path.display()))?
             .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
-        children.sort_by_key(|x| x.file_name().to_ascii_lowercase());
+        children.sort_by_key(|x| x.file_name().to_string_lossy().to_ascii_lowercase());
         for child in children {
             let name = child.file_name();
             if name.to_string_lossy().starts_with('.') { continue; }
