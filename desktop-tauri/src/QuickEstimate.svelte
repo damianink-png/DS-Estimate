@@ -4,6 +4,7 @@
  import { invoke } from '@tauri-apps/api/core';
  import { recommendCutting, partCuttingHint, CUTTING_METHODS, SAMPLE_MACHINE_SETTINGS } from './lib/cutting-plan.mjs';
  import { extractManufacturingRequirements } from './lib/document-requirements.mjs';
+ import { validateStepBom } from './lib/inventory-validate.mjs';
 
  type Inventory={source:string;count:number;totalMassKg:number;groups:Array<{geometryId:string;quantity:number;massKg:number}>;solids:Array<{id:string;verifiedShapeKey:string;volumeMm3:number;bboxMm:number[];cuttingHint?:unknown}>;limitations?:string[]};
  type Override={method?:string;minutes?:number|null};
@@ -38,7 +39,7 @@
 
  async function importPaths(paths:string[]) {
   if(busy||!paths.length)return;
-  busy=true;error='';inventory=null;projectText='';technicalNotes=[];overrides={};
+  busy=true;error='';inventory=null;projectText='';technicalNotes=[];overrides={};material='S355';materialEvidence='Domyślne założenie — zweryfikuj z rysunkiem';
   status='Wyszukiwanie dokumentacji…';
   try {
    const found:string[]=[];
@@ -55,9 +56,7 @@
   if(!selectedStep)return;
   status='Analizuję geometrię STEP i masy detali…';inventory=null;
   try{
-   const data=JSON.parse(await invoke<string>('analyze_step',{path:selectedStep}));
-   if(!Array.isArray(data.groups)||!Array.isArray(data.solids)||!Number.isFinite(data.totalMassKg))
-    throw new Error('Niepoprawny raport B-Rep STEP');
+   const data=validateStepBom(JSON.parse(await invoke<string>('analyze_step',{path:selectedStep}))) as Inventory;
    inventory=data;
    projectText='';
    const pdfs=files.filter(isPdf);
