@@ -72,6 +72,7 @@ export function planCuttingBatches({
   if(calculatedMin!==null){setupMinutes+=chargedSetup;runMinutes+=prediction.perPieceMin*group.quantity;}
   output.push({...group,cut:{...prediction,batchId,nominalThicknessMm:nominalThickness,
    setupAllocatedMin:chargedSetup,calculatedMin,acceptedMin,costPln,
+   confidence:manuallyAccepted?'manual':prediction.confidence,
    warnings:manuallyAccepted?[...prediction.warnings,'Czas zmieniony ręcznie']:prediction.warnings}});
  }
  return {rows:output,knownTimeOccurrences,pendingOccurrences,setupMinutes,runMinutes,
