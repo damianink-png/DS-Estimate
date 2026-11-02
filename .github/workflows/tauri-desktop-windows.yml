@@ -92,6 +92,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Compiled CAD STEP benchmark failed' }
       - name: Eight compiled EXE STEP geometry regression cases
         shell: pwsh
+        env:
+          DS_CAD_DEBUG_CUTTING_HINT: '1'
         run: |
           conda run -n ds-cad python tests/compiled_step_suite.py
           if ($LASTEXITCODE -ne 0) { throw 'Compiled STEP regression suite failed' }
