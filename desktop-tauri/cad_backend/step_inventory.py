@@ -12,6 +12,13 @@ rigid B-Rep equivalence verifier from DS Compare.
 import argparse
 import json
 import math
+import os
+import sys
+import time
+try:
+    from .shape_index import ShapeCandidateIndex
+except ImportError:
+    from shape_index import ShapeCandidateIndex
 try:
     from .rigid_match import equivalent_rigid
 except ImportError:
@@ -101,16 +108,28 @@ def inventory(path, density=7850.0):
 
     if not math.isfinite(density) or density <= 0:
         raise ValueError("Density must be positive")
+    timings = {}
+    t_start = time.perf_counter()
     reader = STEPControl_Reader()
     if reader.ReadFile(str(path)) != IFSelect_RetDone:
         raise RuntimeError("STEP read failed")
+    timings["readStepSeconds"] = round(time.perf_counter()-t_start, 3)
     if not reader.TransferRoots():
         raise RuntimeError("STEP transfer failed")
+    timings["transferStepSeconds"] = round(time.perf_counter()-t_start-timings["readStepSeconds"], 3)
     shape = reader.OneShape()
     explorer = TopExp_Explorer(shape, TopAbs_SOLID)
     solids = []
     originals = []
+    index = ShapeCandidateIndex()
     occurrence_count = {}
+    attempted_rigid = 0
+    skipped_rigid = 0
+    partner_hits = 0
+    rigid_hits = 0
+    max_rigid_checks = max(0, int(os.environ.get("DS_CAD_MAX_RIGID_CHECKS", "120")))
+    max_rigid_seconds = max(0.0, float(os.environ.get("DS_CAD_MAX_RIGID_SECONDS", "100")))
+    compare_start = time.perf_counter()
     while explorer.More():
         solid = explorer.Current()
         vp, ap = GProp_GProps(), GProp_GProps()
@@ -123,25 +142,40 @@ def inventory(path, density=7850.0):
         brepbndlib_Add(solid, bounds)
         xmin,ymin,zmin,xmax,ymax,zmax = bounds.Get()
         dims = [xmax-xmin,ymax-ymin,zmax-zmin]
-        # IsPartner tests shared TShape independent of TopLoc_Location.
-        # No claim of equivalence for distinct B-Rep objects.
-        existing = next((i for i, prev in enumerate(originals) if solid.IsPartner(prev)), None)
-        method = "OCCT_IsPartner"
+        # A tiny, rotation-invariant volume/area bucket removes the O(N^2)
+        # loop across unrelated bodies. The index NEVER proves equivalence.
+        area = float(ap.Mass())
+        candidates = index.candidates(volume, area)
+        existing = None
+        method = "OCCT_UniqueShape"
+        for i in candidates:
+            if solid.IsPartner(originals[i]):
+                existing = i
+                method = "OCCT_IsPartner"
+                partner_hits += 1
+                break
         if existing is None:
-            for i, prev in enumerate(originals):
-                if equivalent_rigid(prev, solid):
+            for i in candidates:
+                if attempted_rigid >= max_rigid_checks or time.perf_counter() - compare_start > max_rigid_seconds:
+                    skipped_rigid += 1
+                    method = "OCCT_RigidCheckBudgetExceeded"
+                    break
+                attempted_rigid += 1
+                if equivalent_rigid(originals[i], solid):
                     existing = i
+                    rigid_hits += 1
                     method = "OCCT_Rigid_BRep_Cut"
                     break
         if existing is None:
             existing = len(originals)
             originals.append(solid)
+            index.insert(existing, volume, area)
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
         cut_hint = planar_plate_cutting_hint(solid, dims)
         solids.append({
             "id": f"solid-{len(solids)+1}",
             "volumeMm3": volume,
-            "areaMm2": float(ap.Mass()),
+            "areaMm2": area,
             "bboxMm": dims,
             "cuttingHint": cut_hint,
             "densityKgM3": density,
@@ -150,12 +184,25 @@ def inventory(path, density=7850.0):
             "verificationMethod": method,
         })
         explorer.Next()
-    groups = [{"geometryId": f"shared-tshape-{i}", "quantity": count, "massKg": solids[next(j for j, s in enumerate(solids) if s["verifiedShapeKey"] == f"shared-tshape-{i}")]["massKg"]} for i, count in occurrence_count.items()]
+    groups = [{"geometryId": f"shared-tshape-{i}", "quantity": count,
+               "massKg": solids[next(j for j, s in enumerate(solids) if s["verifiedShapeKey"] == f"shared-tshape-{i}")]["massKg"]}
+              for i, count in occurrence_count.items()]
+    timings["totalSeconds"] = round(time.perf_counter()-t_start, 3)
+    timings["comparisonWindowSeconds"] = round(time.perf_counter()-compare_start, 3)
+    diagnostics = {"rigidChecks": attempted_rigid, "rigidMatches": rigid_hits,
+                   "partnerMatches": partner_hits, "rigidBudgetSkippedCandidates": skipped_rigid,
+                   "uniqueGeometryGroups": len(groups), **timings}
+    if os.environ.get("DS_CAD_PROFILE", "0") == "1":
+        print("[DS-CAD-PROFILE] " + json.dumps(diagnostics), file=sys.stderr, flush=True)
+    limitations = ["STEPControl does not preserve complete XCAF BOM metadata",
+                   "Inertia-degenerate symmetric shapes may remain ungrouped; false negatives are possible",
+                   "Cutting hints are proposals and require 2D drawing validation"]
+    if skipped_rigid:
+        limitations.append(f"{skipped_rigid} expensive equivalence candidates skipped due to CAD time/check budget; group count may be overestimated")
     return {"source": str(path), "solids": solids, "groups": groups, "count": len(solids),
             "totalMassKg": sum(x["massKg"] for x in solids),
-            "limitations": ["STEPControl does not preserve complete XCAF BOM metadata",
-                            "Inertia-degenerate symmetric shapes may remain ungrouped; false negatives are possible",
-                            "Cutting hints are proposals and require 2D drawing validation"]}
+            "matchingDiagnostics": diagnostics,
+            "limitations": limitations}
 
 def main():
     p = argparse.ArgumentParser()
