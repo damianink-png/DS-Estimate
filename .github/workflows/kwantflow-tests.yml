@@ -3,6 +3,8 @@ on:
   push:
     paths:
       - 'desktop-tauri/src/lib/kwantflow/**'
+      - 'desktop-tauri/src/lib/estimate.mjs'
+      - 'desktop-tauri/tests/estimate.test.mjs'
       - 'desktop-tauri/src/App.svelte'
       - 'desktop-tauri/tests/kwantflow-upstream.test.mjs'
       - 'desktop-tauri/tests/step-kwantflow-quote.test.mjs'
@@ -24,6 +26,8 @@ jobs:
           node-version: '22'
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Run full DS Estimate manufacturing regression suite
+        run: npm test
       - name: Run upstream Kwantflow calculation tests
         run: node --test tests/kwantflow-upstream.test.mjs
       - name: Test STEP to Kwantflow quote bridge
