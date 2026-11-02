@@ -29,8 +29,21 @@ export function planCuttingBatches({
   const manuallyAccepted=manual.minutes!==null && manual.minutes!==undefined;
   if(manuallyAccepted && !valid(manual.minutes))throw new RangeError('manual minutes');
   // Per-part operation is independent from the grouping of geometry duplicates.
-  const prediction=recommendCutting({solid:group.solid,quantity:group.quantity,
-   material,machines,overrideMethod:manual.method??null});
+  let prediction;
+  try {
+   prediction=recommendCutting({solid:group.solid,quantity:group.quantity,
+    material,machines,overrideMethod:manual.method??null});
+  } catch(error) {
+   // A machine may be disabled after a user selected it. Do not crash the
+   // entire quote or silently switch the manually selected technology.
+   if(!manual.method || !(error instanceof RangeError))throw error;
+   const fallback=recommendCutting({solid:group.solid,quantity:group.quantity,
+    material,machines});
+   prediction={...fallback,method:null,ratePlnHour:null,setupMin:null,
+    perPieceMin:null,calculatedMin:null,acceptedMin:null,costPln:null,
+    confidence:'requires-review',warnings:[...fallback.warnings,
+     'Wybrana ręcznie metoda jest niedostępna — wybierz technologię ponownie']};
+  }
   const canCalculate=prediction.perPieceMin!==null && prediction.perPieceMin!==undefined;
   const groupSetup=canCalculate ? (prediction.setupMin??0) : 0;
   const thickness=prediction.hint.thicknessMm;
