@@ -15,14 +15,19 @@ import math
 import os
 import sys
 import time
+import warnings
 try:
     from .shape_index import ShapeCandidateIndex
 except ImportError:
     from shape_index import ShapeCandidateIndex
 try:
-    from .rigid_match import equivalent_rigid
+    from .rigid_match import (equivalent_rigid, equivalent_translation,
+                              translation_signature, translation_signatures_match,
+                              has_unique_inertia_axes)
 except ImportError:
-    from rigid_match import equivalent_rigid
+    from rigid_match import (equivalent_rigid, equivalent_translation,
+                             translation_signature, translation_signatures_match,
+                             has_unique_inertia_axes)
 from pathlib import Path
 
 
@@ -108,6 +113,10 @@ def inventory(path, density=7850.0):
 
     if not math.isfinite(density) or density <= 0:
         raise ValueError("Density must be positive")
+    # The deprecated pythonocc wrapper functions are still supported in the
+    # pinned environment. Hundreds of repetitive warnings hide useful errors.
+    warnings.filterwarnings("ignore", category=DeprecationWarning,
+                            message=r"Call to deprecated function (brepgprop|brepbndlib)")
     timings = {}
     t_start = time.perf_counter()
     reader = STEPControl_Reader()
@@ -121,14 +130,26 @@ def inventory(path, density=7850.0):
     explorer = TopExp_Explorer(shape, TopAbs_SOLID)
     solids = []
     originals = []
+    original_centers = []
+    original_dims = []
+    original_signatures = []
+    original_rigid_eligible = []
+    original_mass = []
     index = ShapeCandidateIndex()
     occurrence_count = {}
+    attempted_translation = 0
+    translation_hits = 0
+    skipped_translation = 0
+    skipped_complex = 0
+    skipped_degenerate = 0
     attempted_rigid = 0
     skipped_rigid = 0
     partner_hits = 0
     rigid_hits = 0
+    max_translation_checks = max(0, int(os.environ.get("DS_CAD_MAX_TRANSLATION_CHECKS", "600")))
+    max_translation_seconds = max(0.0, float(os.environ.get("DS_CAD_MAX_TRANSLATION_SECONDS", "95")))
     max_rigid_checks = max(0, int(os.environ.get("DS_CAD_MAX_RIGID_CHECKS", "120")))
-    max_rigid_seconds = max(0.0, float(os.environ.get("DS_CAD_MAX_RIGID_SECONDS", "100")))
+    max_rigid_seconds = max(0.0, float(os.environ.get("DS_CAD_MAX_RIGID_SECONDS", "140")))
     compare_start = time.perf_counter()
     while explorer.More():
         solid = explorer.Current()
@@ -142,8 +163,7 @@ def inventory(path, density=7850.0):
         brepbndlib_Add(solid, bounds)
         xmin,ymin,zmin,xmax,ymax,zmax = bounds.Get()
         dims = [xmax-xmin,ymax-ymin,zmax-zmin]
-        # A tiny, rotation-invariant volume/area bucket removes the O(N^2)
-        # loop across unrelated bodies. The index NEVER proves equivalence.
+        # Volume/area only generate candidates. Never merge by fingerprints.
         area = float(ap.Mass())
         candidates = index.candidates(volume, area)
         existing = None
@@ -154,12 +174,40 @@ def inventory(path, density=7850.0):
                 method = "OCCT_IsPartner"
                 partner_hits += 1
                 break
+        center = vp.CentreOfMass()
+        signature = None
+        rigid_eligible = None
         if existing is None:
+            signature = translation_signature(solid, center)
             for i in candidates:
-                if attempted_rigid >= max_rigid_checks or time.perf_counter() - compare_start > max_rigid_seconds:
-                    skipped_rigid += 1
-                    method = "OCCT_RigidCheckBudgetExceeded"
+                if any(abs(a-b) > 0.01 for a, b in zip(dims, original_dims[i])):
+                    continue
+                if signature is None or original_signatures[i] is None:
+                    skipped_complex += 1
+                    continue
+                if not translation_signatures_match(signature, original_signatures[i]):
+                    continue
+                if (attempted_translation >= max_translation_checks or
+                    time.perf_counter() - compare_start > max_translation_seconds):
+                    skipped_translation += 1
+                    continue
+                attempted_translation += 1
+                if equivalent_translation(originals[i], solid, original_centers[i],
+                                          center, original_mass[i], volume):
+                    existing = i
+                    translation_hits += 1
+                    method = "OCCT_Translation_BRep_Common"
                     break
+        if existing is None and candidates:
+            rigid_eligible = has_unique_inertia_axes(vp)
+            for i in candidates:
+                if not rigid_eligible or not original_rigid_eligible[i]:
+                    skipped_degenerate += 1
+                    continue
+                if (attempted_rigid >= max_rigid_checks or
+                    time.perf_counter() - compare_start > max_rigid_seconds):
+                    skipped_rigid += 1
+                    continue
                 attempted_rigid += 1
                 if equivalent_rigid(originals[i], solid):
                     existing = i
@@ -169,6 +217,11 @@ def inventory(path, density=7850.0):
         if existing is None:
             existing = len(originals)
             originals.append(solid)
+            original_centers.append(center)
+            original_dims.append(dims)
+            original_signatures.append(signature if signature is not None else translation_signature(solid, center))
+            original_rigid_eligible.append(rigid_eligible if rigid_eligible is not None else has_unique_inertia_axes(vp))
+            original_mass.append(volume)
             index.insert(existing, volume, area)
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
         cut_hint = planar_plate_cutting_hint(solid, dims)
@@ -185,20 +238,28 @@ def inventory(path, density=7850.0):
         })
         explorer.Next()
     groups = [{"geometryId": f"shared-tshape-{i}", "quantity": count,
-               "massKg": solids[next(j for j, s in enumerate(solids) if s["verifiedShapeKey"] == f"shared-tshape-{i}")]["massKg"]}
+               "massKg": original_mass[i] * density * 1e-9}
               for i, count in occurrence_count.items()]
     timings["totalSeconds"] = round(time.perf_counter()-t_start, 3)
     timings["comparisonWindowSeconds"] = round(time.perf_counter()-compare_start, 3)
-    diagnostics = {"rigidChecks": attempted_rigid, "rigidMatches": rigid_hits,
+    diagnostics = {"translationChecks": attempted_translation,
+                   "translationMatches": translation_hits,
+                   "translationBudgetSkippedCandidates": skipped_translation,
+                   "translationComplexitySkippedCandidates": skipped_complex,
+                   "rigidDegenerateSkippedCandidates": skipped_degenerate,
+                   "rigidChecks": attempted_rigid, "rigidMatches": rigid_hits,
                    "partnerMatches": partner_hits, "rigidBudgetSkippedCandidates": skipped_rigid,
                    "uniqueGeometryGroups": len(groups), **timings}
     if os.environ.get("DS_CAD_PROFILE", "0") == "1":
         print("[DS-CAD-PROFILE] " + json.dumps(diagnostics), file=sys.stderr, flush=True)
     limitations = ["STEPControl does not preserve complete XCAF BOM metadata",
-                   "Inertia-degenerate symmetric shapes may remain ungrouped; false negatives are possible",
+                   "Uniform density is an assumption; concrete, plastics and purchased parts need per-part material review",
                    "Cutting hints are proposals and require 2D drawing validation"]
-    if skipped_rigid:
-        limitations.append(f"{skipped_rigid} expensive equivalence candidates skipped due to CAD time/check budget; group count may be overestimated")
+    if skipped_translation or skipped_rigid or skipped_complex or skipped_degenerate:
+        limitations.append(
+            f"Some duplicates may remain ungrouped: translation budget={skipped_translation}, "
+            f"complex B-Rep={skipped_complex}, degenerate rigid orientation={skipped_degenerate}, "
+            f"rigid budget={skipped_rigid}. These are NOT verified duplicates.")
     return {"source": str(path), "solids": solids, "groups": groups, "count": len(solids),
             "totalMassKg": sum(x["massKg"] for x in solids),
             "matchingDiagnostics": diagnostics,
