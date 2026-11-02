@@ -1,0 +1,28 @@
+name: Kwantflow calculation tests
+on:
+  push:
+    paths:
+      - 'desktop-tauri/src/lib/kwantflow/**'
+      - 'desktop-tauri/tests/kwantflow-upstream.test.mjs'
+      - 'desktop-tauri/package.json'
+      - '.github/workflows/kwantflow-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  kwantflow-calculation:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run upstream Kwantflow calculation tests
+        run: node --test tests/kwantflow-upstream.test.mjs
+      - name: Typecheck Kwantflow integration
+        run: npx tsc --noEmit --skipLibCheck --moduleResolution bundler --module esnext --target es2022 src/lib/kwantflow/types.ts src/lib/kwantflow/estimate-calculation.ts src/lib/kwantflow/estimate-template-normalisation.ts src/lib/kwantflow/estimate-snapshot.ts
