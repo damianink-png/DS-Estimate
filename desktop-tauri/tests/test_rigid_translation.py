@@ -63,6 +63,41 @@ class TranslatedSymmetricParts(unittest.TestCase):
             cube, cuboid, a.CentreOfMass(), b.CentreOfMass(),
             a.Mass(), b.Mass()))
 
+    def test_location_only_verification_preserves_both_input_solids(self):
+        # A translated independent B-Rep must be matched without mutating
+        # either source's center of mass, volume or underlying location.
+        shape = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        other = shifted(shape, 1300, -700, 490)
+        before = []
+        for item in (shape, other):
+            p = props(item)
+            c = p.CentreOfMass()
+            before.append((p.Mass(), c.X(), c.Y(), c.Z()))
+        for _ in range(3):
+            a, b = props(shape), props(other)
+            self.assertTrue(equivalent_translation(
+                shape, other, a.CentreOfMass(), b.CentreOfMass(),
+                a.Mass(), b.Mass()))
+        after = []
+        for item in (shape, other):
+            p = props(item)
+            c = p.CentreOfMass()
+            after.append((p.Mass(), c.X(), c.Y(), c.Z()))
+        for first, second in zip(before, after):
+            for x, y in zip(first, second):
+                self.assertAlmostEqual(x, y, places=6)
+
+    def test_same_volume_and_area_different_orientation_not_translation(self):
+        # 10x20x30 and 20x10x30 have equal volume and area, but
+        # translating one cannot make them equal (rotation is required).
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = shifted(BRepPrimAPI_MakeBox(20, 10, 30).Shape(), 40, 50, 60)
+        pa, pb = props(a), props(b)
+        self.assertAlmostEqual(pa.Mass(), pb.Mass(), places=6)
+        self.assertFalse(equivalent_translation(
+            a, b, pa.CentreOfMass(), pb.CentreOfMass(),
+            pa.Mass(), pb.Mass()))
+
     def test_complexity_gate_does_not_claim_identity(self):
         shape = BRepPrimAPI_MakeBox(20, 20, 20).Shape()
         self.assertIsNone(translation_signature(shape, props(shape).CentreOfMass(), max_vertices=4))
