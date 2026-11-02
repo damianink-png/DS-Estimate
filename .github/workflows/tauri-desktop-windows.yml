@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - '.github/workflows/tauri-desktop-windows.yml'
+      - 'desktop-tauri/tests/compiled_step_suite.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -79,6 +80,11 @@ jobs:
           '@ | Set-Content -Path build_compiled_cad_test.py -Encoding utf8
           conda run -n ds-cad python build_compiled_cad_test.py
           if ($LASTEXITCODE -ne 0) { throw 'Compiled CAD STEP benchmark failed' }
+      - name: Eight compiled EXE STEP geometry regression cases
+        shell: pwsh
+        run: |
+          conda run -n ds-cad python tests/compiled_step_suite.py
+          if ($LASTEXITCODE -ne 0) { throw 'Compiled STEP regression suite failed' }
       - name: Automatic CAD-to-quote integration gate
         shell: pwsh
         run: |
