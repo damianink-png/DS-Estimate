@@ -25,6 +25,15 @@ def check(name, shapes, count, volume, density=7850):
         assert d['count']==count,(name,'count',d['count'],count)
         assert abs(d['totalMassKg']-expected_mass)<max(1e-5,expected_mass*1e-5),(name,'mass',d['totalMassKg'],expected_mass)
         assert abs(sum(x['volumeMm3'] for x in d['solids'])-volume)<max(1e-3,volume*1e-5)
+        if name == 'plate_100x50x10':
+            hint=d['solids'][0].get('cuttingHint')
+            assert hint is not None, ('missing measured plate cut loops',d['solids'][0])
+            assert hint['kind']=='plate-outline',hint
+            assert abs(hint['thicknessMm']-10.0)<1e-5,hint
+            assert abs(hint['contourMm']-300.0)<1e-3,hint
+            assert hint['pierces']==1,hint
+        if name == 'cylinder_r10_h100':
+            assert d['solids'][0].get('cuttingHint') is None, 'round bar is not a sheet plate'
         print(json.dumps({'case':name,'status':'PASS','solids':count,'expected_mass_kg':expected_mass,'actual_mass_kg':d['totalMassKg']}),flush=True)
 
 box=lambda x,y,z:BRepPrimAPI_MakeBox(x,y,z).Shape()
