@@ -30,6 +30,16 @@ jobs:
           $root = 'extracted/DS_Estimate_1.2_BUILD_READY'
           if (!(Test-Path "$root/DS_Estimate.sln")) { throw 'Solution missing from archive' }
           Get-ChildItem -LiteralPath $root -Force | Where-Object { $_.Name -ne '.github' } | Move-Item -Destination . -Force
+      - name: Apply FIX82 forging classifier correction
+        shell: pwsh
+        run: |
+          $file = 'src/DSEstimate.Core/ProjectIntelligenceEngines.cs'
+          $source = [System.IO.File]::ReadAllText($file)
+          $before = 'ODKUW|FORGING|GESCHMIEDET'
+          $after = 'ODKUWKA|ODKUW|FORGING|GESCHMIEDET'
+          if (!$source.Contains($before)) { throw 'FIX82: expected classifier pattern missing' }
+          $source = $source.Replace($before, $after)
+          [System.IO.File]::WriteAllText($file, $source)
       - name: Verify SDK
         shell: pwsh
         run: |
