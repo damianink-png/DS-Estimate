@@ -36,7 +36,8 @@ export function partCuttingHint(solid){
  if(long/mid>=4 && ratio<3)
   return {kind:'possible-profile',lengthMm:long,crossSectionAreaMm2:solid.volumeMm3/long,
    confidence:'low',source:'STEP bounding-box and net cross-section only'};
- if(ratio>=5){
+ // OCCT bounding-box expansion can put a nominal 5:1 plate just below 5.
+ if(ratio>=5-1e-5){
   const exact=solid.cuttingHint;
   if(exact && exact.kind==='plate-outline' && exact.contourMm>0 &&
      Number.isInteger(exact.pierces)&&exact.pierces>=1 &&
