@@ -7,7 +7,7 @@
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { recommendCutting } from '../src/lib/cutting-plan.mjs';
+import { planCuttingBatches } from '../src/lib/cutting-batch.mjs';
 import { validateStepBom } from '../src/lib/inventory-validate.mjs';
 
 const root=resolve(process.argv[2]||'public_fabrication_output');
@@ -40,9 +40,18 @@ for(const c of cases){
       grade[0].toUpperCase().startsWith('S235')?'S235':grade[0].toUpperCase()):'S355';
    r.cut.materialAssumption=material;
    r.cut.materialSource=grade?'PDF text match (unverified)':'DS Estimate default S355 (unverified)';
-   for(const group of data.groups){
-    const solid=data.solids.find(s=>s.verifiedShapeKey===group.geometryId);
-    const prediction=recommendCutting({solid,quantity:group.quantity,material});
+   const solidsByKey=new Map(data.solids.map(s=>[s.verifiedShapeKey,s]));
+   const plan=planCuttingBatches({
+    groups:data.groups.map(g=>({key:g.geometryId,quantity:g.quantity,
+      massKg:g.massKg,solid:solidsByKey.get(g.geometryId)})),
+    material
+   });
+   r.cut.batchCount=plan.batchCount;
+   r.cut.setupTimeH=Number((plan.setupMinutes/60).toFixed(5));
+   r.cut.toolpathTimeH=Number((plan.runMinutes/60).toFixed(5));
+   for(const line of plan.rows){
+    const group={geometryId:line.key,quantity:line.quantity,massKg:line.massKg};
+    const prediction=line.cut;
     r.cut.rows++;
     if(prediction.method){
      r.cut.proposedOccurrences+=group.quantity;
@@ -80,6 +89,7 @@ for(const c of cases){
   id:r.id,status:r.status,solids:r.engine?.solids,groups:r.engine?.groups,
   kg:r.engine?.massKgAssumed7850,
   cutCoveragePct:r.cut.coverage??0,autoCutHoursKnownOnly:r.cut.calculatedTimeH,
+  batchSetups:r.cut.batchCount??0,setupTimeH:r.cut.setupTimeH??null,toolpathTimeH:r.cut.toolpathTimeH??null,
   independentCuttingRangeH:r.cut.manualIndependentRangeH??null,
   independentTotalRangeH:[r.total.manualLowH,r.total.manualHighH],
   completeAutomaticQuote:false,missingCutOccurrences:r.cut.pendingOccurrences,
@@ -105,6 +115,7 @@ const md=[
  '',
  '## Machine comparison limitations',
  '- Current application does not calculate automatically welding, fit-up, machining and inspection hours from an uploaded assembly: fields remain unestablished.',
+ '- Sheet cutting setup is charged once per machine/material/nominal thickness batch, not once per geometry group. This assumes compatible stock and does NOT substitute for nesting.',
  '- A welded frame STEP is often a fused solid or contains mixed materials and purchased parts. Raw count of STEP solids does not imply a valid fabrication BOM.',
  '- Drawings and build instructions are read as evidence but do not automatically establish weld lengths, stock cuts, machine capabilities, or elapsed time.',
  '- Independent times in the source manifest are *manually estimated bands* with detailed assumptions; the band is not supplied to the program.',
