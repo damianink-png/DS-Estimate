@@ -29,7 +29,7 @@ jobs:
           Expand-Archive -LiteralPath $archive -DestinationPath extracted -Force
           $root = 'extracted/DS_Estimate_1.2_BUILD_READY'
           if (!(Test-Path "$root/DS_Estimate.sln")) { throw 'Solution missing from archive' }
-          Get-ChildItem -LiteralPath $root -Force | Move-Item -Destination . -Force
+          Get-ChildItem -LiteralPath $root -Force | Where-Object { $_.Name -ne '.github' } | Move-Item -Destination . -Force
       - name: Verify SDK
         shell: pwsh
         run: |
