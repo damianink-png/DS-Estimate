@@ -29,6 +29,22 @@ for(const c of cases){
  if(existsSync(inventoryFile)&&c.status==='ENGINE_OK'){
   try{
    const data=validateStepBom(JSON.parse(readFileSync(inventoryFile,'utf8')));
+   // STEPControl has no per-part material assignments. This is a geometric
+   // steel-equivalent mass, NOT necessarily the mass of the fabricated scope.
+   // DockHub includes a large site pad outside the cabinet fabrication scope.
+   const largestMass=Math.max(...data.solids.map(x=>x.massKg??x.volumeMm3*7850e-9));
+   const largestShare=data.totalMassKg>0?largestMass/data.totalMassKg*100:0;
+   r.massAudit={
+    uniformDensityKgM3:7850,
+    totalSteelEquivalentKg:Number(data.totalMassKg.toFixed(3)),
+    largestSolidKg:Number(largestMass.toFixed(3)),
+    largestSolidSharePct:Number(largestShare.toFixed(1)),
+    materialAndScopeVerified:false,
+    reviewRequired:largestMass>100 && largestShare>75
+   };
+   r.quality={stepImport:'OK',fabricationBom:'NOT_VERIFIED',
+    materialMass:'ASSUMED_STEEL_EQUIVALENT',cutting:'PARTIAL',fullQuote:'UNAVAILABLE'};
+
    // Deliberately no manual time inputs or BOM-derived grade here.
    // Mirror QuickEstimate's actual PDF text -> material heuristic and default.
    const pdfTexts=(c.pdf??[]).slice(0,15).map(p=>{
@@ -73,6 +89,7 @@ for(const c of cases){
    // operation times have no credible automatic evidence yet.
    r.cut.calculatedTimeH=Number(r.cut.calculatedTimeH.toFixed(5));
    r.cut.coverage= data.count?Number((r.cut.knownTimeOccurrences/data.count*100).toFixed(1)):0;
+   r.quality.cutting=r.cut.pendingOccurrences===0?'ESTIMATED_COMPLETE_CUTTING_ONLY':'PARTIAL';
   }catch(e){r.errors.push('QUOTE_INPUT_FAIL '+String(e));r.status='QUOTE_INPUT_FAIL';}
  }
  const ops=cfg.manual.operations||[];
@@ -93,7 +110,7 @@ for(const c of cases){
   independentCuttingRangeH:r.cut.manualIndependentRangeH??null,
   independentTotalRangeH:[r.total.manualLowH,r.total.manualHighH],
   completeAutomaticQuote:false,missingCutOccurrences:r.cut.pendingOccurrences,
-  warnings:r.errors.slice(0,3)
+  massAudit:r.massAudit??null,quality:r.quality??null,warnings:r.errors.slice(0,3)
  }));
 }
 writeFileSync(join(root,'comparison.json'),JSON.stringify(results,null,2),'utf8');
@@ -117,6 +134,7 @@ const md=[
  '- Current application does not calculate automatically welding, fit-up, machining and inspection hours from an uploaded assembly: fields remain unestablished.',
  '- Sheet cutting setup is charged once per machine/material/nominal thickness batch, not once per geometry group. This assumes compatible stock and does NOT substitute for nesting.',
  '- A welded frame STEP is often a fused solid or contains mixed materials and purchased parts. Raw count of STEP solids does not imply a valid fabrication BOM.',
+ '- Masses use uniform 7850 kg/m³: large concrete site pads and other non-steel bodies must be excluded or assigned their actual density before quoting. A large single solid is explicitly flagged in comparison.json.',
  '- Drawings and build instructions are read as evidence but do not automatically establish weld lengths, stock cuts, machine capabilities, or elapsed time.',
  '- Independent times in the source manifest are *manually estimated bands* with detailed assumptions; the band is not supplied to the program.',
  '',
@@ -125,6 +143,8 @@ const md=[
   `### ${r.name}`,
   `- Source: https://github.com/${r.sourceDocumentation?cases.find(c=>c.id===r.id)?.repo:''}; commit ${cases.find(c=>c.id===r.id)?.revision}`,
   `- Status: **${r.status}**. ${r.errors.join('; ')||'No errors.'}`,
+  `- Steel-equivalent mass review: ${r.massAudit?('largest solid '+r.massAudit.largestSolidKg+' kg ('+r.massAudit.largestSolidSharePct+'%); '+(r.massAudit.reviewRequired?'REVIEW REQUIRED':'material still unverified')):'no validated inventory'}.`,
+  `- Quote quality: ${r.quality?JSON.stringify(r.quality):'NO AUTOMATIC QUOTE'}.`,
   `- Source package: ${r.scope}`,
   `- Manual methodology: ${r.manualReference.basis}`,
   ...r.manualReference.operations.map(x=>`  - ${x.id}: ${x.low}–${x.high} h. ${x.assumption}`),
