@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {recommendCutting, partCuttingHint, SAMPLE_MACHINE_SETTINGS} from '../src/lib/cutting-plan.mjs';
 const plate=(thickness,contour=300,pierces=1)=>({
- volumeMm3:50000,bboxMm:[100,50,thickness],
+ volumeMm3:600000*thickness,bboxMm:[1000,600,thickness],
  cuttingHint:{kind:'plate-outline',thicknessMm:thickness,contourMm:contour,pierces}
 });
 test('steel plate under 12 mm uses laser and correctly totals contour, pierces and one setup',()=>{
