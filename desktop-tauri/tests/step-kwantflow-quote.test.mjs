@@ -40,3 +40,15 @@ test('accepts compiled STEP engine JSON and rejects invalid JSON',()=>{
  assert.equal(parseStepInventory(JSON.stringify(fixture)).groups.length,2);
  assert.throws(()=>parseStepInventory('invalid'),/JSON/);
 });
+
+test('original Kwantflow general markup prices STEP quote',()=>{
+ const r=buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,routing:{assemblyMin:60,weldingMin:120},markup:{generalPercent:10}});
+ assert.equal(r.totalCostPln,1374);
+ assert.ok(Math.abs(r.sellingPricePln-1511.4)<1e-9);
+ assert.ok(Math.abs(r.markupAmountPln-137.4)<1e-9);
+});
+test('original Kwantflow category markups override general markup',()=>{
+ const r=buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,routing:{assemblyMin:60,weldingMin:120},markup:{generalPercent:10,materialPercent:20,labourPercent:5}});
+ assert.ok(Math.abs(r.sellingPricePln-1474.2)<1e-9);
+ assert.throws(()=>buildStepQuote(fixture,{materialRatePlnKg:12,ratePlnHour:388,markup:{generalPercent:Number.NaN}}),RangeError);
+});
