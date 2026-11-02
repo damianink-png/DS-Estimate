@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { planCuttingBatches } from '../src/lib/cutting-batch.mjs';
 import { validateStepBom } from '../src/lib/inventory-validate.mjs';
+import { assessPublicComparison } from '../src/lib/public-comparison-gate.mjs';
 
 const root=resolve(process.argv[2]||'public_fabrication_output');
 const source=JSON.parse(readFileSync(resolve('tests/public_fabrication_projects.json'),'utf8'));
@@ -152,4 +153,8 @@ const md=[
  ])
 ];
 writeFileSync(join(root,'COMPARISON.md'),md.join('\n'),'utf8');
-if(results.filter(x=>x.status==='ENGINE_OK').length<2)process.exitCode=1;
+const gate=assessPublicComparison(results,source.cases.map(c=>c.id));
+if(!gate.ok){
+ console.error('PUBLIC_COMPARISON_GATE_FAIL',JSON.stringify(gate.errors));
+ process.exitCode=1;
+}
