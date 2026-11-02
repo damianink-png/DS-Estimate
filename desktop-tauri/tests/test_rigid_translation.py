@@ -5,16 +5,17 @@ real B-Rep Common intersection; dimensions/volume alone never merge solids.
 Run inside the production pythonocc-core environment.
 """
 import sys
+import math
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "cad_backend"))
-from rigid_match import (equivalent_translation, translation_signature,
+from rigid_match import (equivalent_rigid, equivalent_translation, translation_signature,
                          translation_signatures_match, has_unique_inertia_axes)
 
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
-from OCC.Core.gp import gp_Trsf, gp_Vec
+from OCC.Core.gp import gp_Trsf, gp_Vec, gp_Ax1, gp_Pnt, gp_Dir
 from OCC.Core.GProp import GProp_GProps
 from OCC.Core.BRepGProp import brepgprop_VolumeProperties
 
@@ -102,6 +103,48 @@ class TranslatedSymmetricParts(unittest.TestCase):
         shape = BRepPrimAPI_MakeBox(20, 20, 20).Shape()
         self.assertIsNone(translation_signature(shape, props(shape).CentreOfMass(), max_vertices=4))
         self.assertFalse(translation_signatures_match(None, None))
+
+
+class RigidCommonRegression(unittest.TestCase):
+    def rotated(self, shape):
+        transform = gp_Trsf()
+        transform.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)),
+                              math.pi / 2)
+        transform.SetTranslationPart(gp_Vec(140, -75, 22))
+        return BRepBuilderAPI_Transform(shape, transform, True).Shape()
+
+    def test_rotated_and_translated_independent_shape_is_identical(self):
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = self.rotated(BRepPrimAPI_MakeBox(10, 20, 30).Shape())
+        self.assertTrue(equivalent_rigid(a, b))
+        self.assertTrue(equivalent_rigid(b, a))
+
+    def test_same_volume_different_geometry_must_not_merge(self):
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = self.rotated(BRepPrimAPI_MakeBox(5, 20, 60).Shape())
+        self.assertAlmostEqual(props(a).Mass(), props(b).Mass(), places=5)
+        self.assertFalse(equivalent_rigid(a, b))
+
+    def test_rigid_verification_does_not_mutate_inputs(self):
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = self.rotated(BRepPrimAPI_MakeBox(10, 20, 30).Shape())
+        def state(shape):
+            p = props(shape)
+            c = p.CentreOfMass()
+            return (p.Mass(), c.X(), c.Y(), c.Z())
+        before = (state(a), state(b))
+        for _ in range(2):
+            self.assertTrue(equivalent_rigid(a, b))
+        after = (state(a), state(b))
+        for old, new in zip(before, after):
+            for x, y in zip(old, new):
+                self.assertAlmostEqual(x, y, places=5)
+
+    def test_symmetric_inertia_is_not_falsely_verified_by_rigid_path(self):
+        a = BRepPrimAPI_MakeBox(20, 20, 20).Shape()
+        b = self.rotated(BRepPrimAPI_MakeBox(20, 20, 20).Shape())
+        self.assertFalse(equivalent_rigid(a, b))
+
 
 
 if __name__ == "__main__":
