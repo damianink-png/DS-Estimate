@@ -140,6 +140,25 @@ class RigidCommonRegression(unittest.TestCase):
             for x, y in zip(old, new):
                 self.assertAlmostEqual(x, y, places=5)
 
+    def test_rigid_bbox_filter_rejects_impossible_orientations_before_boolean(self):
+        # An independently rotated box must still match, while at least
+        # one incompatible principal-axis orientation is rejected cheaply.
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = self.rotated(BRepPrimAPI_MakeBox(10, 20, 30).Shape())
+        stats = {}
+        self.assertTrue(equivalent_rigid(a, b, metrics=stats))
+        self.assertGreater(stats.get('bboxRejected', 0), 0)
+        self.assertGreater(stats.get('commonAttempts', 0), 0)
+        self.assertLess(stats['commonAttempts'], 24)
+
+    def test_equal_volume_different_bounds_do_not_trigger_common(self):
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = self.rotated(BRepPrimAPI_MakeBox(5, 20, 60).Shape())
+        stats = {}
+        self.assertFalse(equivalent_rigid(a, b, metrics=stats))
+        self.assertGreater(stats.get('bboxRejected', 0), 0)
+        self.assertEqual(stats.get('commonAttempts', 0), 0)
+
     def test_symmetric_inertia_is_not_falsely_verified_by_rigid_path(self):
         a = BRepPrimAPI_MakeBox(20, 20, 20).Shape()
         b = self.rotated(BRepPrimAPI_MakeBox(20, 20, 20).Shape())
