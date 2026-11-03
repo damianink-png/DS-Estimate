@@ -20,6 +20,7 @@ on:
       - 'desktop-tauri/cad_backend/shape_index.py'
       - 'desktop-tauri/tests/test_shape_index.py'
       - 'desktop-tauri/tests/test_rigid_translation.py'
+      - 'desktop-tauri/tests/test_dockhub_independent_merge.py'
       - 'desktop-tauri/tests/cutting-batch.test.mjs'
 permissions:
   contents: read
@@ -89,6 +90,14 @@ jobs:
           } else {
             Write-Host 'No result JSON: previous setup failed. Check the logged reason.'
           }
+      - name: Independent two-direction B-Rep audit of newly merged DockHub occurrences
+        if: always()
+        shell: pwsh
+        run: |
+          $source = 'public_fabrication_output/dockhub/A-assembly.step'
+          if (!(Test-Path $source)) { throw 'DockHub original STEP missing; independent geometry audit cannot pass' }
+          conda run -n ds-cad python tests/test_dockhub_independent_merge.py $source
+          if ($LASTEXITCODE -ne 0) { throw 'DockHub newly merged pair failed independent two-way B-Rep Cut verification' }
       - name: Pinned source STEP mass, duplicate grouping and partial cutting regression gate
         if: always()
         shell: pwsh
