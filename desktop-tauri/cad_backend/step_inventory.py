@@ -141,6 +141,17 @@ def inventory(path, density=7850.0):
     # Track every accepted occurrence so a new rigid match cannot bridge
     # two mutually non-equivalent solids in the same geometry group.
     group_members = {}
+    def matches_every_group_member(group_id, shape, shape_center, shape_volume):
+        """Tolerance-based equivalence is not transitive: validate each occurrence."""
+        for member, member_center, member_volume in group_members.get(group_id, ()):
+            if member.IsPartner(shape):
+                continue
+            if equivalent_translation(member, shape, member_center,
+                                      shape_center, member_volume, shape_volume):
+                continue
+            if not equivalent_rigid(member, shape):
+                return False
+        return True
     attempted_translation = 0
     translation_hits = 0
     skipped_translation = 0
@@ -212,6 +223,8 @@ def inventory(path, density=7850.0):
                                                     center, original_mass[i], volume)
                 translation_verification_seconds += time.perf_counter() - stage_start
                 if equivalent:
+                    if not matches_every_group_member(i, solid, center, volume):
+                        continue
                     existing = i
                     translation_hits += 1
                     method = "OCCT_Translation_BRep_TwoWayCut"
@@ -231,24 +244,7 @@ def inventory(path, density=7850.0):
                 equivalent = equivalent_rigid(originals[i], solid, metrics=rigid_filter_metrics)
                 rigid_verification_seconds += time.perf_counter() - stage_start
                 if equivalent:
-                    # Check against every previously accepted occurrence, not
-                    # only the representative. This prevents a tolerance-chain
-                    # false merge (DockHub occurrences 247/267).
-                    consistent = True
-                    for member, member_center, member_volume in group_members.get(i, ()):
-                        if member.IsPartner(solid):
-                            continue
-                        # A translation is the cheapest correct proof for the
-                        # majority of repeated structural members. Rigid-only
-                        # verification incorrectly rejects degenerate-inertia
-                        # parts and wastes expensive orientation searches.
-                        if equivalent_translation(member, solid, member_center,
-                                                  center, member_volume, volume):
-                            continue
-                        if not equivalent_rigid(member, solid):
-                            consistent = False
-                            break
-                    if not consistent:
+                    if not matches_every_group_member(i, solid, center, volume):
                         continue
                     existing = i
                     rigid_hits += 1
