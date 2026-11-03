@@ -147,7 +147,9 @@ class RigidCommonRegression(unittest.TestCase):
         b = self.rotated(BRepPrimAPI_MakeBox(10, 20, 30).Shape())
         stats = {}
         self.assertTrue(equivalent_rigid(a, b, metrics=stats))
-        self.assertGreater(stats.get('bboxRejected', 0), 0)
+        # The first proposed orientation may already be correct, so the
+        # verifier can return before encountering any rejected candidate.
+        # Assert the bounded Boolean work, not an order-dependent counter.
         self.assertGreater(stats.get('commonAttempts', 0), 0)
         self.assertLess(stats['commonAttempts'], 24)
 
