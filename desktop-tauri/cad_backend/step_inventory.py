@@ -164,6 +164,12 @@ def inventory(path, density=7850.0):
         validation_started = time.perf_counter()
         member_validation_calls += 1
         current_face_areas = None
+        # Tolerance-based Boolean matches are NOT transitive. However, OCCT
+        # IsPartner is exact TShape identity (location-independent). Once a
+        # candidate has passed a two-way B-Rep check against one member, all
+        # occurrences sharing that member's TShape need no additional Boolean.
+        # Never substitute bounding boxes, face signatures or fuzzy hashes.
+        proven_partner_shapes = [originals[group_id]]
         for member, member_center, member_volume in group_members.get(group_id, ()):
             # The caller already proved this exact representative against the
             # candidate. Do not repeat the same pair's expensive B-Rep Cuts.
@@ -178,7 +184,7 @@ def inventory(path, density=7850.0):
             # avoid repeating expensive Boolean checks for that exact identity.
             # Never extend this shortcut to equal fingerprints or merely
             # tolerance-based matches: those are not transitive.
-            if member.IsPartner(originals[group_id]):
+            if any(member.IsPartner(proven) for proven in proven_partner_shapes):
                 member_partner_skips += 1
                 continue
             member_validation_pairs += 1
@@ -193,6 +199,7 @@ def inventory(path, density=7850.0):
             )
             if can_translate and equivalent_translation(
                     member, shape, member_center, shape_center, member_volume, shape_volume):
+                proven_partner_shapes.append(member)
                 continue
             # A rigid isometry preserves the multiset of individual face areas.
             # This is a rejection-only filter; a matching signature is NEVER
@@ -217,6 +224,7 @@ def inventory(path, density=7850.0):
                 member_validation_failures += 1
                 member_validation_seconds += time.perf_counter() - validation_started
                 return False
+            proven_partner_shapes.append(member)
         member_validation_seconds += time.perf_counter() - validation_started
         return True
     attempted_translation = 0
