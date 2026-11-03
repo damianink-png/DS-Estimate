@@ -10,4 +10,5 @@ assignments = {target.id for node in ast.walk(fn) if isinstance(node, (ast.Assig
 for name in ("max_translation_checks", "max_translation_seconds", "max_rigid_checks", "max_rigid_seconds"):
     assert name in assignments, f"Missing runtime budget assignment: {name}"
 assert r"\\n    max_translation_seconds" not in text, "Literal escaped newline commented out assignment"
-assert "for member in group_members.get(i, ()):" in text, "Rigid matches must be checked against existing group members"\nprint("STEP inventory budget and rigid group consistency declarations: PASS")
+assert "for member in group_members.get(i, ()):" in text, "Rigid matches must be checked against existing group members"
+print("STEP inventory budget and rigid group consistency declarations: PASS")
