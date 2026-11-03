@@ -87,9 +87,6 @@ def equivalent_translation(a, b, center_a, center_b, volume_a, volume_b,
     """
     from OCC.Core.gp import gp_Trsf, gp_Vec
     from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
-    from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Common
-    from OCC.Core.GProp import GProp_GProps
-    from OCC.Core.BRepGProp import brepgprop_VolumeProperties
 
     if not (volume_a > 0 and volume_b > 0):
         return False
@@ -104,18 +101,9 @@ def equivalent_translation(a, b, center_a, center_b, volume_a, volume_b,
         # rather than cloning every face/edge/curve of every STEP occurrence.
         # This is safe because Common below is read-only for the inputs.
         moved = BRepBuilderAPI_Transform(b, transform, False).Shape()
-        common = BRepAlgoAPI_Common(a, moved)
-        common.SetNonDestructive(True)
-        common.Build()
-        if not common.IsDone():
-            return False
-        properties = GProp_GProps()
-        brepgprop_VolumeProperties(common.Shape(), properties)
-        shared_volume = float(properties.Mass())
-        return (np.isfinite(shared_volume) and shared_volume > 0
-                and abs(volume_a-shared_volume) <= threshold
-                and abs(volume_b-shared_volume) <= threshold
-                and verify_two_way_cut(a, moved, volume_a, volume_b, threshold))
+        # Both directional differences are required for acceptance. A preceding
+        # Common adds a third Boolean without increasing proof strength.
+        return verify_two_way_cut(a, moved, volume_a, volume_b, threshold)
     except Exception:
         return False
 
@@ -149,16 +137,15 @@ def verify_two_way_cut(a, b, volume_a, volume_b, threshold):
 
 
 def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=None):
-    """Verify proper rigid equivalence with ONE B-Rep Common per orientation.
+    """Verify proper rigid equivalence with TWO directional B-Rep Cuts per orientation.
 
-    For finite positive volumes, A\\B and B\\A are respectively volume(A)
-    and volume(B) minus volume(A intersection B). Thus checking a Common
-    volume against BOTH originals is equivalent to checking two Cut volumes,
-    without computing two extra Boolean differences for every trial rotation.
+    Both directional Cut residuals must be negligible. Common alone can
+    produce false positives on imported STEP parts (DockHub 247/267).
+    Do not execute a redundant Common before the two required Cuts.
 
     All signatures, inertia axes and transformed B-Rep bounds only reject
     impossible orientations; this function never accepts a pair without a
-    real OCCT Boolean intersection. A failed or nonfinite Boolean result is
+    real OCCT Boolean difference checks. A failed or nonfinite result is
     NOT evidence of a match. The optional metrics dict tracks filter effects.
     """
     from OCC.Core.gp import gp_Trsf
@@ -226,22 +213,9 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
                             metrics["bboxRejected"] = metrics.get("bboxRejected", 0) + 1
                         continue
                 if metrics is not None:
-                    metrics["commonAttempts"] = metrics.get("commonAttempts", 0) + 1
-                common = BRepAlgoAPI_Common(a, moved)
-                common.SetNonDestructive(True)
-                common.Build()
-                if not common.IsDone():
-                    continue
-                p = GProp_GProps()
-                brepgprop_VolumeProperties(common.Shape(), p)
-                shared = float(p.Mass())
-                if (np.isfinite(shared) and shared > 0
-                    and abs(va-shared) <= threshold
-                    and abs(vb-shared) <= threshold):
-                    if verify_two_way_cut(a, moved, va, vb, threshold):
-                        return True
-                    if metrics is not None:
-                        metrics["commonOnlyRejected"] = metrics.get("commonOnlyRejected", 0) + 1
+                    metrics["twoWayCutAttempts"] = metrics.get("twoWayCutAttempts", 0) + 1
+                if verify_two_way_cut(a, moved, va, vb, threshold):
+                    return True
     except Exception:
         return False
     return False
