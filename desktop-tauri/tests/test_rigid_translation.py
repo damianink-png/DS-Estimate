@@ -7,9 +7,11 @@ Run inside the production pythonocc-core environment.
 import sys
 import math
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "cad_backend"))
+import rigid_match
 from rigid_match import (equivalent_rigid, equivalent_translation, verify_two_way_cut, translation_signature,
                          translation_signatures_match, has_unique_inertia_axes)
 
@@ -124,6 +126,21 @@ class RigidTwoWayCutRegression(unittest.TestCase):
         b = self.rotated(BRepPrimAPI_MakeBox(5, 20, 60).Shape())
         self.assertAlmostEqual(props(a).Mass(), props(b).Mass(), places=5)
         self.assertFalse(equivalent_rigid(a, b))
+
+    def test_occt_rigid_invariants_are_cached_without_skipping_boolean_proof(self):
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = self.rotated(BRepPrimAPI_MakeBox(10, 20, 30).Shape())
+        cache = {}
+        with (patch.object(rigid_match, "_properties", wraps=rigid_match._properties) as props_calls,
+              patch.object(rigid_match, "_face_area_signature",
+                           wraps=rigid_match._face_area_signature) as face_calls,
+              patch.object(rigid_match, "verify_two_way_cut",
+                           wraps=rigid_match.verify_two_way_cut) as cut_calls):
+            self.assertTrue(equivalent_rigid(a, b, cache=cache))
+            self.assertTrue(equivalent_rigid(a, b, cache=cache))
+            self.assertEqual(props_calls.call_count, 2)
+            self.assertEqual(face_calls.call_count, 2)
+            self.assertGreaterEqual(cut_calls.call_count, 2)
 
     def test_rigid_verification_does_not_mutate_inputs(self):
         a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()

@@ -23,11 +23,11 @@ except ImportError:
 try:
     from .rigid_match import (equivalent_rigid, equivalent_translation,
                               translation_signature, translation_signatures_match,
-                              has_unique_inertia_axes, _face_area_signature)
+                              has_unique_inertia_axes, cached_face_area_signature)
 except ImportError:
     from rigid_match import (equivalent_rigid, equivalent_translation,
                              translation_signature, translation_signatures_match,
-                             has_unique_inertia_axes, _face_area_signature)
+                             has_unique_inertia_axes, cached_face_area_signature)
 from pathlib import Path
 
 
@@ -144,10 +144,16 @@ def inventory(path, density=7850.0):
     # Cache cheap necessary invariants once per occurrence, not once per pair.
     # Do not cache Boolean equivalence by fuzzy volume/bounds fingerprints.
     member_invariants = {}
+    # Lazy OCCT cache; repeated parts otherwise recalculate face areas and inertia.
+    rigid_geometry_cache = {}
     def matches_every_group_member(group_id, shape, shape_center, shape_volume, shape_signature, shape_dims):
         """Tolerance-based equivalence is not transitive: validate each occurrence."""
         current_face_areas = None
         for member, member_center, member_volume in group_members.get(group_id, ()):
+            # The caller already proved this exact representative against the
+            # candidate. Do not repeat the same pair's expensive B-Rep Cuts.
+            if member is originals[group_id]:
+                continue
             if member.IsPartner(shape):
                 continue
             member_signature, member_dims, member_face_areas = member_invariants[id(member)]
@@ -166,13 +172,13 @@ def inventory(path, density=7850.0):
             # This is a rejection-only filter; a matching signature is NEVER
             # sufficient to group parts without independent B-Rep Cuts.
             if current_face_areas is None:
-                current_face_areas = _face_area_signature(shape)
+                current_face_areas = cached_face_area_signature(shape, rigid_geometry_cache)
             if member_face_areas is None or current_face_areas is None or len(member_face_areas) != len(current_face_areas):
                 return False
             if any(abs(a-b) > max(1e-6, max(a,b)*1e-7)
                    for a,b in zip(member_face_areas, current_face_areas)):
                 return False
-            if not equivalent_rigid(member, shape):
+            if not equivalent_rigid(member, shape, cache=rigid_geometry_cache):
                 return False
         return True
     attempted_translation = 0
@@ -264,7 +270,7 @@ def inventory(path, density=7850.0):
                     continue
                 attempted_rigid += 1
                 stage_start = time.perf_counter()
-                equivalent = equivalent_rigid(originals[i], solid, metrics=rigid_filter_metrics)
+                equivalent = equivalent_rigid(originals[i], solid, metrics=rigid_filter_metrics, cache=rigid_geometry_cache)
                 rigid_verification_seconds += time.perf_counter() - stage_start
                 if equivalent:
                     if not matches_every_group_member(i, solid, center, volume, signature, dims):
@@ -287,7 +293,7 @@ def inventory(path, density=7850.0):
             original_mass.append(volume)
             index.insert(existing, volume, area)
         member_invariants[id(solid)] = (signature if signature is not None else translation_signature(solid, center),
-                                        dims, _face_area_signature(solid))
+                                        dims, cached_face_area_signature(solid, rigid_geometry_cache))
         group_members.setdefault(existing, []).append((solid, center, volume))
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
         stage_start = time.perf_counter()

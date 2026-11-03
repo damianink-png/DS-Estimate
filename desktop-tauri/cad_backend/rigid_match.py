@@ -22,6 +22,15 @@ def _properties(shape):
         return props.Mass(), np.array([center.X(),center.Y(),center.Z()]), None
     return props.Mass(), np.array([center.X(),center.Y(),center.Z()]), axes
 
+def _cached_properties(shape, cache=None):
+    """Reuse volume inertia and principal axes across comparisons of one STEP occurrence."""
+    if cache is None:
+        return _properties(shape)
+    entry = cache.setdefault(id(shape), {})
+    if "properties" not in entry:
+        entry["properties"] = _properties(shape)
+    return entry["properties"]
+
 
 def has_unique_inertia_axes(props):
     """Cheap invariant gate: degenerate inertia cannot define principal axes.
@@ -161,17 +170,26 @@ def _face_area_signature(shape):
         explorer.Next()
     return tuple(sorted(areas)) if areas else None
 
+def cached_face_area_signature(shape, cache=None):
+    """Memoize B-Rep face areas for occurrences held alive by the inventory."""
+    if cache is None:
+        return _face_area_signature(shape)
+    entry = cache.setdefault(id(shape), {})
+    if "face_areas" not in entry:
+        entry["face_areas"] = _face_area_signature(shape)
+    return entry["face_areas"]
 
-def _matching_face_areas(a, b, relative_tol=1e-7):
+
+def _matching_face_areas(a, b, relative_tol=1e-7, cache=None):
     """Necessary face-level check; NEVER sufficient to prove equivalence."""
-    sa, sb = _face_area_signature(a), _face_area_signature(b)
+    sa, sb = cached_face_area_signature(a, cache), cached_face_area_signature(b, cache)
     if sa is None or sb is None or len(sa) != len(sb):
         return False
     return all(abs(x-y) <= max(1e-6, max(x,y)*relative_tol)
                for x,y in zip(sa,sb))
 
 
-def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=None):
+def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=None, cache=None):
     """Verify proper rigid equivalence with TWO directional B-Rep Cuts per orientation.
 
     Both directional Cut residuals must be negligible. Common alone can
@@ -202,8 +220,8 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
             return None
 
     try:
-        va, ca, axa = _properties(a)
-        vb, cb, axb = _properties(b)
+        va, ca, axa = _cached_properties(a, cache)
+        vb, cb, axb = _cached_properties(b, cache)
         if (not np.isfinite(va) or not np.isfinite(vb) or va <= 0 or vb <= 0):
             return False
         threshold = max(tolerance_mm**3, max(va, vb)*relative_volume_tol)
@@ -213,7 +231,7 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
             return True
         # Independent face partition check before expensive orientation trials.
         # A successful Boolean alone is not a reliable identity certificate.
-        if not _matching_face_areas(a, b):
+        if not _matching_face_areas(a, b, cache=cache):
             if metrics is not None:
                 metrics['faceSignatureRejected'] = metrics.get('faceSignatureRejected', 0) + 1
             return False
