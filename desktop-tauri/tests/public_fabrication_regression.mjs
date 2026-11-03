@@ -9,6 +9,7 @@
  */
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 export const PINNED_BASELINE = Object.freeze({
  'portal-frame': {solids:15,groups:3,massKg:18045.244066,cutCoverage:0,knownCutHours:0},
@@ -43,7 +44,7 @@ export function checkPinnedPublicRegression(results, baseline=PINNED_BASELINE){
  return errors;
 }
 
-if(process.argv[1] && resolve(process.argv[1])===new URL(import.meta.url).pathname.replace(/^\/(?=[A-Z]:)/,'').replaceAll('%20',' ')){
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const input=resolve(process.argv[2]||'public_fabrication_output/comparison.json');
  const results=JSON.parse(readFileSync(input,'utf8'));
  const errors=checkPinnedPublicRegression(results);
