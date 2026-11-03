@@ -136,6 +136,41 @@ def verify_two_way_cut(a, b, volume_a, volume_b, threshold):
     return True
 
 
+
+def _face_area_signature(shape):
+    """Rotation-invariant conservative face partition fingerprint.
+
+    Boolean Cut may return zero residual for a near-coincident STEP pair even
+    when its individual surface patches differ. An equal-area total is not
+    sufficient: independently compare the area of every constituent face.
+    Different face partitioning is treated as unverified, not identical.
+    """
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopAbs import TopAbs_FACE
+    from OCC.Core.GProp import GProp_GProps
+    from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
+    areas = []
+    explorer = TopExp_Explorer(shape, TopAbs_FACE)
+    while explorer.More():
+        props = GProp_GProps()
+        brepgprop_SurfaceProperties(explorer.Current(), props)
+        area = float(props.Mass())
+        if not np.isfinite(area) or area < 0:
+            return None
+        areas.append(area)
+        explorer.Next()
+    return tuple(sorted(areas)) if areas else None
+
+
+def _matching_face_areas(a, b, relative_tol=1e-7):
+    """Necessary face-level check; NEVER sufficient to prove equivalence."""
+    sa, sb = _face_area_signature(a), _face_area_signature(b)
+    if sa is None or sb is None or len(sa) != len(sb):
+        return False
+    return all(abs(x-y) <= max(1e-6, max(x,y)*relative_tol)
+               for x,y in zip(sa,sb))
+
+
 def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=None):
     """Verify proper rigid equivalence with TWO directional B-Rep Cuts per orientation.
 
@@ -176,6 +211,12 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
             return False
         if a.IsPartner(b):
             return True
+        # Independent face partition check before expensive orientation trials.
+        # A successful Boolean alone is not a reliable identity certificate.
+        if not _matching_face_areas(a, b):
+            if metrics is not None:
+                metrics['faceSignatureRejected'] = metrics.get('faceSignatureRejected', 0) + 1
+            return False
         if axa is None or axb is None:
             return False  # Degenerate inertia handled by translation verifier.
         target_bounds = bounds(a)
