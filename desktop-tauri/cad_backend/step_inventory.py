@@ -153,7 +153,9 @@ def inventory(path, density=7850.0):
     cutting_hint_seconds = 0.0
     candidate_pairs = 0
     max_translation_checks = max(0, int(os.environ.get("DS_CAD_MAX_TRANSLATION_CHECKS", "600")))
-    # Two-way Cut increased translation cost; 95 s prematurely truncated DockHub\n    # (34 candidate pairs skipped in run 41579194104). Keep the hard 240 s\n    # per-project CI timeout; this is a bounded comparison budget, not a PASS override.\n    max_translation_seconds = max(0.0, float(os.environ.get("DS_CAD_MAX_TRANSLATION_SECONDS", "140")))
+    # Two-way Cut increased translation cost; retain a bounded comparison budget.
+    # This is not a correctness override; the independent regression gate remains active.
+    max_translation_seconds = max(0.0, float(os.environ.get("DS_CAD_MAX_TRANSLATION_SECONDS", "140")))
     max_rigid_checks = max(0, int(os.environ.get("DS_CAD_MAX_RIGID_CHECKS", "120")))
     max_rigid_seconds = max(0.0, float(os.environ.get("DS_CAD_MAX_RIGID_SECONDS", "140")))
     compare_start = time.perf_counter()
