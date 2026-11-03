@@ -22,6 +22,7 @@ on:
       - 'desktop-tauri/cad_backend/shape_index.py'
       - 'desktop-tauri/tests/test_shape_index.py'
       - 'desktop-tauri/tests/test_inventory_source_integrity.py'
+      - 'desktop-tauri/tests/test_inventory_progress.py'
       - 'desktop-tauri/tests/test_rigid_translation.py'
       - 'desktop-tauri/tests/test_dockhub_independent_merge.py'
       - 'desktop-tauri/tests/cutting-batch.test.mjs'
@@ -48,6 +49,8 @@ jobs:
         run: npm test
       - name: Guard STEP inventory runtime budget declarations
         run: python tests/test_inventory_source_integrity.py
+      - name: Guard partial profiling and failure timing
+        run: python tests/test_inventory_progress.py
       - name: Regression tests for indexed STEP duplicate lookup
         run: python tests/test_shape_index.py
       - uses: conda-incubator/setup-miniconda@v3

@@ -150,11 +150,16 @@ def inventory(path, density=7850.0):
     member_validation_calls = 0
     member_validation_pairs = 0
     member_face_area_computations = 0
+    member_validation_failures = 0
+    member_validation_rejections = 0
     property_seconds = 0.0
+    progress_interval = max(1, int(os.environ.get('DS_CAD_PROGRESS_EVERY', '25')))
+    profile = os.environ.get('DS_CAD_PROFILE', '0') == '1'
     def matches_every_group_member(group_id, shape, shape_center, shape_volume, shape_signature, shape_dims):
         """Tolerance-based equivalence is not transitive: validate each occurrence."""
         nonlocal member_validation_seconds, member_validation_calls
         nonlocal member_validation_pairs, member_face_area_computations
+        nonlocal member_validation_failures, member_validation_rejections
         validation_started = time.perf_counter()
         member_validation_calls += 1
         current_face_areas = None
@@ -189,11 +194,17 @@ def inventory(path, density=7850.0):
                 member_invariants[id(member)] = (member_signature, member_dims, member_face_areas)
                 member_face_area_computations += 1
             if member_face_areas is None or current_face_areas is None or len(member_face_areas) != len(current_face_areas):
+                member_validation_rejections += 1
+                member_validation_seconds += time.perf_counter() - validation_started
                 return False
             if any(abs(a-b) > max(1e-6, max(a,b)*1e-7)
                    for a,b in zip(member_face_areas, current_face_areas)):
+                member_validation_rejections += 1
+                member_validation_seconds += time.perf_counter() - validation_started
                 return False
             if not equivalent_rigid(member, shape, cache=rigid_geometry_cache):
+                member_validation_failures += 1
+                member_validation_seconds += time.perf_counter() - validation_started
                 return False
         member_validation_seconds += time.perf_counter() - validation_started
         return True
@@ -331,6 +342,19 @@ def inventory(path, density=7850.0):
             "verificationMethod": method,
         })
         explorer.Next()
+        if profile and len(solids) % progress_interval == 0:
+            print('[DS-CAD-PROGRESS] ' + json.dumps({
+                'processedSolids': len(solids), 'uniqueGroups': len(originals),
+                'elapsedSeconds': round(time.perf_counter()-t_start, 3),
+                'shapePropertySeconds': round(property_seconds, 3),
+                'signatureSeconds': round(signature_seconds, 3),
+                'translationVerificationSeconds': round(translation_verification_seconds, 3),
+                'rigidVerificationSeconds': round(rigid_verification_seconds, 3),
+                'memberValidationSeconds': round(member_validation_seconds, 3),
+                'memberValidationCalls': member_validation_calls,
+                'memberValidationPairs': member_validation_pairs,
+                'cuttingHintSeconds': round(cutting_hint_seconds, 3)
+            }), file=sys.stderr, flush=True)
     groups = [{"geometryId": f"shared-tshape-{i}", "quantity": count,
                "massKg": original_mass[i] * density * 1e-9}
               for i, count in occurrence_count.items()]
@@ -342,7 +366,9 @@ def inventory(path, density=7850.0):
                    "rigidVerificationSeconds": round(rigid_verification_seconds, 3),
                    "cuttingHintSeconds": round(cutting_hint_seconds, 3),
                    "shapePropertySeconds": round(property_seconds, 3),
-                   "memberValidationSecondsCompleted": round(member_validation_seconds, 3),
+                   "memberValidationSeconds": round(member_validation_seconds, 3),
+                   "memberValidationFailures": member_validation_failures,
+                   "memberValidationRejections": member_validation_rejections,
                    "memberValidationCalls": member_validation_calls,
                    "memberValidationPairs": member_validation_pairs,
                    "memberFaceAreaComputations": member_face_area_computations,
