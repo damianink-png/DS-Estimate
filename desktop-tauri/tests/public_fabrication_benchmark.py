@@ -117,6 +117,16 @@ def main():
                 if isinstance(stderr,bytes):
                     stderr=stderr.decode('utf-8','replace')
                 (folder/'engine_stderr.txt').write_text(stderr[-50000:],encoding='utf-8')
+                # Surface the last progress snapshots in the Actions log as well
+                # as in artifacts. Without this, timeout hides the exact CAD
+                # stage and the next iteration cannot locate the bottleneck.
+                progress=[line for line in stderr.splitlines()
+                          if 'DS-CAD-PROGRESS' in line or 'DS-CAD-PROFILE' in line]
+                result['engineProgressTail']=progress[-8:]
+                result['engineStderrTail']=stderr[-1500:]
+                print('ENGINE_TIMEOUT_PROGRESS',id,json.dumps({
+                    'snapshots':progress[-8:],
+                    'stderrTail':stderr[-1500:]},ensure_ascii=False),flush=True)
             except Exception as exc:
                 result['status']='ENGINE_OUTPUT_INVALID'
                 result['errors'].append(safe_error(exc))
