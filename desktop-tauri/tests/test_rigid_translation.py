@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "cad_backend"))
-from rigid_match import (equivalent_rigid, equivalent_translation, translation_signature,
+from rigid_match import (equivalent_rigid, equivalent_translation, verify_two_way_cut, translation_signature,
                          translation_signatures_match, has_unique_inertia_axes)
 
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
@@ -160,6 +160,16 @@ class RigidCommonRegression(unittest.TestCase):
         self.assertFalse(equivalent_rigid(a, b, metrics=stats))
         self.assertGreater(stats.get('bboxRejected', 0), 0)
         self.assertEqual(stats.get('commonAttempts', 0), 0)
+
+    def test_two_way_cut_proof_rejects_same_volume_near_coincident_solids(self):
+        # Regression for DockHub 247/267: a Common-only near-match cannot
+        # silently become an inventory duplicate without directional Cuts.
+        a = BRepPrimAPI_MakeBox(20, 20, 20).Shape()
+        b = shifted(BRepPrimAPI_MakeBox(20, 20, 20).Shape(), 0.02, 0, 0)
+        self.assertAlmostEqual(props(a).Mass(), props(b).Mass(), places=6)
+        threshold = max(0.01**3, props(a).Mass()*1e-6)
+        self.assertFalse(verify_two_way_cut(a, b, props(a).Mass(), props(b).Mass(), threshold))
+        self.assertTrue(verify_two_way_cut(a, a, props(a).Mass(), props(a).Mass(), threshold))
 
     def test_symmetric_inertia_is_not_falsely_verified_by_rigid_path(self):
         a = BRepPrimAPI_MakeBox(20, 20, 20).Shape()
