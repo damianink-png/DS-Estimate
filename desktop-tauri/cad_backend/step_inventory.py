@@ -267,7 +267,7 @@ def inventory(path, density=7850.0):
                 equivalent = equivalent_rigid(originals[i], solid, metrics=rigid_filter_metrics)
                 rigid_verification_seconds += time.perf_counter() - stage_start
                 if equivalent:
-                    if not matches_every_group_member(i, solid, center, volume):
+                    if not matches_every_group_member(i, solid, center, volume, signature, dims):
                         continue
                     existing = i
                     rigid_hits += 1
