@@ -24,3 +24,11 @@ guarded_calls = [
 assert len(guarded_calls) == 2, "Both translation and rigid paths must verify all group members"
 assert all(len(call.args) == len(helper.args.args) for call in guarded_calls), "Every group verification call must supply all required cached invariants"
 print("STEP inventory budget and rigid group consistency declarations: PASS")
+
+# A member can bypass repeated Boolean verification ONLY when OCCT confirms
+# exact underlying TShape partnership with the independently verified group
+# representative. Fingerprints must never be treated as equality proof.
+source_text = source.read_text(encoding="utf-8")
+assert "member.IsPartner(originals[group_id])" in source_text
+assert "member_partner_skips += 1" in source_text
+assert "memberPartnerSkips" in source_text

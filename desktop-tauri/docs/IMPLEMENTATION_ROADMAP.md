@@ -7,7 +7,7 @@ Nie zmieniaj progów regresji tylko po to, aby uzyskać PASS.
 
 ## Etap I — przyspieszenie i obserwowalność CAD (P0)
 - [ ] 1. Profilowanie importu STEP, B-Rep, sygnatur, sprawdzania członków, konturu cięcia, pamięci i czasu całości — PARTIAL: okresowe postępy na stderr, także w przypadku timeout; pamięć nadal do dodania
-- [ ] 2. Ograniczenie porównań członków grupy przez bezpieczne ponowne użycie dowodów
+- [ ] 2. Ograniczenie porównań członków grupy przez bezpieczne ponowne użycie dowodów — PARTIAL: pomijanie członków o identycznym TShape jak reprezentant po niezależnym dowodzie pary; wpływ wymaga pomiaru
 - [x] 3. Lazy evaluation sygnatur powierzchni/ścian, bez osłabienia walidacji — CODED, CI oczekuje
 - [ ] 4. Cache wyników par: klucz obejmuje geometrię, transformację i tolerancję, wynik może być UNKNOWN
 - [x] 5. Korekta sygnatur geometrycznych opartych na objętości i powierzchni w `src/lib/geometry.mjs` — CODED, testy i CI oczekują
@@ -54,3 +54,5 @@ Nie zmieniaj progów regresji tylko po to, aby uzyskać PASS.
 - 2026-11-03, iteracja 2: Windows run 41704191065 PASS, public run 41704193387 FAIL (DockHub timeout, brak inventory; niezależny audyt pary 247/267 nie może potwierdzić wyniku bez inventory). Dodano lazy face-area dla członków grup oraz diagnostykę kosztu właściwości brył i weryfikacji członków. Nie zmieniono kryterium dopasowania ani baseline; CODED, CI oczekuje.
 
 - 2026-11-03, iteracja 3: Windows 41707301072 PASS; benchmark 41707301286 FAIL: DockHub timeout 240 s (czas całej próby ~552.5 s), brak inventory; audyt 247/267 nie może potwierdzić niełączenia w wyniku. Dodano cykliczne DS-CAD-PROGRESS co 25 brył (stderr zapisywany także przy timeout), dokładny czas odrzuconych kandydatów w matches_every_group_member, liczniki odrzuceń i test AST ścieżek wyjścia. Bez zmian kryteriów grupowania. CODED, CI oczekuje.
+
+- 2026-11-03, iteracja 4: Windows 41716648076 PASS, benchmark 41716648217 FAIL (DockHub 419.44 s czasu zewnętrznego, timeout silnika 240 s; EarthPress 251/97, ~58.9 s, memberValidationSeconds 35.264 s / 389 par). Zastosowano bezpieczny skrót: członek grupy współdzielący OCCT TShape z reprezentantem nie wymaga ponownego Boolean po uprzednim dowodzie candidate-representative. Nie dotyczy przybliżonych sygnatur ani różnych TShape. Dodano licznik memberPartnerSkips i kontrolę źródła. CODED, CI oczekuje. Jeżeli brak oszczędności, kolejny krok: profilowanie kosztów per para i cache dowodów, bez transytywności tolerancji.

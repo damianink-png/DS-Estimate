@@ -149,6 +149,7 @@ def inventory(path, density=7850.0):
     member_validation_seconds = 0.0
     member_validation_calls = 0
     member_validation_pairs = 0
+    member_partner_skips = 0
     member_face_area_computations = 0
     member_validation_failures = 0
     member_validation_rejections = 0
@@ -158,7 +159,7 @@ def inventory(path, density=7850.0):
     def matches_every_group_member(group_id, shape, shape_center, shape_volume, shape_signature, shape_dims):
         """Tolerance-based equivalence is not transitive: validate each occurrence."""
         nonlocal member_validation_seconds, member_validation_calls
-        nonlocal member_validation_pairs, member_face_area_computations
+        nonlocal member_validation_pairs, member_face_area_computations, member_partner_skips
         nonlocal member_validation_failures, member_validation_rejections
         validation_started = time.perf_counter()
         member_validation_calls += 1
@@ -169,6 +170,16 @@ def inventory(path, density=7850.0):
             if member is originals[group_id]:
                 continue
             if member.IsPartner(shape):
+                continue
+            # The caller has independently proved candidate == representative
+            # by two-way B-Rep Cuts. IsPartner means the member uses the SAME
+            # underlying OCCT TShape as that representative (possibly located
+            # elsewhere). It cannot introduce a new geometric discrepancy:
+            # avoid repeating expensive Boolean checks for that exact identity.
+            # Never extend this shortcut to equal fingerprints or merely
+            # tolerance-based matches: those are not transitive.
+            if member.IsPartner(originals[group_id]):
+                member_partner_skips += 1
                 continue
             member_validation_pairs += 1
             member_signature, member_dims, member_face_areas = member_invariants[id(member)]
@@ -353,6 +364,7 @@ def inventory(path, density=7850.0):
                 'memberValidationSeconds': round(member_validation_seconds, 3),
                 'memberValidationCalls': member_validation_calls,
                 'memberValidationPairs': member_validation_pairs,
+                'memberPartnerSkips': member_partner_skips,
                 'cuttingHintSeconds': round(cutting_hint_seconds, 3)
             }), file=sys.stderr, flush=True)
     groups = [{"geometryId": f"shared-tshape-{i}", "quantity": count,
@@ -371,6 +383,7 @@ def inventory(path, density=7850.0):
                    "memberValidationRejections": member_validation_rejections,
                    "memberValidationCalls": member_validation_calls,
                    "memberValidationPairs": member_validation_pairs,
+                    "memberPartnerSkips": member_partner_skips,
                    "memberFaceAreaComputations": member_face_area_computations,
                    "translationChecks": attempted_translation,
                    "translationMatches": translation_hits,
