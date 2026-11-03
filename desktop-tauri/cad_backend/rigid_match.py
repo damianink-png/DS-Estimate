@@ -114,9 +114,38 @@ def equivalent_translation(a, b, center_a, center_b, volume_a, volume_b,
         shared_volume = float(properties.Mass())
         return (np.isfinite(shared_volume) and shared_volume > 0
                 and abs(volume_a-shared_volume) <= threshold
-                and abs(volume_b-shared_volume) <= threshold)
+                and abs(volume_b-shared_volume) <= threshold
+                and verify_two_way_cut(a, moved, volume_a, volume_b, threshold))
     except Exception:
         return False
+
+
+def verify_two_way_cut(a, b, volume_a, volume_b, threshold):
+    """Conservative second proof after a Common-volume candidate.
+
+    An OCCT Common may report almost-full overlap for near-coincident but
+    topologically distinct imported parts. Require BOTH directional residual
+    volumes to be below the tolerance before merging inventory occurrences.
+    Boolean failure is an UNKNOWN result, never proof of equivalence.
+    """
+    from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
+    from OCC.Core.GProp import GProp_GProps
+    from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+    for left, right in ((a, b), (b, a)):
+        try:
+            cut = BRepAlgoAPI_Cut(left, right)
+            cut.SetNonDestructive(True)
+            cut.Build()
+            if not cut.IsDone():
+                return False
+            props = GProp_GProps()
+            brepgprop_VolumeProperties(cut.Shape(), props)
+            residual = float(props.Mass())
+            if not np.isfinite(residual) or abs(residual) > threshold:
+                return False
+        except Exception:
+            return False
+    return True
 
 
 def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=None):
@@ -209,7 +238,10 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
                 if (np.isfinite(shared) and shared > 0
                     and abs(va-shared) <= threshold
                     and abs(vb-shared) <= threshold):
-                    return True
+                    if verify_two_way_cut(a, moved, va, vb, threshold):
+                        return True
+                    if metrics is not None:
+                        metrics["commonOnlyRejected"] = metrics.get("commonOnlyRejected", 0) + 1
     except Exception:
         return False
     return False
