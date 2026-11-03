@@ -15,10 +15,9 @@ export const PINNED_BASELINE = Object.freeze({
  'portal-frame': {solids:15,groups:3,massKg:18045.244066,cutCoverage:0,knownCutHours:0},
  'stepgen-frame': {solids:1,groups:1,massKg:24.837464,cutCoverage:0,knownCutHours:0},
  earthpress: {solids:251,groups:97,massKg:333.793279,cutCoverage:35.5,knownCutHours:4.57144},
- // 111 -> 110 in run 41560613405: occurrence 267 now joins occurrence 247.
- // CI independently verifies this specific merge by BOTH B-Rep Cut directions
- // against the original upstream STEP before this pinned gate can pass.
- dockhub: {solids:541,groups:110,massKg:4056.864258,cutCoverage:19.4,knownCutHours:4.69192}
+ // Revert unsafe 110 baseline: independent two-way Cut could not prove
+ // occurrence 247 identical to 267 (run 41566796174).
+ dockhub: {solids:541,groups:111,massKg:4056.864258,cutCoverage:19.4,knownCutHours:4.69192}
 });
 
 export function checkPinnedPublicRegression(results, baseline=PINNED_BASELINE){
