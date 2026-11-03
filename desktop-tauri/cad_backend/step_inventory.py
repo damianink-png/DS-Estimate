@@ -203,7 +203,7 @@ def inventory(path, density=7850.0):
                 if not translation_signatures_match(signature, original_signatures[i]):
                     continue
                 if (attempted_translation >= max_translation_checks or
-                    time.perf_counter() - compare_start > max_translation_seconds):
+                    translation_verification_seconds > max_translation_seconds):
                     skipped_translation += 1
                     continue
                 attempted_translation += 1
@@ -223,7 +223,7 @@ def inventory(path, density=7850.0):
                     skipped_degenerate += 1
                     continue
                 if (attempted_rigid >= max_rigid_checks or
-                    time.perf_counter() - compare_start > max_rigid_seconds):
+                    rigid_verification_seconds > max_rigid_seconds):
                     skipped_rigid += 1
                     continue
                 attempted_rigid += 1
@@ -235,8 +235,15 @@ def inventory(path, density=7850.0):
                     # only the representative. This prevents a tolerance-chain
                     # false merge (DockHub occurrences 247/267).
                     consistent = True
-                    for member in group_members.get(i, ()):
+                    for member, member_center, member_volume in group_members.get(i, ()):
                         if member.IsPartner(solid):
+                            continue
+                        # A translation is the cheapest correct proof for the
+                        # majority of repeated structural members. Rigid-only
+                        # verification incorrectly rejects degenerate-inertia
+                        # parts and wastes expensive orientation searches.
+                        if equivalent_translation(member, solid, member_center,
+                                                  center, member_volume, volume):
                             continue
                         if not equivalent_rigid(member, solid):
                             consistent = False
@@ -260,7 +267,7 @@ def inventory(path, density=7850.0):
             original_rigid_eligible.append(rigid_eligible if rigid_eligible is not None else has_unique_inertia_axes(vp))
             original_mass.append(volume)
             index.insert(existing, volume, area)
-        group_members.setdefault(existing, []).append(solid)
+        group_members.setdefault(existing, []).append((solid, center, volume))
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
         stage_start = time.perf_counter()
         cut_hint = planar_plate_cutting_hint(solid, dims)
