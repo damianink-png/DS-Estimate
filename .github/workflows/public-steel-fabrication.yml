@@ -19,6 +19,7 @@ on:
       - 'desktop-tauri/cad_backend/rigid_match.py'
       - 'desktop-tauri/cad_backend/shape_index.py'
       - 'desktop-tauri/tests/test_shape_index.py'
+      - 'desktop-tauri/tests/test_inventory_source_integrity.py'
       - 'desktop-tauri/tests/test_rigid_translation.py'
       - 'desktop-tauri/tests/test_dockhub_independent_merge.py'
       - 'desktop-tauri/tests/cutting-batch.test.mjs'
