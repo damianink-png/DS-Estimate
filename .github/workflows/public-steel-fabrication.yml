@@ -12,6 +12,8 @@ on:
       - 'desktop-tauri/src/lib/cutting-batch.mjs'
       - 'desktop-tauri/src/lib/public-comparison-gate.mjs'
       - 'desktop-tauri/tests/public-comparison-gate.test.mjs'
+      - 'desktop-tauri/tests/public_fabrication_regression.mjs'
+      - 'desktop-tauri/tests/public_fabrication_regression.test.mjs'
       - 'desktop-tauri/src/QuickEstimate.svelte'
       - 'desktop-tauri/cad_backend/step_inventory.py'
       - 'desktop-tauri/cad_backend/rigid_match.py'
@@ -86,6 +88,16 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'DS Estimate public reference comparison failed' }
           } else {
             Write-Host 'No result JSON: previous setup failed. Check the logged reason.'
+          }
+      - name: Pinned source STEP mass, duplicate grouping and partial cutting regression gate
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path public_fabrication_output/comparison.json) {
+            node tests/public_fabrication_regression.mjs public_fabrication_output/comparison.json
+            if ($LASTEXITCODE -ne 0) { throw 'Pinned public CAD geometry or cutting regression: review artifacts and update baseline only with evidence' }
+          } else {
+            throw 'Missing comparison.json: cannot verify pinned geometry and cutting regression'
           }
       - name: Upload reproducible benchmark, source SHA256, independent/manual comparison and error logs
         if: always()
