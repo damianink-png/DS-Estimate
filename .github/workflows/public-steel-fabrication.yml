@@ -99,7 +99,7 @@ jobs:
         run: |
           $source = 'public_fabrication_output/dockhub/A-assembly.step'
           if (!(Test-Path $source)) { throw 'DockHub original STEP missing; independent geometry audit cannot pass' }
-          conda run -n ds-cad python tests/test_dockhub_independent_merge.py $source
+          conda run -n ds-cad python tests/test_dockhub_independent_merge.py $source --inventory public_fabrication_output/dockhub/ds_estimate_inventory.json
           if ($LASTEXITCODE -ne 0) { throw 'DockHub disputed pair no longer satisfies conservative non-merge regression' }
       - name: Pinned source STEP mass, duplicate grouping and partial cutting regression gate
         if: always()
