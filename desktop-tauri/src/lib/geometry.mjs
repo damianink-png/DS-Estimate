@@ -9,8 +9,15 @@ export function geometrySignature(part,{volumeRelTol=1e-6,lengthTolMm=0.01}={}){
  const v=finite(part.volumeMm3,'volumeMm3');if(!Array.isArray(part.bboxMm)||part.bboxMm.length!==3)throw new TypeError('bboxMm');
  const d=part.bboxMm.map((x)=>finite(x,'bboxMm')).sort((a,b)=>a-b);
  const area=finite(part.areaMm2??0,'areaMm2');
- const q=(x,step)=>Math.round(x/step);
- return [q(v,Math.max(1e-6,v*volumeRelTol)),...d.map(x=>q(x,lengthTolMm)),q(area,Math.max(1e-6,area*volumeRelTol))].join(':');
+ // Dividing by x*relativeTolerance gives ~1/relativeTolerance for almost
+ // every positive x: the former fingerprint lost volume/area information.
+ // Logarithmic buckets keep relative resolution across CAD scales. A bucket
+ // only suggests possible matches; never treat it as proof of identity.
+ if(!Number.isFinite(volumeRelTol)||volumeRelTol<=0||volumeRelTol>=1||
+    !Number.isFinite(lengthTolMm)||lengthTolMm<=0)throw new RangeError('geometry signature tolerance');
+ const relBucket=(x)=>x===0?'zero':String(Math.round(Math.log(x)/Math.log1p(volumeRelTol*4)));
+ const dimensionBucket=(x)=>Math.round(x/lengthTolMm);
+ return [relBucket(v),...d.map(dimensionBucket),relBucket(area)].join(':');
 }
 export function groupGeometry(parts,{densityKgM3=7850}={}){
  if(!Array.isArray(parts))throw new TypeError('parts');

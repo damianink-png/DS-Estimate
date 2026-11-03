@@ -5,3 +5,21 @@ test('Verified shapes group with quantity',()=>{const r=groupGeometry([{id:'a',v
 test('Same dimensions alone do not prove shape identity',()=>{const p={volumeMm3:1000,bboxMm:[10,20,30]};const r=groupGeometry([{...p,id:'a'},{...p,id:'b'}]);assert.equal(r.groups.length,2);assert.equal(r.candidateBuckets.length,1)});
 test('Different verified shape keys remain separate',()=>{const p={volumeMm3:1000,bboxMm:[10,20,30]};assert.equal(groupGeometry([{...p,verifiedShapeKey:'A'},{...p,verifiedShapeKey:'B'}]).groups.length,2)});
 test('Invalid geometry rejected',()=>assert.throws(()=>massFromVolume(-1),RangeError));
+
+test('Geometric candidate buckets distinguish different volumes and surface areas',()=>{
+ const base={volumeMm3:1000,areaMm2:700,bboxMm:[10,20,30]};
+ const largerVolume={...base,volumeMm3:1400};
+ const largerArea={...base,areaMm2:900};
+ assert.notEqual(geometrySignature(base),geometrySignature(largerVolume));
+ assert.notEqual(geometrySignature(base),geometrySignature(largerArea));
+ const grouped=groupGeometry([base,largerVolume,largerArea]);
+ assert.equal(grouped.groups.length,3);
+ assert.equal(grouped.candidateBuckets.length,0);
+});
+test('Geometry signatures remain rotation-independent and validate tolerances',()=>{
+ const a={volumeMm3:0.00000005,areaMm2:0.000002,bboxMm:[0.1,0.2,0.3]};
+ assert.equal(geometrySignature(a),geometrySignature({...a,bboxMm:[0.3,0.1,0.2]}));
+ assert.notEqual(geometrySignature(a),geometrySignature({...a,volumeMm3:0.00000007}));
+ assert.throws(()=>geometrySignature(a,{volumeRelTol:0}),RangeError);
+ assert.throws(()=>geometrySignature(a,{lengthTolMm:0}),RangeError);
+});

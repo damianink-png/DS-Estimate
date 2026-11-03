@@ -9,6 +9,8 @@ on:
       - 'desktop-tauri/tests/public_fabrication_benchmark.py'
       - 'desktop-tauri/tests/public_fabrication_compare.mjs'
       - 'desktop-tauri/src/lib/cutting-plan.mjs'
+      - 'desktop-tauri/src/lib/geometry.mjs'
+      - 'desktop-tauri/tests/geometry.test.mjs'
       - 'desktop-tauri/src/lib/cutting-batch.mjs'
       - 'desktop-tauri/src/lib/public-comparison-gate.mjs'
       - 'desktop-tauri/tests/public-comparison-gate.test.mjs'
