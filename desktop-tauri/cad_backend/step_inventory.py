@@ -208,7 +208,7 @@ def inventory(path, density=7850.0):
                 if equivalent:
                     existing = i
                     translation_hits += 1
-                    method = "OCCT_Translation_BRep_Common"
+                    method = "OCCT_Translation_BRep_TwoWayCut"
                     break
         if existing is None and candidates:
             rigid_eligible = has_unique_inertia_axes(vp)
@@ -227,7 +227,7 @@ def inventory(path, density=7850.0):
                 if equivalent:
                     existing = i
                     rigid_hits += 1
-                    method = "OCCT_Rigid_BRep_Common"
+                    method = "OCCT_Rigid_BRep_TwoWayCut"
                     break
         if existing is None:
             existing = len(originals)
@@ -275,7 +275,7 @@ def inventory(path, density=7850.0):
                    "rigidDegenerateSkippedCandidates": skipped_degenerate,
                    "rigidChecks": attempted_rigid, "rigidMatches": rigid_hits,
                    "rigidBBoxRejectedOrientations": rigid_filter_metrics.get("bboxRejected", 0),
-                   "rigidCommonAttempts": rigid_filter_metrics.get("commonAttempts", 0),
+                   "rigidTwoWayCutAttempts": rigid_filter_metrics.get("twoWayCutAttempts", 0),
                    "partnerMatches": partner_hits, "rigidBudgetSkippedCandidates": skipped_rigid,
                    "uniqueGeometryGroups": len(groups), **timings}
     if os.environ.get("DS_CAD_PROFILE", "0") == "1":
