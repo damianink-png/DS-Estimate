@@ -119,7 +119,7 @@ def equivalent_translation(a, b, center_a, center_b, volume_a, volume_b,
         return False
 
 
-def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6):
+def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=None):
     """Verify proper rigid equivalence with ONE B-Rep Common per orientation.
 
     For finite positive volumes, A\\B and B\\A are respectively volume(A)
@@ -127,15 +127,28 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6):
     volume against BOTH originals is equivalent to checking two Cut volumes,
     without computing two extra Boolean differences for every trial rotation.
 
-    All signatures and inertia axes only propose transforms; this function
-    never accepts a pair without a real OCCT Boolean intersection. A failed
-    or nonfinite Boolean result is NOT evidence of a match.
+    All signatures, inertia axes and transformed B-Rep bounds only reject
+    impossible orientations; this function never accepts a pair without a
+    real OCCT Boolean intersection. A failed or nonfinite Boolean result is
+    NOT evidence of a match. The optional metrics dict tracks filter effects.
     """
     from OCC.Core.gp import gp_Trsf
     from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
     from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Common
     from OCC.Core.GProp import GProp_GProps
     from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+    from OCC.Core.Bnd import Bnd_Box
+    from OCC.Core.BRepBndLib import brepbndlib_Add
+
+    def bounds(shape):
+        # Failure to calculate a bounding box must never reject a match:
+        # fall back to the original exact Boolean verifier.
+        try:
+            box = Bnd_Box()
+            brepbndlib_Add(shape, box)
+            return box.Get()
+        except Exception:
+            return None
 
     try:
         va, ca, axa = _properties(a)
@@ -149,6 +162,17 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6):
             return True
         if axa is None or axb is None:
             return False  # Degenerate inertia handled by translation verifier.
+        target_bounds = bounds(a)
+        # An exact rigid match must have the same axis-aligned bounds AFTER
+        # applying its proposed transform. This is a necessary condition,
+        # not proof of identity. 0.05 mm + 1e-5*extent allows STEP tolerances.
+        # Unlike a rotated source bounding-box shortcut, this measures the
+        # actual transformed B-Rep, so it is safe for arbitrary orientations.
+        if target_bounds is None:
+            bounds_tolerance = None
+        else:
+            extent = max(target_bounds[i+3]-target_bounds[i] for i in range(3))
+            bounds_tolerance = max(0.05, extent*1e-5, 2*tolerance_mm)
         for perm in permutations(range(3)):
             for signs in product((-1., 1.), repeat=3):
                 basis = axb[:, perm] @ np.diag(signs)
@@ -164,6 +188,16 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6):
                 # A proper rigid isometry can be represented as a location.
                 # False avoids cloning every face/edge of a STEP occurrence.
                 moved = BRepBuilderAPI_Transform(b, t, False).Shape()
+                if bounds_tolerance is not None:
+                    candidate_bounds = bounds(moved)
+                    if (candidate_bounds is not None and
+                        any(abs(x-y) > bounds_tolerance
+                            for x, y in zip(target_bounds, candidate_bounds))):
+                        if metrics is not None:
+                            metrics["bboxRejected"] = metrics.get("bboxRejected", 0) + 1
+                        continue
+                if metrics is not None:
+                    metrics["commonAttempts"] = metrics.get("commonAttempts", 0) + 1
                 common = BRepAlgoAPI_Common(a, moved)
                 common.SetNonDestructive(True)
                 common.Build()
