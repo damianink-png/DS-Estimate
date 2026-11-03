@@ -146,8 +146,17 @@ def inventory(path, density=7850.0):
     member_invariants = {}
     # Lazy OCCT cache; repeated parts otherwise recalculate face areas and inertia.
     rigid_geometry_cache = {}
+    member_validation_seconds = 0.0
+    member_validation_calls = 0
+    member_validation_pairs = 0
+    member_face_area_computations = 0
+    property_seconds = 0.0
     def matches_every_group_member(group_id, shape, shape_center, shape_volume, shape_signature, shape_dims):
         """Tolerance-based equivalence is not transitive: validate each occurrence."""
+        nonlocal member_validation_seconds, member_validation_calls
+        nonlocal member_validation_pairs, member_face_area_computations
+        validation_started = time.perf_counter()
+        member_validation_calls += 1
         current_face_areas = None
         for member, member_center, member_volume in group_members.get(group_id, ()):
             # The caller already proved this exact representative against the
@@ -156,6 +165,7 @@ def inventory(path, density=7850.0):
                 continue
             if member.IsPartner(shape):
                 continue
+            member_validation_pairs += 1
             member_signature, member_dims, member_face_areas = member_invariants[id(member)]
             # Identical translated shapes necessarily have equal axis dimensions
             # and matching centroid-relative vertices. Skip costly OCCT Cuts
@@ -173,6 +183,11 @@ def inventory(path, density=7850.0):
             # sufficient to group parts without independent B-Rep Cuts.
             if current_face_areas is None:
                 current_face_areas = cached_face_area_signature(shape, rigid_geometry_cache)
+                member_face_area_computations += 1
+            if member_face_areas is None:
+                member_face_areas = cached_face_area_signature(member, rigid_geometry_cache)
+                member_invariants[id(member)] = (member_signature, member_dims, member_face_areas)
+                member_face_area_computations += 1
             if member_face_areas is None or current_face_areas is None or len(member_face_areas) != len(current_face_areas):
                 return False
             if any(abs(a-b) > max(1e-6, max(a,b)*1e-7)
@@ -180,6 +195,7 @@ def inventory(path, density=7850.0):
                 return False
             if not equivalent_rigid(member, shape, cache=rigid_geometry_cache):
                 return False
+        member_validation_seconds += time.perf_counter() - validation_started
         return True
     attempted_translation = 0
     translation_hits = 0
@@ -205,6 +221,7 @@ def inventory(path, density=7850.0):
     compare_start = time.perf_counter()
     while explorer.More():
         solid = explorer.Current()
+        property_started = time.perf_counter()
         vp, ap = GProp_GProps(), GProp_GProps()
         brepgprop_VolumeProperties(solid, vp)
         brepgprop_SurfaceProperties(solid, ap)
@@ -217,6 +234,7 @@ def inventory(path, density=7850.0):
         dims = [xmax-xmin,ymax-ymin,zmax-zmin]
         # Volume/area only generate candidates. Never merge by fingerprints.
         area = float(ap.Mass())
+        property_seconds += time.perf_counter() - property_started
         candidates = index.candidates(volume, area)
         candidate_pairs += len(candidates)
         existing = None
@@ -292,8 +310,10 @@ def inventory(path, density=7850.0):
             original_rigid_eligible.append(rigid_eligible if rigid_eligible is not None else has_unique_inertia_axes(vp))
             original_mass.append(volume)
             index.insert(existing, volume, area)
+        # Face-area multisets are expensive and unnecessary for partner/translation
+        # matches. Materialize them only if rigid validation actually needs them.
         member_invariants[id(solid)] = (signature if signature is not None else translation_signature(solid, center),
-                                        dims, cached_face_area_signature(solid, rigid_geometry_cache))
+                                        dims, None)
         group_members.setdefault(existing, []).append((solid, center, volume))
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
         stage_start = time.perf_counter()
@@ -321,6 +341,11 @@ def inventory(path, density=7850.0):
                    "translationVerificationSeconds": round(translation_verification_seconds, 3),
                    "rigidVerificationSeconds": round(rigid_verification_seconds, 3),
                    "cuttingHintSeconds": round(cutting_hint_seconds, 3),
+                   "shapePropertySeconds": round(property_seconds, 3),
+                   "memberValidationSecondsCompleted": round(member_validation_seconds, 3),
+                   "memberValidationCalls": member_validation_calls,
+                   "memberValidationPairs": member_validation_pairs,
+                   "memberFaceAreaComputations": member_face_area_computations,
                    "translationChecks": attempted_translation,
                    "translationMatches": translation_hits,
                    "translationBudgetSkippedCandidates": skipped_translation,

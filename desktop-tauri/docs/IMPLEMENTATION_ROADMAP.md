@@ -8,7 +8,7 @@ Nie zmieniaj progów regresji tylko po to, aby uzyskać PASS.
 ## Etap I — przyspieszenie i obserwowalność CAD (P0)
 - [ ] 1. Profilowanie importu STEP, B-Rep, sygnatur, sprawdzania członków, konturu cięcia, pamięci i czasu całości
 - [ ] 2. Ograniczenie porównań członków grupy przez bezpieczne ponowne użycie dowodów
-- [ ] 3. Lazy evaluation sygnatur powierzchni/ścian, bez osłabienia walidacji
+- [x] 3. Lazy evaluation sygnatur powierzchni/ścian, bez osłabienia walidacji — CODED, CI oczekuje
 - [ ] 4. Cache wyników par: klucz obejmuje geometrię, transformację i tolerancję, wynik może być UNKNOWN
 - [x] 5. Korekta sygnatur geometrycznych opartych na objętości i powierzchni w `src/lib/geometry.mjs` — CODED, testy i CI oczekują
 - [ ] 7. Jednoznaczne wyniki: EQUAL / DIFFERENT / UNVERIFIED
@@ -50,3 +50,5 @@ Nie zmieniaj progów regresji tylko po to, aby uzyskać PASS.
 ## Dziennik iteracji
 - 2026-11-03, start Etapu I: znaleziono błąd `geometrySignature`, dla której `x/(x*relTol)` nie odróżniało dodatnich wartości. Zmieniono ją na logarytmiczne przedziały względne, zachowano oddzielny dowód B-Rep, dodano testy i uruchomienia CI. Status: CODED, weryfikacja w toku.
 - Ostatni znany stan przed tą zmianą: commit `c42bd87e`, Windows `41699158499` **PASS**, benchmark `41699158586` **FAIL**, DockHub `ENGINE_TIMEOUT`.
+
+- 2026-11-03, iteracja 2: Windows run 41704191065 PASS, public run 41704193387 FAIL (DockHub timeout, brak inventory; niezależny audyt pary 247/267 nie może potwierdzić wyniku bez inventory). Dodano lazy face-area dla członków grup oraz diagnostykę kosztu właściwości brył i weryfikacji członków. Nie zmieniono kryterium dopasowania ani baseline; CODED, CI oczekuje.
