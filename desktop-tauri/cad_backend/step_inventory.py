@@ -23,11 +23,11 @@ except ImportError:
 try:
     from .rigid_match import (equivalent_rigid, equivalent_translation,
                               translation_signature, translation_signatures_match,
-                              has_unique_inertia_axes)
+                              has_unique_inertia_axes, _face_area_signature)
 except ImportError:
     from rigid_match import (equivalent_rigid, equivalent_translation,
                              translation_signature, translation_signatures_match,
-                             has_unique_inertia_axes)
+                             has_unique_inertia_axes, _face_area_signature)
 from pathlib import Path
 
 
@@ -141,14 +141,37 @@ def inventory(path, density=7850.0):
     # Track every accepted occurrence so a new rigid match cannot bridge
     # two mutually non-equivalent solids in the same geometry group.
     group_members = {}
-    def matches_every_group_member(group_id, shape, shape_center, shape_volume):
+    # Cache cheap necessary invariants once per occurrence, not once per pair.
+    # Do not cache Boolean equivalence by fuzzy volume/bounds fingerprints.
+    member_invariants = {}
+    def matches_every_group_member(group_id, shape, shape_center, shape_volume, shape_signature, shape_dims):
         """Tolerance-based equivalence is not transitive: validate each occurrence."""
+        current_face_areas = None
         for member, member_center, member_volume in group_members.get(group_id, ()):
             if member.IsPartner(shape):
                 continue
-            if equivalent_translation(member, shape, member_center,
-                                      shape_center, member_volume, shape_volume):
+            member_signature, member_dims, member_face_areas = member_invariants[id(member)]
+            # Identical translated shapes necessarily have equal axis dimensions
+            # and matching centroid-relative vertices. Skip costly OCCT Cuts
+            # for impossible translations.
+            can_translate = (
+                shape_signature is not None and member_signature is not None
+                and all(abs(a-b) <= 0.01 for a,b in zip(shape_dims, member_dims))
+                and translation_signatures_match(shape_signature, member_signature)
+            )
+            if can_translate and equivalent_translation(
+                    member, shape, member_center, shape_center, member_volume, shape_volume):
                 continue
+            # A rigid isometry preserves the multiset of individual face areas.
+            # This is a rejection-only filter; a matching signature is NEVER
+            # sufficient to group parts without independent B-Rep Cuts.
+            if current_face_areas is None:
+                current_face_areas = _face_area_signature(shape)
+            if member_face_areas is None or current_face_areas is None or len(member_face_areas) != len(current_face_areas):
+                return False
+            if any(abs(a-b) > max(1e-6, max(a,b)*1e-7)
+                   for a,b in zip(member_face_areas, current_face_areas)):
+                return False
             if not equivalent_rigid(member, shape):
                 return False
         return True
@@ -223,7 +246,7 @@ def inventory(path, density=7850.0):
                                                     center, original_mass[i], volume)
                 translation_verification_seconds += time.perf_counter() - stage_start
                 if equivalent:
-                    if not matches_every_group_member(i, solid, center, volume):
+                    if not matches_every_group_member(i, solid, center, volume, signature, dims):
                         continue
                     existing = i
                     translation_hits += 1
@@ -263,6 +286,8 @@ def inventory(path, density=7850.0):
             original_rigid_eligible.append(rigid_eligible if rigid_eligible is not None else has_unique_inertia_axes(vp))
             original_mass.append(volume)
             index.insert(existing, volume, area)
+        member_invariants[id(solid)] = (signature if signature is not None else translation_signature(solid, center),
+                                        dims, _face_area_signature(solid))
         group_members.setdefault(existing, []).append((solid, center, volume))
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
         stage_start = time.perf_counter()
