@@ -43,6 +43,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Existing quote and cutting regression tests
         run: npm test
+      - name: Guard STEP inventory runtime budget declarations
+        run: python tests/test_inventory_source_integrity.py
       - name: Regression tests for indexed STEP duplicate lookup
         run: python tests/test_shape_index.py
       - uses: conda-incubator/setup-miniconda@v3
