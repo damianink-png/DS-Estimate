@@ -91,4 +91,17 @@ def proof(step_path):
 if __name__=="__main__":
     parser=argparse.ArgumentParser()
     parser.add_argument("step",type=Path)
-    proof(parser.parse_args().step)
+    parser.add_argument("--inventory", type=Path, help="Engine inventory to check against independent non-merge evidence")
+    args = parser.parse_args()
+    proof(args.step)
+    if args.inventory:
+        import json
+        data = json.loads(args.inventory.read_text(encoding="utf-8"))
+        solids = data["solids"]
+        if len(solids) < 267:
+            raise AssertionError("DockHub inventory missing audited occurrences")
+        a = solids[246]["verifiedShapeKey"]
+        b = solids[266]["verifiedShapeKey"]
+        if a == b:
+            raise AssertionError("DockHub 247/267 incorrectly grouped despite independent non-equivalence audit")
+        print("DOCKHUB_ENGINE_GROUPS_INDEPENDENTLY_AUDITED", a, b)
