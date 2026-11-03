@@ -1,7 +1,7 @@
 """OCCT regression: symmetric STEP shapes can be grouped after translation.
 
 The fast signature is only a filter. Every positive result MUST come from a
-real B-Rep Common intersection; dimensions/volume alone never merge solids.
+two-direction B-Rep Cut verification; dimensions/volume alone never merge solids.
 Run inside the production pythonocc-core environment.
 """
 import sys
@@ -105,7 +105,7 @@ class TranslatedSymmetricParts(unittest.TestCase):
         self.assertFalse(translation_signatures_match(None, None))
 
 
-class RigidCommonRegression(unittest.TestCase):
+class RigidTwoWayCutRegression(unittest.TestCase):
     def rotated(self, shape):
         transform = gp_Trsf()
         transform.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)),
@@ -150,16 +150,16 @@ class RigidCommonRegression(unittest.TestCase):
         # The first proposed orientation may already be correct, so the
         # verifier can return before encountering any rejected candidate.
         # Assert the bounded Boolean work, not an order-dependent counter.
-        self.assertGreater(stats.get('commonAttempts', 0), 0)
-        self.assertLess(stats['commonAttempts'], 24)
+        self.assertGreater(stats.get('twoWayCutAttempts', 0), 0)
+        self.assertLess(stats['twoWayCutAttempts'], 24)
 
-    def test_equal_volume_different_bounds_do_not_trigger_common(self):
+    def test_equal_volume_different_bounds_do_not_trigger_two_way_cut(self):
         a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
         b = self.rotated(BRepPrimAPI_MakeBox(5, 20, 60).Shape())
         stats = {}
         self.assertFalse(equivalent_rigid(a, b, metrics=stats))
         self.assertGreater(stats.get('bboxRejected', 0), 0)
-        self.assertEqual(stats.get('commonAttempts', 0), 0)
+        self.assertEqual(stats.get('twoWayCutAttempts', 0), 0)
 
     def test_two_way_cut_proof_rejects_same_volume_near_coincident_solids(self):
         # Regression for DockHub 247/267: a Common-only near-match cannot
