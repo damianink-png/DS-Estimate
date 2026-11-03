@@ -1,12 +1,12 @@
-"""Independent two-direction Boolean proof for a newly grouped DockHub pair.
+"""Independent two-direction Boolean audit of a disputed DockHub pair.
 
 The previous pinned model (run 41546876622) placed STEP occurrences 247 and
 267 into different geometry groups. The bounding-box filtered matcher (run
 41560613405) grouped them. This test uses the ORIGINAL upstream STEP and
 independent A\\B plus B\\A checks, not the production Common matcher.
 
-It is an intentionally narrow audit: passing does not prove that every
-other grouping in DockHub is correct.
+The previous Common-only merge failed this independent audit. This regression
+must reject that unproven merge; it does not certify every other DockHub pair.
 """
 import argparse
 import math
@@ -82,11 +82,10 @@ def proof(step_path):
                 brepgprop_VolumeProperties(cut.Shape(),p)
                 residuals.append(float(p.Mass()))
             if len(residuals)==2 and all(math.isfinite(x) and abs(x)<=threshold for x in residuals):
-                print("DOCKHUB_PAIR_INDEPENDENT_CUT_PASS",
-                      {"occurrences":[247,267],"volumesMm3":[va,vb],
-                       "cutResidualsMm3":residuals,"thresholdMm3":threshold})
-                return
-    raise AssertionError("DockHub 247/267 cannot be independently verified by two B-Rep Cuts")
+                raise AssertionError("DockHub 247/267 unexpectedly verified as equivalent; re-review the pinned grouping baseline")
+    print("DOCKHUB_PAIR_NOT_VERIFIED_BY_TWO_WAY_CUT",
+          {"occurrences":[247,267],"thresholdMm3":threshold,
+           "note":"Common-only match must not be accepted; independent Cut proof unavailable"})
 
 
 if __name__=="__main__":
