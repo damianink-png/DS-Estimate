@@ -137,6 +137,10 @@ def inventory(path, density=7850.0):
     original_mass = []
     index = ShapeCandidateIndex()
     occurrence_count = {}
+    # Representatives alone are insufficient: tolerant Boolean equivalence is not transitive.
+    # Track every accepted occurrence so a new rigid match cannot bridge
+    # two mutually non-equivalent solids in the same geometry group.
+    group_members = {}
     attempted_translation = 0
     translation_hits = 0
     skipped_translation = 0
@@ -227,6 +231,18 @@ def inventory(path, density=7850.0):
                 equivalent = equivalent_rigid(originals[i], solid, metrics=rigid_filter_metrics)
                 rigid_verification_seconds += time.perf_counter() - stage_start
                 if equivalent:
+                    # Check against every previously accepted occurrence, not
+                    # only the representative. This prevents a tolerance-chain
+                    # false merge (DockHub occurrences 247/267).
+                    consistent = True
+                    for member in group_members.get(i, ()):
+                        if member.IsPartner(solid):
+                            continue
+                        if not equivalent_rigid(member, solid):
+                            consistent = False
+                            break
+                    if not consistent:
+                        continue
                     existing = i
                     rigid_hits += 1
                     method = "OCCT_Rigid_BRep_TwoWayCut"
@@ -244,6 +260,7 @@ def inventory(path, density=7850.0):
             original_rigid_eligible.append(rigid_eligible if rigid_eligible is not None else has_unique_inertia_axes(vp))
             original_mass.append(volume)
             index.insert(existing, volume, area)
+        group_members.setdefault(existing, []).append(solid)
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
         stage_start = time.perf_counter()
         cut_hint = planar_plate_cutting_hint(solid, dims)
