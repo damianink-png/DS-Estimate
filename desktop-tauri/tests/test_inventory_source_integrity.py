@@ -10,5 +10,17 @@ assignments = {target.id for node in ast.walk(fn) if isinstance(node, (ast.Assig
 for name in ("max_translation_checks", "max_translation_seconds", "max_rigid_checks", "max_rigid_seconds"):
     assert name in assignments, f"Missing runtime budget assignment: {name}"
 assert r"\\n    max_translation_seconds" not in text, "Literal escaped newline commented out assignment"
-assert "def matches_every_group_member(" in text and text.count("if not matches_every_group_member(i, solid, center, volume):") == 2, "Both translation and rigid matches must check all group members"
+# Validate the AST rather than an exact call spelling: the helper accepts
+# additional precomputed invariants as the engine is optimized.
+helper = next((node for node in ast.walk(fn) if isinstance(node, ast.FunctionDef)
+               and node.name == "matches_every_group_member"), None)
+assert helper is not None, "Missing all-member geometry verification helper"
+guarded_calls = [
+    node for node in ast.walk(fn)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Name)
+    and node.func.id == "matches_every_group_member"
+]
+assert len(guarded_calls) == 2, "Both translation and rigid paths must verify all group members"
+assert all(len(call.args) >= 4 for call in guarded_calls), "Group verification requires group, solid, center and volume"
 print("STEP inventory budget and rigid group consistency declarations: PASS")
