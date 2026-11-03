@@ -146,6 +146,7 @@ def inventory(path, density=7850.0):
     skipped_rigid = 0
     partner_hits = 0
     rigid_hits = 0
+    rigid_filter_metrics = {}
     signature_seconds = 0.0
     translation_verification_seconds = 0.0
     rigid_verification_seconds = 0.0
@@ -221,12 +222,12 @@ def inventory(path, density=7850.0):
                     continue
                 attempted_rigid += 1
                 stage_start = time.perf_counter()
-                equivalent = equivalent_rigid(originals[i], solid)
+                equivalent = equivalent_rigid(originals[i], solid, metrics=rigid_filter_metrics)
                 rigid_verification_seconds += time.perf_counter() - stage_start
                 if equivalent:
                     existing = i
                     rigid_hits += 1
-                    method = "OCCT_Rigid_BRep_Cut"
+                    method = "OCCT_Rigid_BRep_Common"
                     break
         if existing is None:
             existing = len(originals)
@@ -273,6 +274,8 @@ def inventory(path, density=7850.0):
                    "translationComplexitySkippedCandidates": skipped_complex,
                    "rigidDegenerateSkippedCandidates": skipped_degenerate,
                    "rigidChecks": attempted_rigid, "rigidMatches": rigid_hits,
+                   "rigidBBoxRejectedOrientations": rigid_filter_metrics.get("bboxRejected", 0),
+                   "rigidCommonAttempts": rigid_filter_metrics.get("commonAttempts", 0),
                    "partnerMatches": partner_hits, "rigidBudgetSkippedCandidates": skipped_rigid,
                    "uniqueGeometryGroups": len(groups), **timings}
     if os.environ.get("DS_CAD_PROFILE", "0") == "1":
