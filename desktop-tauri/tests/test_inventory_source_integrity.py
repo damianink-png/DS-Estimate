@@ -22,5 +22,5 @@ guarded_calls = [
     and node.func.id == "matches_every_group_member"
 ]
 assert len(guarded_calls) == 2, "Both translation and rigid paths must verify all group members"
-assert all(len(call.args) >= 4 for call in guarded_calls), "Group verification requires group, solid, center and volume"
+assert all(len(call.args) == len(helper.args.args) for call in guarded_calls), "Every group verification call must supply all required cached invariants"
 print("STEP inventory budget and rigid group consistency declarations: PASS")
