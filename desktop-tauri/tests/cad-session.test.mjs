@@ -48,3 +48,18 @@ test('clear invalidates pending imports and never caches their late completion',
  assert.deepEqual(await s.analyze('frame.step'),current);
  assert.equal(calls,2);
 });
+
+
+test('clear while revision fingerprint is pending cannot cache stale inventory',async()=>{
+ let releaseRevision, calls=0, revisions=0;
+ const s=createCadSession(async()=>({call:++calls}),()=>++revisions===1?new Promise(resolve=>{releaseRevision=resolve}):Promise.resolve('new'));
+ const old=s.analyze('frame.step');
+ await new Promise(resolve=>setImmediate(resolve));
+ s.clear();
+ const current=await s.analyze('frame.step');
+ releaseRevision('old');
+ await old;
+ assert.deepEqual(await s.analyze('frame.step'),current);
+ assert.equal(calls,2);
+ assert.equal(s.stats().cached,1);
+});
