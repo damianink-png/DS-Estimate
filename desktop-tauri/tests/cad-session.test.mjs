@@ -63,3 +63,20 @@ test('clear while revision fingerprint is pending cannot cache stale inventory',
  assert.equal(calls,2);
  assert.equal(s.stats().cached,1);
 });
+
+
+test('stale refresh fingerprint cannot evict a newer generation snapshot',async()=>{
+ let releaseRevision, calls=0, revisions=0;
+ const s=createCadSession(async()=>({call:++calls}),()=>++revisions===1
+  ?new Promise(resolve=>{releaseRevision=resolve}):Promise.resolve('same'));
+ const old=s.analyze('frame.step',{refresh:true});
+ await new Promise(resolve=>setImmediate(resolve));
+ s.clear();
+ const current=await s.analyze('frame.step');
+ releaseRevision('same');
+ await old;
+ const again=await s.analyze('frame.step');
+ assert.strictEqual(again,current);
+ assert.equal(calls,2);
+ assert.equal(s.stats().cached,1);
+});
