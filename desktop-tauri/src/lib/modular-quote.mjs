@@ -24,6 +24,8 @@ export function evaluateModules({
     key:x.key,name:x.name,detail:'Ręcznie dodana operacja',
     kind:x.kind||'time',autoHours:null,autoAmount:null,evidence:'manual-required'
    }))];
+   if(new Set(specs.map(x=>x.key)).size!==specs.length)
+    throw new Error('Powtarzające się identyfikatory operacji w module: '+mod.id);
    const rows=specs.map(x=>{
     const value=rowValue(x,edits[mod.id]?.[x.key]);
     if(value!==null&&value!==undefined&&!nonnegative(value))
@@ -41,7 +43,7 @@ export function evaluateModules({
    const status=omitted?'excluded':!inventory?'idle':!full?
      (missing===rows.length?'missing':'partial'):
      confirmed[mod.id]?'verified':'review';
-   const knownCostPln=rows.reduce((s,x)=>s+(x.costPln??0),0);
+   const knownCostPln=omitted?0:rows.reduce((s,x)=>s+(x.costPln??0),0);
    return {id:mod.id,title:mod.title,detail:mod.detail,rows,missing,status,omitted,
     knownCostPln,verifiedCostPln:status==='verified'?knownCostPln:null,
     requiredReview:status!=='verified'&&status!=='excluded',

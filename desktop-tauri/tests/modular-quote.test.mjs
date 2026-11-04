@@ -63,3 +63,19 @@ test('user-added operation receives own edit and category rate',()=>{
  const extra=quote.modules.find(x=>x.id==='quality').rows.at(-1);
  assert.equal(extra.costPln,DEFAULT_RATES.quality*1.5);
 });
+
+test('excluded stage does not contribute previously entered hours to the cost',()=>{
+ const q=evaluateModules({inventory,edits:{welding:{
+  setup:{value:1},weld:{value:2},clean:{value:1}}},
+  confirmed:{welding:true},excluded:{welding:true}});
+ assert.equal(q.modules.find(x=>x.id==='welding').knownCostPln,0);
+ assert.equal(q.knownCostPln,0);
+ assert.equal(q.modules.find(x=>x.id==='welding').status,'excluded');
+});
+test('duplicate custom row ID cannot silently double charge',()=>{
+ const q=evaluateModules({inventory,custom:{welding:[
+  {key:'custom-1',name:'A',kind:'time'},
+  {key:'custom-1',name:'B',kind:'time'}]}});
+ assert.equal(q.modules.find(x=>x.id==='welding').status,'error');
+ assert.equal(q.modules.find(x=>x.id==='quality').status,'missing');
+});

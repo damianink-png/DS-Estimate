@@ -7,6 +7,7 @@
  import {evaluateModules} from './lib/modular-quote.mjs';
  import {MODULES,DEFAULT_RATES} from './lib/quote-modules/index.mjs';
  import {parseExplicitFilletNotes} from './lib/weld-document.mjs';
+ import {kwantflowKnownCost} from './lib/modular-kwantflow.js';
 
  let {onTools=()=>{}}:{onTools?:()=>void}=$props();
  type Inv={count:number;totalMassKg:number;solids:Array<{id:string;verifiedShapeKey:string;volumeMm3:number;massKg:number;bboxMm:number[];verificationMethod?:string}>;groups:Array<{geometryId:string;quantity:number;massKg:number}>;limitations?:string[]};
@@ -49,7 +50,9 @@
  let selected=$derived(report.modules.find(m=>m.id===active)??report.modules[0]);
  let part=$derived(inventory?.solids[selectedSolid]??null);
  let weldNotes=$derived(pdfText?parseExplicitFilletNotes(pdfText):[]);
- let knownHours=$derived(report.modules.flatMap(m=>m.rows||[]).reduce((sum,r)=>sum+(r.kind==='time'?(r.value??0):0),0));
+ let knownHours=$derived(report.modules.filter(m=>!m.omitted).flatMap(m=>m.rows||[])
+  .reduce((sum,r)=>sum+(r.kind==='time'?(r.value??0):0),0));
+ let knownCost=$derived(kwantflowKnownCost(report));
 
  const projectStorage=()=>projectKey?'ds-estimate-project-v1:'+projectKey:'';
  function saveSettings(){
@@ -79,7 +82,9 @@
  function addOperation(){
   added++;
   const list=custom[active]||[];
-  custom={...custom,[active]:[...list,{key:'custom-'+Date.now()+'-'+added,name:'Nowa operacja',kind:'time'}]};
+  const category=MODULES.find(x=>x.id===active);
+  custom={...custom,[active]:[...list,{key:'custom-'+Date.now()+'-'+added,
+   name:'Nowa operacja',kind:category?.rateKey?'time':'amount'}]};
   confirmed={...confirmed,[active]:false};saveProject();
  }
  function renameOperation(key:string,raw:string){
@@ -338,7 +343,7 @@
   </div>
   <div class="bottom-bar">
    <div><small>Koszt znanych operacji · niepełna oferta</small>
-    <strong>{money(report.knownCostPln)} zł</strong></div>
+    <strong>{money(knownCost)} zł</strong></div>
    <div><small>Ręcznie określony / oszacowany czas</small><strong>{number(knownHours)} h</strong></div>
    <div><small>Etapy wymagające sprawdzenia</small>
     <strong>{report.openModules}</strong></div>
