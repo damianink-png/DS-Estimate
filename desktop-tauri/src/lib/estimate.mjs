@@ -46,7 +46,9 @@ export function estimateProject({parts=[],ratePerHour=388}={}){
   // Evidence for cutting cannot certify an otherwise unspecified CNC step.
   const selectedRoutes=[
    [features.cnc,['removedCm3','holes']],
-   [features.cut,['contourMm','pierces']],
+   // Piercing count alone cannot establish cutting distance or cycle time.
+   // A measured contour (including explicit zero) is required for cutting.
+   [features.cut,['contourMm']],
    [features.bend,['bends']]
   ].filter(([route])=>route!==null && route!==undefined);
   const routingEvidence=selectedRoutes.length>0 &&
