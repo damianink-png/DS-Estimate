@@ -78,3 +78,17 @@ test('explicit measured zero is distinct from absent routing measurement',()=>{
  assert.equal(r.routingStatus,'ROUTINGS_ESTIMATED');
  assert.equal(r.fullQuoteVerified,false);
 });
+
+
+test('project rejects unsafe integer quantities before pricing',()=>{
+ for(const quantity of [0,-1,1.5,Number.MAX_SAFE_INTEGER+1,Infinity,NaN]){
+  assert.throws(()=>estimateProject({parts:[{geometryId:'A',quantity,features:{cut:{contourMm:10}}}]}),RangeError);
+ }
+ assert.equal(estimateProject({parts:[{geometryId:'A',quantity:Number.MAX_SAFE_INTEGER,features:{cut:{contourMm:0,setupMin:0}}}]}).occurrences,Number.MAX_SAFE_INTEGER);
+});
+test('project rejects aggregate occurrence overflow across valid rows',()=>{
+ assert.throws(()=>estimateProject({parts:[
+  {geometryId:'A',quantity:Number.MAX_SAFE_INTEGER,features:{cut:{contourMm:0,setupMin:0}}},
+  {geometryId:'B',quantity:1,features:{cut:{contourMm:0,setupMin:0}}}
+ ]}),RangeError);
+});
