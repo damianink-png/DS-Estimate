@@ -124,6 +124,26 @@ def main():
                           if 'DS-CAD-PROGRESS' in line or 'DS-CAD-PROFILE' in line]
                 result['engineProgressTail']=progress[-8:]
                 result['engineStderrTail']=stderr[-1500:]
+                # The complete occurrence-to-group audit may exceed stderrTail.
+                # Preserve the exact structured record, not a truncated fragment:
+                # the 247/267 independent check still requires a finished inventory.
+                audits=[line.split('[DS-CAD-GROUP-AUDIT]',1)[1].strip()
+                        for line in stderr.splitlines() if '[DS-CAD-GROUP-AUDIT]' in line]
+                if audits:
+                    try:
+                        audit=json.loads(audits[-1])
+                        result['engineGroupAudit']=audit
+                        (folder/'engine_group_audit.json').write_text(
+                            json.dumps(audit,ensure_ascii=False,indent=2),encoding='utf-8')
+                        print('ENGINE_TIMEOUT_GROUP_AUDIT',id,json.dumps({
+                            'processedOccurrences':len(audit.get('occurrenceToGroup',{})),
+                            'auditedSameGroup':audit.get('auditedSameGroup'),
+                            'auditedOccurrences':audit.get('auditedOccurrences'),
+                            'groupCount':audit.get('groupCount'),
+                            'auditFile':'engine_group_audit.json'
+                        },ensure_ascii=False),flush=True)
+                    except (ValueError,TypeError) as audit_error:
+                        result['engineGroupAuditError']=str(audit_error)
                 print('ENGINE_TIMEOUT_PROGRESS',id,json.dumps({
                     'snapshots':progress[-8:],
                     'stderrTail':stderr[-1500:]},ensure_ascii=False),flush=True)
