@@ -42,10 +42,15 @@ export function estimateProject({parts=[],ratePerHour=388}={}){
   // A selected operation with only default parameters is not measurement evidence.
   // Explicit zero is evidence of a measured zero; absent fields are unknown.
   const hasInput=(route,keys)=>route&&typeof route==='object'&&keys.some(k=>Object.hasOwn(route,k) && (k!=='holes'||(Array.isArray(route.holes)&&route.holes.length>0)));
-  const routingEvidence=Boolean(
-   hasInput(features.cnc,['removedCm3','holes'])||
-   hasInput(features.cut,['contourMm','pierces'])||
-   hasInput(features.bend,['bends']));
+  // Every declared operation needs its own measured routing input.
+  // Evidence for cutting cannot certify an otherwise unspecified CNC step.
+  const selectedRoutes=[
+   [features.cnc,['removedCm3','holes']],
+   [features.cut,['contourMm','pierces']],
+   [features.bend,['bends']]
+  ].filter(([route])=>route!==null && route!==undefined);
+  const routingEvidence=selectedRoutes.length>0 &&
+   selectedRoutes.every(([route,keys])=>hasInput(route,keys));
   if(!routingEvidence)missingRoutingOccurrences+=quantity;
   const row={geometryId,quantity,...unit,batchSetupMin:setupMin,totalMin:rowMin,
    totalCost:rowMin*ratePerHour/60,routingEvidence};
