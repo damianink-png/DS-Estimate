@@ -12,10 +12,14 @@ export function createCadSession(loadInventory, fileRevision) {
  const versions=new Map();
  async function analyze(path,{refresh=false}={}) {
   if(typeof path!=='string'||!path.trim())throw new RangeError('STEP path');
+  // Capture invalidation before the asynchronous fingerprint read: clear() may run while it is pending.
+  const epoch=generation;
   const revision=await fileRevision(path);
   const key=JSON.stringify([path,revision]);
   if(refresh){finished.delete(key);versions.set(key,(versions.get(key)||0)+1);running.delete(key);}
-  const version=versions.get(key)||0, epoch=generation;
+  const version=versions.get(key)||0;
+  // A stale fingerprint request must not join or populate the current generation.
+  if(epoch!==generation)return loadInventory(path);
   if(finished.has(key))return finished.get(key);
   if(running.has(key))return running.get(key);
   const task=Promise.resolve().then(()=>loadInventory(path))
