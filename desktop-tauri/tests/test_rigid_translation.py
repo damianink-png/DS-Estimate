@@ -212,8 +212,13 @@ class RigidTwoWayCutRegression(unittest.TestCase):
         b = self.rotated(BRepPrimAPI_MakeBox(5, 20, 60).Shape())
         stats = {}
         self.assertFalse(equivalent_rigid(a, b, metrics=stats))
-        # Either independent face partitions or bounds may reject first.
-        self.assertGreater(stats.get('bboxRejected', 0) + stats.get('faceSignatureRejected', 0), 0)
+        # The principal-moment invariant added in dfb987ab can now reject
+        # the pair even earlier. All three rejection paths are valid, but none
+        # may invoke a Boolean Cut or accept unequal geometry.
+        self.assertGreater(
+            stats.get('inertiaSpectrumRejected', 0)
+            + stats.get('bboxRejected', 0)
+            + stats.get('faceSignatureRejected', 0), 0)
         self.assertEqual(stats.get('twoWayCutAttempts', 0), 0)
 
     def test_two_way_cut_proof_rejects_same_volume_near_coincident_solids(self):
