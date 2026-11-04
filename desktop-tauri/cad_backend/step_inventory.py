@@ -160,6 +160,31 @@ def inventory(path, density=7850.0):
     slow_member_logs = 0
     slow_member_worst_seconds = 0.0
     slow_member_worst_group = None
+    # Capture peak working-set on Windows CI without importing optional modules.
+    def working_set_mb():
+        if os.name != 'nt':
+            return None
+        try:
+            import ctypes
+            from ctypes import wintypes
+            class MemoryCounters(ctypes.Structure):
+                _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD),
+                            ('PeakWorkingSetSize', ctypes.c_size_t), ('WorkingSetSize', ctypes.c_size_t),
+                            ('QuotaPeakPagedPoolUsage', ctypes.c_size_t), ('QuotaPagedPoolUsage', ctypes.c_size_t),
+                            ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t), ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
+                            ('PagefileUsage', ctypes.c_size_t), ('PeakPagefileUsage', ctypes.c_size_t)]
+            counters = MemoryCounters()
+            counters.cb = ctypes.sizeof(counters)
+            kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel.GetCurrentProcess.restype = wintypes.HANDLE
+            kernel.GetProcessMemoryInfo = getattr(ctypes.WinDLL('psapi', use_last_error=True), 'GetProcessMemoryInfo')
+            kernel.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(MemoryCounters), wintypes.DWORD]
+            kernel.GetProcessMemoryInfo.restype = wintypes.BOOL
+            if not kernel.GetProcessMemoryInfo(kernel.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
+                return None
+            return round(counters.WorkingSetSize / 1048576, 1)
+        except (OSError, AttributeError, TypeError, ValueError):
+            return None
     property_seconds = 0.0
     progress_interval = max(1, int(os.environ.get('DS_CAD_PROGRESS_EVERY', '25')))
     profile = os.environ.get('DS_CAD_PROFILE', '0') == '1'
@@ -393,6 +418,7 @@ def inventory(path, density=7850.0):
         if profile and len(solids) % progress_interval == 0:
             print('[DS-CAD-PROGRESS] ' + json.dumps({
                 'processedSolids': len(solids), 'uniqueGroups': len(originals),
+                'workingSetMB': working_set_mb(),
                 'elapsedSeconds': round(time.perf_counter()-t_start, 3),
                 'shapePropertySeconds': round(property_seconds, 3),
                 'signatureSeconds': round(signature_seconds, 3),
@@ -409,7 +435,7 @@ def inventory(path, density=7850.0):
               for i, count in occurrence_count.items()]
     timings["totalSeconds"] = round(time.perf_counter()-t_start, 3)
     timings["comparisonWindowSeconds"] = round(time.perf_counter()-compare_start, 3)
-    diagnostics = {"candidatePairs": candidate_pairs,
+    diagnostics = {"workingSetMB": working_set_mb(), "candidatePairs": candidate_pairs,
                    "signatureSeconds": round(signature_seconds, 3),
                    "translationVerificationSeconds": round(translation_verification_seconds, 3),
                    "rigidVerificationSeconds": round(rigid_verification_seconds, 3),
