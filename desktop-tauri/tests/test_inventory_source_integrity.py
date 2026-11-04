@@ -34,3 +34,10 @@ assert "proven_partner_shapes = [originals[group_id]]" in source_text
 assert source_text.count("proven_partner_shapes.append(member)") == 2
 assert "member_partner_skips += 1" in source_text
 assert "memberPartnerSkips" in source_text
+
+# Slow member profiling must not alter the conservative validation contract.
+assert "DS-CAD-SLOW-MEMBER" in text
+assert "DS_CAD_SLOW_MEMBER_SECONDS" in text
+assert "DS_CAD_SLOW_MEMBER_LIMIT" in text
+assert "record_pair(time.perf_counter()-translation_started" in text
+assert "record_pair(time.perf_counter()-rigid_started" in text

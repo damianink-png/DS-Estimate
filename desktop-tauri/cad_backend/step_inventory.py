@@ -153,6 +153,13 @@ def inventory(path, density=7850.0):
     member_face_area_computations = 0
     member_validation_failures = 0
     member_validation_rejections = 0
+    # Bounded per-pair profiler: expensive group verification currently dominates
+    # DockHub. Emit only slow pairs to stderr, never stdout (JSON protocol).
+    slow_member_threshold = max(0.0, float(os.environ.get("DS_CAD_SLOW_MEMBER_SECONDS", "1.0")))
+    slow_member_log_limit = max(0, int(os.environ.get("DS_CAD_SLOW_MEMBER_LIMIT", "30")))
+    slow_member_logs = 0
+    slow_member_worst_seconds = 0.0
+    slow_member_worst_group = None
     property_seconds = 0.0
     progress_interval = max(1, int(os.environ.get('DS_CAD_PROGRESS_EVERY', '25')))
     profile = os.environ.get('DS_CAD_PROFILE', '0') == '1'
@@ -161,7 +168,21 @@ def inventory(path, density=7850.0):
         nonlocal member_validation_seconds, member_validation_calls
         nonlocal member_validation_pairs, member_face_area_computations, member_partner_skips
         nonlocal member_validation_failures, member_validation_rejections
+        nonlocal slow_member_logs, slow_member_worst_seconds, slow_member_worst_group
         validation_started = time.perf_counter()
+        # This scope is diagnostic only; do not change any geometric decisions.
+        def record_pair(duration, member_index, operation):
+            nonlocal slow_member_logs, slow_member_worst_seconds, slow_member_worst_group
+            if duration > slow_member_worst_seconds:
+                slow_member_worst_seconds = duration
+                slow_member_worst_group = group_id
+            if duration >= slow_member_threshold and slow_member_logs < slow_member_log_limit:
+                slow_member_logs += 1
+                print("DS-CAD-SLOW-MEMBER " + json.dumps({
+                    "group": group_id, "memberIndex": member_index,
+                    "candidateOccurrence": len(solids)+1,
+                    "operation": operation, "seconds": round(duration, 3),
+                    "logged": slow_member_logs}), file=sys.stderr, flush=True)
         member_validation_calls += 1
         current_face_areas = None
         # Tolerance-based Boolean matches are NOT transitive. However, OCCT
@@ -170,7 +191,8 @@ def inventory(path, density=7850.0):
         # occurrences sharing that member's TShape need no additional Boolean.
         # Never substitute bounding boxes, face signatures or fuzzy hashes.
         proven_partner_shapes = [originals[group_id]]
-        for member, member_center, member_volume in group_members.get(group_id, ()):
+        for member_index, (member, member_center, member_volume) in enumerate(group_members.get(group_id, ())):
+            pair_started = time.perf_counter()
             # The caller already proved this exact representative against the
             # candidate. Do not repeat the same pair's expensive B-Rep Cuts.
             if member is originals[group_id]:
@@ -197,10 +219,14 @@ def inventory(path, density=7850.0):
                 and all(abs(a-b) <= 0.01 for a,b in zip(shape_dims, member_dims))
                 and translation_signatures_match(shape_signature, member_signature)
             )
-            if can_translate and equivalent_translation(
-                    member, shape, member_center, shape_center, member_volume, shape_volume):
-                proven_partner_shapes.append(member)
-                continue
+            if can_translate:
+                translation_started = time.perf_counter()
+                translation_equal = equivalent_translation(
+                    member, shape, member_center, shape_center, member_volume, shape_volume)
+                record_pair(time.perf_counter()-translation_started, member_index, "translation")
+                if translation_equal:
+                    proven_partner_shapes.append(member)
+                    continue
             # A rigid isometry preserves the multiset of individual face areas.
             # This is a rejection-only filter; a matching signature is NEVER
             # sufficient to group parts without independent B-Rep Cuts.
@@ -220,7 +246,10 @@ def inventory(path, density=7850.0):
                 member_validation_rejections += 1
                 member_validation_seconds += time.perf_counter() - validation_started
                 return False
-            if not equivalent_rigid(member, shape, cache=rigid_geometry_cache):
+            rigid_started = time.perf_counter()
+            rigid_equal = equivalent_rigid(member, shape, cache=rigid_geometry_cache)
+            record_pair(time.perf_counter()-rigid_started, member_index, "rigid")
+            if not rigid_equal:
                 member_validation_failures += 1
                 member_validation_seconds += time.perf_counter() - validation_started
                 return False
@@ -392,6 +421,8 @@ def inventory(path, density=7850.0):
                    "memberValidationCalls": member_validation_calls,
                    "memberValidationPairs": member_validation_pairs,
                     "memberPartnerSkips": member_partner_skips,
+                    "slowMemberWorstSeconds": round(slow_member_worst_seconds, 3),
+                    "slowMemberWorstGroup": slow_member_worst_group,
                    "memberFaceAreaComputations": member_face_area_computations,
                    "translationChecks": attempted_translation,
                    "translationMatches": translation_hits,
