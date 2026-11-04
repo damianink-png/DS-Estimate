@@ -189,6 +189,43 @@ def _matching_face_areas(a, b, relative_tol=1e-7, cache=None):
                for x,y in zip(sa,sb))
 
 
+def _edge_length_signature(shape):
+    """Rotation-invariant necessary edge invariant, never an identity proof.
+
+    Preserve edge multiplicity: differing B-Rep edge partitions are UNVERIFIED
+    rather than silently merging under a near-zero Boolean residual.
+    """
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopAbs import TopAbs_EDGE
+    from OCC.Core.GProp import GProp_GProps
+    from OCC.Core.BRepGProp import brepgprop_LinearProperties
+    lengths = []
+    explorer = TopExp_Explorer(shape, TopAbs_EDGE)
+    while explorer.More():
+        props = GProp_GProps()
+        brepgprop_LinearProperties(explorer.Current(), props)
+        length = float(props.Mass())
+        if not np.isfinite(length) or length < 0:
+            return None
+        lengths.append(length)
+        explorer.Next()
+    return tuple(sorted(lengths)) if lengths else None
+
+
+def _matching_edge_lengths(a, b, cache=None, relative_tol=1e-7):
+    def signature(shape):
+        if cache is None:
+            return _edge_length_signature(shape)
+        entry = cache.setdefault(id(shape), {})
+        if "edge_lengths" not in entry:
+            entry["edge_lengths"] = _edge_length_signature(shape)
+        return entry["edge_lengths"]
+    sa, sb = signature(a), signature(b)
+    return (sa is not None and sb is not None and len(sa) == len(sb)
+            and all(abs(x-y) <= max(1e-6, max(x,y)*relative_tol)
+                    for x,y in zip(sa,sb)))
+
+
 def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=None, cache=None):
     """Verify proper rigid equivalence with TWO directional B-Rep Cuts per orientation.
 
@@ -234,6 +271,12 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
         if not _matching_face_areas(a, b, cache=cache):
             if metrics is not None:
                 metrics['faceSignatureRejected'] = metrics.get('faceSignatureRejected', 0) + 1
+            return False
+        # Independent necessary invariant before OCCT Cut: protects against
+        # coincident-volume false positives with different edge partitions.
+        if not _matching_edge_lengths(a, b, cache=cache):
+            if metrics is not None:
+                metrics["edgeSignatureRejected"] = metrics.get("edgeSignatureRejected", 0) + 1
             return False
         if axa is None or axb is None:
             return False  # Degenerate inertia handled by translation verifier.
