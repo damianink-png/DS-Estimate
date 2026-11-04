@@ -23,7 +23,7 @@ export function estimateProject({parts=[],ratePerHour=388}={}){
  const cache=new Map(),setupsCharged=new Set();
  let totalMin=0,totalCost=0,occurrences=0,missingRoutingOccurrences=0;
  const rows=parts.map(({geometryId,quantity=1,features={}})=>{
-  if(!geometryId||!Number.isInteger(quantity)||quantity<1)throw new RangeError('geometryId/quantity');
+  if(!geometryId||!Number.isSafeInteger(quantity)||quantity<1)throw new RangeError('geometryId/quantity');
   const key=JSON.stringify([geometryId,features,ratePerHour]);let unit=cache.get(key);
   if(!unit){const cnc=features.cnc?estimateCnc({...features.cnc,ratePerHour}):null;
    const cut=features.cut?estimateCut({...features.cut,ratePerHour}):null;
@@ -56,6 +56,7 @@ export function estimateProject({parts=[],ratePerHour=388}={}){
   if(!routingEvidence)missingRoutingOccurrences+=quantity;
   const row={geometryId,quantity,...unit,batchSetupMin:setupMin,totalMin:rowMin,
    totalCost:rowMin*ratePerHour/60,routingEvidence};
+  if(!Number.isSafeInteger(occurrences+quantity))throw new RangeError('total occurrences exceed safe integer range');
   totalMin+=row.totalMin;totalCost+=row.totalCost;occurrences+=quantity;return row;
  });
  const hasCompleteRouting=occurrences>0&&missingRoutingOccurrences===0;
