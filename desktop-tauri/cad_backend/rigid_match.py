@@ -274,10 +274,13 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
             return False
         # Independent necessary invariant before OCCT Cut: protects against
         # coincident-volume false positives with different edge partitions.
+        # STEP may split an otherwise equivalent edge into several segments.
+        # Edge partitions are therefore diagnostic, not a necessary rigid
+        # invariant. Keep the two directional Boolean Cuts as the acceptance
+        # criterion; never merge from matching edge lengths alone.
         if not _matching_edge_lengths(a, b, cache=cache):
             if metrics is not None:
-                metrics["edgeSignatureRejected"] = metrics.get("edgeSignatureRejected", 0) + 1
-            return False
+                metrics["edgePartitionMismatch"] = metrics.get("edgePartitionMismatch", 0) + 1
         if axa is None or axb is None:
             return False  # Degenerate inertia handled by translation verifier.
         target_bounds = bounds(a)

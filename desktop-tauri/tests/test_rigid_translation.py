@@ -142,6 +142,17 @@ class RigidTwoWayCutRegression(unittest.TestCase):
             self.assertEqual(face_calls.call_count, 2)
             self.assertGreaterEqual(cut_calls.call_count, 2)
 
+    def test_different_edge_partition_does_not_override_boolean_proof(self):
+        # Imported STEP files can split one edge into several collinear edges.
+        # A mismatch is recorded, but must not reject a valid rigid match.
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = self.rotated(BRepPrimAPI_MakeBox(10, 20, 30).Shape())
+        stats = {}
+        with patch.object(rigid_match, "_matching_edge_lengths", return_value=False):
+            self.assertTrue(equivalent_rigid(a, b, metrics=stats))
+        self.assertEqual(stats.get("edgePartitionMismatch"), 1)
+        self.assertGreater(stats.get("twoWayCutAttempts", 0), 0)
+
     def test_rigid_verification_does_not_mutate_inputs(self):
         a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
         b = self.rotated(BRepPrimAPI_MakeBox(10, 20, 30).Shape())
