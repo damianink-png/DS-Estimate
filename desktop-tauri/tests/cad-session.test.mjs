@@ -23,3 +23,28 @@ test('CAD errors are never cached as successful geometry',async()=>{
  assert.equal(await s.analyze('bad.step'),'ok');
  assert.equal(calls,2);
 });
+
+test('refresh during pending import does not let stale result overwrite new snapshot',async()=>{
+ let releaseOld, calls=0;
+ const s=createCadSession(()=>{calls++;return calls===1?new Promise(resolve=>{releaseOld=resolve}):Promise.resolve({version:2})},async()=>1);
+ const stale=s.analyze('frame.step');
+ await new Promise(resolve=>setImmediate(resolve));
+ const fresh=await s.analyze('frame.step',{refresh:true});
+ releaseOld({version:1});
+ assert.deepEqual(await stale,{version:1});
+ assert.deepEqual(await s.analyze('frame.step'),fresh);
+ assert.equal(calls,2);
+});
+
+test('clear invalidates pending imports and never caches their late completion',async()=>{
+ let releaseOld, calls=0;
+ const s=createCadSession(()=>{calls++;return calls===1?new Promise(resolve=>{releaseOld=resolve}):Promise.resolve({version:2})},async()=>1);
+ const old=s.analyze('frame.step');
+ await new Promise(resolve=>setImmediate(resolve));
+ s.clear();
+ const current=await s.analyze('frame.step');
+ releaseOld({version:1});
+ await old;
+ assert.deepEqual(await s.analyze('frame.step'),current);
+ assert.equal(calls,2);
+});
