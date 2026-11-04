@@ -16,10 +16,11 @@ export function createCadSession(loadInventory, fileRevision) {
   const epoch=generation;
   const revision=await fileRevision(path);
   const key=JSON.stringify([path,revision]);
+  // A stale fingerprint request must not invalidate a newer refresh or clear.
+  // Check the generation BEFORE mutating cache state for refresh.
+  if(epoch!==generation)return loadInventory(path);
   if(refresh){finished.delete(key);versions.set(key,(versions.get(key)||0)+1);running.delete(key);}
   const version=versions.get(key)||0;
-  // A stale fingerprint request must not join or populate the current generation.
-  if(epoch!==generation)return loadInventory(path);
   if(finished.has(key))return finished.get(key);
   if(running.has(key))return running.get(key);
   const task=Promise.resolve().then(()=>loadInventory(path))
