@@ -2,7 +2,12 @@ use std::path::PathBuf;
 use std::process::Command;
 
 #[tauri::command]
-fn analyze_step(app: tauri::AppHandle, path: String) -> Result<String, String> {
+async fn analyze_step(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || analyze_step_blocking(app, path))
+        .await.map_err(|e| format!("Błąd zadania CAD: {e}"))?
+}
+
+fn analyze_step_blocking(app: tauri::AppHandle, path: String) -> Result<String, String> {
     use tauri::Manager;
     let input = PathBuf::from(&path);
     if !input.is_file() { return Err("Nie znaleziono pliku STEP".into()); }
@@ -18,6 +23,18 @@ fn analyze_step(app: tauri::AppHandle, path: String) -> Result<String, String> {
         return Err(format!("Błąd analizy STEP: {}", String::from_utf8_lossy(&result.stderr)));
     }
     String::from_utf8(result.stdout).map_err(|e| e.to_string())
+}
+
+/// A cache key bound to actual file metadata; changing the STEP invalidates
+/// only its geometry snapshot, not operator-confirmed settings.
+#[tauri::command]
+fn step_fingerprint(path: String) -> Result<String, String> {
+    let meta = std::fs::metadata(&path).map_err(|e| format!("Plik STEP: {e}"))?;
+    if !meta.is_file() { return Err("Wymagany plik STEP".into()); }
+    let modified = meta.modified().map_err(|e| e.to_string())?
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?;
+    Ok(format!("{}:{}:{}", meta.len(), modified.as_secs(), modified.subsec_nanos()))
 }
 
 #[tauri::command]
@@ -77,7 +94,7 @@ fn scan_project(path: String) -> Result<Vec<String>, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![analyze_step, extract_pdf_text, scan_project])
+        .invoke_handler(tauri::generate_handler![analyze_step, step_fingerprint, extract_pdf_text, scan_project])
         .run(tauri::generate_context!())
         .expect("Błąd uruchamiania DS Estimate");
 }
