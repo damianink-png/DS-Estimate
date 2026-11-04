@@ -44,6 +44,31 @@ def proof(step_path):
         raise AssertionError("Missing source STEP solid 247 or 267")
     a, b = shapes[247], shapes[267]
 
+    # Independent source-model health evidence. Do not silently heal the STEP:
+    # a repair can change geometry and invalidate the pinned 247/267 comparison.
+    from OCC.Core.BRepCheck import BRepCheck_Analyzer
+    from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE
+    health = {}
+    for occurrence, shape in ((247, a), (267, b)):
+        def count_subshapes(kind):
+            explorer = TopExp_Explorer(shape, kind)
+            count = 0
+            while explorer.More():
+                count += 1
+                explorer.Next()
+            return count
+        try:
+            valid = bool(BRepCheck_Analyzer(shape).IsValid())
+            health[str(occurrence)] = {
+                "brepValid": valid,
+                "isNull": bool(shape.IsNull()),
+                "faces": count_subshapes(TopAbs_FACE),
+                "edges": count_subshapes(TopAbs_EDGE),
+            }
+        except Exception as exc:
+            health[str(occurrence)] = {"brepValid": None, "error": type(exc).__name__}
+    print("DOCKHUB_SOURCE_BREP_HEALTH", health, flush=True)
+
     def props(shape):
         p = GProp_GProps()
         brepgprop_VolumeProperties(shape, p)
