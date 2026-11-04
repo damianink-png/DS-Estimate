@@ -442,10 +442,28 @@ def inventory(path, density=7850.0):
             str(i): solids[i - 1]["verifiedShapeKey"] if i <= len(solids) else None
             for i in audited
         }
+        # Record the exact acceptance paths for disputed occurrences.
+        # This is diagnostic, not a new equality rule: a common group alone
+        # is NOT independent evidence of geometric equivalence.
+        audited_methods = {
+            str(i): solids[i - 1]["verificationMethod"] if i <= len(solids) else None
+            for i in audited
+        }
+        audited_details = {
+            str(i): {
+                "volumeMm3": solids[i - 1]["volumeMm3"],
+                "areaMm2": solids[i - 1]["areaMm2"],
+                "bboxMm": solids[i - 1]["bboxMm"],
+                "method": audited_methods[str(i)],
+            } if i <= len(solids) else None
+            for i in audited
+        }
         print("[DS-CAD-GROUP-AUDIT] " + json.dumps({
             "auditedOccurrences": audited_groups,
             "auditedSameGroup": (audited_groups["247"] is not None
                                  and audited_groups["247"] == audited_groups["267"]),
+            "auditedMethods": audited_methods,
+            "auditedDetails": audited_details,
             "groupOccurrences": group_occurrences,
         }), file=sys.stderr, flush=True)
     groups = [{"geometryId": f"shared-tshape-{i}", "quantity": count,
