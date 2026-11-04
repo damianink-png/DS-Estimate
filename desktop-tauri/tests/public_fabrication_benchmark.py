@@ -136,10 +136,10 @@ def main():
                         (folder/'engine_group_audit.json').write_text(
                             json.dumps(audit,ensure_ascii=False,indent=2),encoding='utf-8')
                         print('ENGINE_TIMEOUT_GROUP_AUDIT',id,json.dumps({
-                            'processedOccurrences':len(audit.get('occurrenceToGroup',{})),
+                            'processedOccurrences':sum(len(v) for v in audit.get('groupOccurrences',{}).values()),
                             'auditedSameGroup':audit.get('auditedSameGroup'),
                             'auditedOccurrences':audit.get('auditedOccurrences'),
-                            'groupCount':audit.get('groupCount'),
+                            'groupCount':len(audit.get('groupOccurrences',{})),
                             'auditFile':'engine_group_audit.json'
                         },ensure_ascii=False),flush=True)
                     except (ValueError,TypeError) as audit_error:
