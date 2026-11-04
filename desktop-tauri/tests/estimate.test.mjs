@@ -24,3 +24,34 @@ test('different technology routings require separate setup, valid defaults prese
  assert.equal(r.totalMin,10+2+15+3);
  assert.equal(r.uniqueCalculations,2);
 });
+
+test('missing routing cannot silently become a complete zero-cost estimate',()=>{
+ const r=estimateProject({parts:[{geometryId:'unknown',quantity:5}]});
+ assert.equal(r.totalCost,0); // Legacy numeric subtotal remains compatible.
+ assert.equal(r.knownCostPln,0);
+ assert.equal(r.routedCostPln,null);
+ assert.equal(r.missingRoutingOccurrences,5);
+ assert.equal(r.routingStatus,'PARTIAL');
+ assert.equal(r.fullQuoteVerified,false);
+});
+test('mixed project retains known subtotal, but complete routing price stays unknown',()=>{
+ const r=estimateProject({parts:[
+  {geometryId:'A',quantity:2,features:{cnc:{removedCm3:10,removalCm3Min:10,setupMin:0}}},
+  {geometryId:'B',quantity:3,features:{}}
+ ]});
+ assert.equal(r.missingRoutingOccurrences,3);
+ assert.equal(r.routedCostPln,null);
+ assert.ok(r.knownCostPln>0);
+ assert.equal(r.rows[1].routingEvidence,false);
+});
+test('complete explicit routing and empty inventory are distinguished',()=>{
+ const known=estimateProject({parts:[{geometryId:'A',quantity:2,features:{
+  cnc:{removedCm3:10,removalCm3Min:10,setupMin:0}}}]});
+ assert.equal(known.missingRoutingOccurrences,0);
+ assert.equal(known.routingStatus,'ROUTINGS_ESTIMATED');
+ assert.equal(known.routedCostPln,known.totalCost);
+ assert.equal(known.fullQuoteVerified,false);
+ const empty=estimateProject();
+ assert.equal(empty.routingStatus,'NO_PARTS');
+ assert.equal(empty.routedCostPln,null);
+});

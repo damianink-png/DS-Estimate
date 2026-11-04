@@ -81,3 +81,40 @@ test('disabling a manually chosen machine never crashes quote or silently change
  assert.equal(result.complete,false);
  assert.ok(result.rows[0].cut.warnings.some(w=>w.includes('niedostępna')));
 });
+
+test('EarthPress-like partial cutting evidence exposes only a known-cost subtotal',()=>{
+ const r=planCuttingBatches({material:'S355',groups:[
+  group('known-plate',10,2),
+  {key:'unknown-profile',quantity:5,solid:{bboxMm:[1000,40,40],volumeMm3:50000}}
+ ]});
+ assert.equal(r.knownTimeOccurrences,2);
+ assert.equal(r.pendingOccurrences,5);
+ assert.equal(r.pricedOccurrences,2);
+ assert.equal(r.coveragePct,28.6);
+ assert.equal(r.costCoveragePct,28.6);
+ assert.equal(r.complete,false);
+ assert.equal(r.completeness,'PARTIAL');
+ assert.equal(r.acceptedCostPln,null);
+ assert.ok(r.knownCostPln>0);
+});
+
+test('no cutting evidence is NEVER reported as an accepted 0 PLN quotation',()=>{
+ const missing=planCuttingBatches({groups:[{key:'unclassified',quantity:3,
+  solid:{bboxMm:[80,60,40],volumeMm3:80000}}]});
+ assert.equal(missing.knownCostPln,0);
+ assert.equal(missing.acceptedCostPln,null);
+ assert.equal(missing.costCoveragePct,0);
+ assert.equal(missing.complete,false);
+ const empty=planCuttingBatches({groups:[]});
+ assert.equal(empty.complete,false);
+ assert.equal(empty.completeness,'NO_PARTS');
+ assert.equal(empty.acceptedCostPln,null);
+});
+
+test('fully priced evidence retains the previous complete batch cost',()=>{
+ const r=planCuttingBatches({material:'S355',groups:[group('sheet',10,3)]});
+ assert.equal(r.complete,true);
+ assert.equal(r.costCoveragePct,100);
+ assert.equal(r.acceptedCostPln,r.knownCostPln);
+ assert.equal(r.completeness,'CUTTING_ESTIMATED');
+});

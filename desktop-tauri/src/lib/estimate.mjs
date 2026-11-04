@@ -18,7 +18,8 @@ export function estimateBending({bends=0,secondsPerBend=25,setupMin=15,handlingM
  const totalMin=bends*secondsPerBend/60+setupMin+handlingMin;return {totalMin,cost:totalMin*ratePerHour/60};
 }
 export function estimateProject({parts=[],ratePerHour=388}={}){
- const cache=new Map(),setupsCharged=new Set();let totalMin=0,totalCost=0,occurrences=0;
+ const cache=new Map(),setupsCharged=new Set();
+ let totalMin=0,totalCost=0,occurrences=0,missingRoutingOccurrences=0;
  const rows=parts.map(({geometryId,quantity=1,features={}})=>{
   if(!geometryId||!Number.isInteger(quantity)||quantity<1)throw new RangeError('geometryId/quantity');
   const key=JSON.stringify([geometryId,features,ratePerHour]);let unit=cache.get(key);
@@ -34,9 +35,21 @@ export function estimateProject({parts=[],ratePerHour=388}={}){
   const setupMin=setupsCharged.has(key)?0:unit.unitSetupMin;
   setupsCharged.add(key);
   const rowMin=setupMin+unit.unitRunMin*quantity;
-  const row={geometryId,quantity,...unit,batchSetupMin:setupMin,totalMin:rowMin,totalCost:rowMin*ratePerHour/60};
+  // Missing process features are unknown, not a free operation. Keep the
+  // legacy numeric totals as *known* subtotals for backward compatibility.
+  const routingEvidence=Boolean(unit.cnc||unit.cut||unit.bend);
+  if(!routingEvidence)missingRoutingOccurrences+=quantity;
+  const row={geometryId,quantity,...unit,batchSetupMin:setupMin,totalMin:rowMin,
+   totalCost:rowMin*ratePerHour/60,routingEvidence};
   totalMin+=row.totalMin;totalCost+=row.totalCost;occurrences+=quantity;return row;
- });return {rows,totalMin,totalCost,occurrences,uniqueCalculations:cache.size};
+ });
+ const hasCompleteRouting=occurrences>0&&missingRoutingOccurrences===0;
+ return {rows,totalMin,totalCost,occurrences,uniqueCalculations:cache.size,
+  missingRoutingOccurrences,knownCostPln:totalCost,
+  routedCostPln:hasCompleteRouting?totalCost:null,
+  routingStatus:hasCompleteRouting?'ROUTINGS_ESTIMATED':(occurrences?'PARTIAL':'NO_PARTS'),
+  // ROUTINGS_ESTIMATED is NOT full welding/machining/assembly quote certification.
+  fullQuoteVerified:false};
 }
 
 // Process-based welded assembly estimate. All inputs are explicit routing data;

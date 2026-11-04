@@ -17,7 +17,7 @@ export function planCuttingBatches({
 }={}){
  if(!Array.isArray(groups))throw new TypeError('groups must be an array');
  const seen=new Set(), charged=new Set();
- let knownTimeOccurrences=0,pendingOccurrences=0,setupMinutes=0,runMinutes=0;
+ let knownTimeOccurrences=0,pendingOccurrences=0,pricedOccurrences=0,setupMinutes=0,runMinutes=0;
  let totalCostPln=0,hasUnpriced=false;
  const output=[];
  for(const group of groups){
@@ -66,8 +66,10 @@ export function planCuttingBatches({
   if(acceptedMin===null)pendingOccurrences+=group.quantity;
   else{
    knownTimeOccurrences+=group.quantity;
-   if(costPln!==null)totalCostPln+=costPln;
-   else hasUnpriced=true;
+   if(costPln!==null){
+    totalCostPln+=costPln;
+    pricedOccurrences+=group.quantity;
+   } else hasUnpriced=true;
   }
   if(calculatedMin!==null){setupMinutes+=chargedSetup;runMinutes+=prediction.perPieceMin*group.quantity;}
   output.push({...group,cut:{...prediction,batchId,nominalThicknessMm:nominalThickness,
@@ -75,9 +77,17 @@ export function planCuttingBatches({
    confidence:manuallyAccepted?'manual':prediction.confidence,
    warnings:manuallyAccepted?[...prediction.warnings,'Czas zmieniony ręcznie']:prediction.warnings}});
  }
- return {rows:output,knownTimeOccurrences,pendingOccurrences,setupMinutes,runMinutes,
-  calculatedTimeMin:setupMinutes+runMinutes,acceptedCostPln:hasUnpriced?null:totalCostPln,
-  batchCount:charged.size,coveragePct:output.reduce((s,x)=>s+x.quantity,0)>0?
-   Number((knownTimeOccurrences/output.reduce((s,x)=>s+x.quantity,0)*100).toFixed(1)):0,
-  complete:pendingOccurrences===0&&!hasUnpriced};
+ const occurrences=knownTimeOccurrences+pendingOccurrences;
+ const complete=occurrences>0 && pendingOccurrences===0 && !hasUnpriced;
+ return {rows:output,knownTimeOccurrences,pendingOccurrences,pricedOccurrences,
+  setupMinutes,runMinutes,
+  // These are explicitly PARTIAL subtotals when any occurrence has unknown time/cost.
+  calculatedTimeMin:setupMinutes+runMinutes,
+  knownCostPln:totalCostPln,
+  acceptedCostPln:complete?totalCostPln:null,
+  batchCount:charged.size,
+  coveragePct:occurrences>0?Number((knownTimeOccurrences/occurrences*100).toFixed(1)):0,
+  costCoveragePct:occurrences>0?Number((pricedOccurrences/occurrences*100).toFixed(1)):0,
+  completeness:complete?'CUTTING_ESTIMATED':(occurrences?'PARTIAL':'NO_PARTS'),
+  complete};
 }
