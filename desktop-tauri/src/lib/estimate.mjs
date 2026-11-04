@@ -18,6 +18,8 @@ export function estimateBending({bends=0,secondsPerBend=25,setupMin=15,handlingM
  const totalMin=bends*secondsPerBend/60+setupMin+handlingMin;return {totalMin,cost:totalMin*ratePerHour/60};
 }
 export function estimateProject({parts=[],ratePerHour=388}={}){
+ valid(ratePerHour,'ratePerHour');
+ if(!Array.isArray(parts))throw new TypeError('parts must be an array');
  const cache=new Map(),setupsCharged=new Set();
  let totalMin=0,totalCost=0,occurrences=0,missingRoutingOccurrences=0;
  const rows=parts.map(({geometryId,quantity=1,features={}})=>{
