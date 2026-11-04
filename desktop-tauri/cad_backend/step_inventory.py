@@ -430,6 +430,24 @@ def inventory(path, density=7850.0):
                 'memberPartnerSkips': member_partner_skips,
                 'cuttingHintSeconds': round(cutting_hint_seconds, 3)
             }), file=sys.stderr, flush=True)
+    # Profile-only occurrence-to-group audit: identify an unexpected merge
+    # without changing any B-Rep decisions or pinned regression expectations.
+    # Store compact occurrence indices rather than serializing entire shapes.
+    group_occurrences = {}
+    for occurrence_index, row in enumerate(solids, start=1):
+        group_occurrences.setdefault(row["verifiedShapeKey"], []).append(occurrence_index)
+    if profile:
+        audited = (247, 267)
+        audited_groups = {
+            str(i): solids[i - 1]["verifiedShapeKey"] if i <= len(solids) else None
+            for i in audited
+        }
+        print("[DS-CAD-GROUP-AUDIT] " + json.dumps({
+            "auditedOccurrences": audited_groups,
+            "auditedSameGroup": (audited_groups["247"] is not None
+                                 and audited_groups["247"] == audited_groups["267"]),
+            "groupOccurrences": group_occurrences,
+        }), file=sys.stderr, flush=True)
     groups = [{"geometryId": f"shared-tshape-{i}", "quantity": count,
                "massKg": original_mass[i] * density * 1e-9}
               for i, count in occurrence_count.items()]
