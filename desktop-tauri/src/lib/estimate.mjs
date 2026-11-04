@@ -41,7 +41,7 @@ export function estimateProject({parts=[],ratePerHour=388}={}){
   // legacy numeric totals as *known* subtotals for backward compatibility.
   // A selected operation with only default parameters is not measurement evidence.
   // Explicit zero is evidence of a measured zero; absent fields are unknown.
-  const hasInput=(route,keys)=>route&&typeof route==='object'&&keys.some(k=>Object.hasOwn(route,k));
+  const hasInput=(route,keys)=>route&&typeof route==='object'&&keys.some(k=>Object.hasOwn(route,k) && (k!=='holes'||(Array.isArray(route.holes)&&route.holes.length>0)));
   const routingEvidence=Boolean(
    hasInput(features.cnc,['removedCm3','holes'])||
    hasInput(features.cut,['contourMm','pierces'])||
