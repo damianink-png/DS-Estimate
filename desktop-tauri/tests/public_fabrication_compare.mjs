@@ -14,6 +14,10 @@ import { assessPublicComparison } from '../src/lib/public-comparison-gate.mjs';
 const root=resolve(process.argv[2]||'public_fabrication_output');
 const source=JSON.parse(readFileSync(resolve('tests/public_fabrication_projects.json'),'utf8'));
 const cases=JSON.parse(readFileSync(join(root,'public_cases.json'),'utf8'));
+const activeSource=source.cases.filter(c=>c.id!=='dockhub');
+if(cases.length!==activeSource.length || cases.some(c=>!activeSource.some(s=>s.id===c.id))) {
+ throw new Error('Benchmark input must contain exactly the three active public cases; DockHub is suspended');
+}
 const csv=(v)=>'"'+String(v??'').replaceAll('"','""')+'"';
 const human=(v)=>typeof v==='number'?v.toFixed(2):'brak';
 const rows=[['project','part_key','count','kg_each','hint','method','auto_time_h','status','warnings']];
@@ -153,7 +157,7 @@ const md=[
  ])
 ];
 writeFileSync(join(root,'COMPARISON.md'),md.join('\n'),'utf8');
-const gate=assessPublicComparison(results,source.cases.map(c=>c.id));
+const gate=assessPublicComparison(results,activeSource.map(c=>c.id));
 if(!gate.ok){
  console.error('PUBLIC_COMPARISON_GATE_FAIL',JSON.stringify(gate.errors));
  process.exitCode=1;

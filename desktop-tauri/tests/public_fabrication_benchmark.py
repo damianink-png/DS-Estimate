@@ -48,8 +48,11 @@ def main():
     args=p.parse_args()
     args.out.mkdir(parents=True,exist_ok=True)
     cfg=json.loads(SOURCES.read_text(encoding='utf-8'))
+    # DockHub is suspended by user request; retain its pinned source data for later.
+    active_cases=[case for case in cfg['cases'] if case['id'] != 'dockhub']
+    assert {case['id'] for case in active_cases} == {'portal-frame','stepgen-frame','earthpress'}, 'Unexpected active benchmark set'
     summaries=[]
-    for case in cfg['cases']:
+    for case in active_cases:
         id=case['id']; start=time.monotonic();folder=args.out/id
         folder.mkdir(exist_ok=True)
         result={'id':id,'name':case['name'],'repo':case['repo'],'revision':case['sha'],
@@ -163,5 +166,5 @@ def main():
     (args.out/'public_cases.json').write_text(json.dumps(summaries,ensure_ascii=False,indent=2),encoding='utf-8')
     print('PUBLIC_CASES_COMPLETED',len(summaries),'ENGINE_OK',sum(x['status']=='ENGINE_OK' for x in summaries),flush=True)
     if sum(x['status']=='ENGINE_OK' for x in summaries)!=len(summaries):
-        sys.exit('PUBLIC_GATE_FAIL: Not all 4 genuine public models analyzed by compiled DS Estimate CAD EXE. See artifacts; partial results are NOT a PASS.')
+        sys.exit('PUBLIC_GATE_FAIL: Not all 3 active genuine public models analyzed by compiled DS Estimate CAD EXE. See artifacts; partial results are NOT a PASS.')
 if __name__=='__main__':main()

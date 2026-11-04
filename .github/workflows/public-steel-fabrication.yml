@@ -85,13 +85,13 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check pymupdf
           if ($LASTEXITCODE -ne 0) { throw 'PyMuPDF unavailable' }
-      - name: Benchmark four real public STEP assemblies against original PDFs and BOM
+      - name: Benchmark three active public STEP assemblies against original PDFs and BOM
         shell: pwsh
         id: actual_projects
         run: |
           $env:DS_CAD_PROFILE = '1'
           python tests/public_fabrication_benchmark.py --engine src-tauri/cad-backend/ds-cad-engine.exe --out public_fabrication_output --timeout 240
-          if ($LASTEXITCODE -ne 0) { throw 'Real public STEP benchmark gate failed: all four genuine CAD models must import successfully' }
+          if ($LASTEXITCODE -ne 0) { throw 'Real public STEP benchmark gate failed: all three active genuine CAD models must import successfully' }
       - name: Run DS Estimate automatic cutting-time planner and compare independent manual time ranges
         if: always()
         shell: pwsh
@@ -102,14 +102,6 @@ jobs:
           } else {
             Write-Host 'No result JSON: previous setup failed. Check the logged reason.'
           }
-      - name: Independent two-direction B-Rep non-merge audit of disputed DockHub occurrences
-        if: always()
-        shell: pwsh
-        run: |
-          $source = 'public_fabrication_output/dockhub/A-assembly.step'
-          if (!(Test-Path $source)) { throw 'DockHub original STEP missing; independent geometry audit cannot pass' }
-          conda run -n ds-cad python tests/test_dockhub_independent_merge.py $source --inventory public_fabrication_output/dockhub/ds_estimate_inventory.json
-          if ($LASTEXITCODE -ne 0) { throw 'DockHub disputed pair no longer satisfies conservative non-merge regression' }
       - name: Pinned source STEP mass, duplicate grouping and partial cutting regression gate
         if: always()
         shell: pwsh

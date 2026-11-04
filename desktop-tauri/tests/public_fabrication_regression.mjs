@@ -20,7 +20,12 @@ export const PINNED_BASELINE = Object.freeze({
  dockhub: {solids:541,groups:111,massKg:4056.864258,cutCoverage:19.4,knownCutHours:4.69192}
 });
 
-export function checkPinnedPublicRegression(results, baseline=PINNED_BASELINE){
+// The suspended DockHub baseline is preserved, never marked PASS by exclusion.
+export const ACTIVE_PINNED_BASELINE = Object.freeze(Object.fromEntries(
+ Object.entries(PINNED_BASELINE).filter(([id])=>id!=='dockhub')
+));
+
+export function checkPinnedPublicRegression(results, baseline=ACTIVE_PINNED_BASELINE){
  const errors=[];
  if(!Array.isArray(results))return ['Missing comparison.json result array'];
  const seen=new Set();
@@ -54,6 +59,6 @@ if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url))
   console.error('PUBLIC_PINNED_REGRESSION_FAIL',JSON.stringify(errors));
   process.exitCode=1;
  }else{
-  console.log('PUBLIC_PINNED_REGRESSION_PASS: four source snapshots unchanged; masses, verified groups, partial cut coverage and hours stable. Full quote remains UNAVAILABLE.');
+  console.log('PUBLIC_PINNED_REGRESSION_PASS: three active source snapshots unchanged; masses, verified groups, partial cut coverage and hours stable. Full quote remains UNAVAILABLE.');
  }
 }
