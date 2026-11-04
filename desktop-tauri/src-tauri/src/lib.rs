@@ -60,13 +60,17 @@ fn accepted_document(path: &std::path::Path) -> bool {
 }
 
 fn collect_documents(path: &std::path::Path, depth: usize, out: &mut Vec<String>) -> Result<(), String> {
-    if out.len() >= MAX_SCAN_FILES { return Err(format!("Folder zawiera więcej niż {MAX_SCAN_FILES} dokumentów. Wybierz mniejszy zestaw.")); }
     if depth > MAX_SCAN_DEPTH { return Err("Przekroczono bezpieczny limit zagnieżdżenia folderów.".into()); }
     let meta = std::fs::symlink_metadata(path)
         .map_err(|e| format!("Nie można odczytać ścieżki {}: {e}", path.display()))?;
     if meta.file_type().is_symlink() { return Ok(()); }
     if meta.is_file() {
-        if accepted_document(path) { out.push(path.to_string_lossy().into_owned()); }
+        if accepted_document(path) {
+            if out.len() >= MAX_SCAN_FILES {
+                return Err(format!("Folder zawiera więcej niż {MAX_SCAN_FILES} dokumentów. Wybierz mniejszy zestaw."));
+            }
+            out.push(path.to_string_lossy().into_owned());
+        }
     } else if meta.is_dir() {
         let mut children = std::fs::read_dir(path)
             .map_err(|e| format!("Nie można otworzyć folderu {}: {e}", path.display()))?
@@ -97,4 +101,26 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![analyze_step, step_fingerprint, extract_pdf_text, scan_project])
         .run(tauri::generate_context!())
         .expect("Błąd uruchamiania DS Estimate");
+}
+
+#[cfg(test)]
+mod scan_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_exact_limit_and_rejects_only_next_supported_document() {
+        let dir = std::env::temp_dir().join(format!("ds-estimate-scan-{}-{:?}", std::process::id(), std::thread::current().id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let supported = dir.join("part.step");
+        let ignored = dir.join("readme.txt");
+        std::fs::write(&supported, b"").unwrap();
+        std::fs::write(&ignored, b"").unwrap();
+        let mut items = vec!["existing".to_owned(); MAX_SCAN_FILES - 1];
+        assert!(collect_documents(&supported, 0, &mut items).is_ok());
+        assert_eq!(items.len(), MAX_SCAN_FILES);
+        assert!(collect_documents(&ignored, 0, &mut items).is_ok());
+        assert!(collect_documents(&supported, 0, &mut items).is_err());
+        assert_eq!(items.len(), MAX_SCAN_FILES);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }
