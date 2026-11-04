@@ -26,6 +26,10 @@ on:
       - 'desktop-tauri/tests/test_rigid_translation.py'
       - 'desktop-tauri/tests/test_dockhub_independent_merge.py'
       - 'desktop-tauri/tests/cutting-batch.test.mjs'
+      - 'desktop-tauri/src/lib/quote-modules/**'
+      - 'desktop-tauri/src/lib/modular-quote.mjs'
+      - 'desktop-tauri/tests/modular-quote.test.mjs'
+      - 'desktop-tauri/tests/modular-compiled-gate.mjs'
 permissions:
   contents: read
 concurrency:

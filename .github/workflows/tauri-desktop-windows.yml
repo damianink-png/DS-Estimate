@@ -12,6 +12,7 @@ on:
       - 'desktop-tauri/package.json'
       - 'desktop-tauri/tests/compiled_step_suite.py'
       - 'desktop-tauri/tests/cutting-plan.test.mjs'
+      - 'desktop-tauri/tests/modular-compiled-gate.mjs'
 concurrency:
   group: ds-estimate-windows-${{ github.ref }}
   cancel-in-progress: true
@@ -86,10 +87,15 @@ jobs:
               data=json.loads(result.stdout)
               assert data['count']==1, data
               assert abs(data['totalMassKg']-0.3925)<0.0001, data
+              snapshot=Path('build/modular-inventory.json')
+              snapshot.parent.mkdir(parents=True, exist_ok=True)
+              snapshot.write_text(json.dumps(data,ensure_ascii=False), encoding='utf-8')
               print(json.dumps({'case':'compiled-step-plate','status':'PASS','mass_kg':data['totalMassKg'],'volume_mm3':data['solids'][0]['volumeMm3'],'mode':'compiled OCCT exe'}))
           '@ | Set-Content -Path build_compiled_cad_test.py -Encoding utf8
           conda run -n ds-cad python build_compiled_cad_test.py
           if ($LASTEXITCODE -ne 0) { throw 'Compiled CAD STEP benchmark failed' }
+      - name: Compiled OCCT inventory to modular quote gate
+        run: node tests/modular-compiled-gate.mjs build/modular-inventory.json
       - name: Eight compiled EXE STEP geometry regression cases
         shell: pwsh
         env:
