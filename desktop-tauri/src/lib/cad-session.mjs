@@ -8,19 +8,22 @@ export function createCadSession(loadInventory, fileRevision) {
  if(typeof loadInventory!=='function'||typeof fileRevision!=='function')
   throw new TypeError('CAD loader and revision provider required');
  const finished=new Map(), running=new Map();
+ let generation=0;
+ const versions=new Map();
  async function analyze(path,{refresh=false}={}) {
   if(typeof path!=='string'||!path.trim())throw new RangeError('STEP path');
   const revision=await fileRevision(path);
   const key=JSON.stringify([path,revision]);
-  if(refresh)finished.delete(key);
+  if(refresh){finished.delete(key);versions.set(key,(versions.get(key)||0)+1);running.delete(key);}
+  const version=versions.get(key)||0, epoch=generation;
   if(finished.has(key))return finished.get(key);
   if(running.has(key))return running.get(key);
   const task=Promise.resolve().then(()=>loadInventory(path))
-    .then(result=>{finished.set(key,result);return result;})
-    .finally(()=>running.delete(key));
+    .then(result=>{if(epoch===generation && version===(versions.get(key)||0))finished.set(key,result);return result;})
+    .finally(()=>{if(running.get(key)===task)running.delete(key);});
   running.set(key,task);
   return task;
  }
- return {analyze,clear:()=>{finished.clear();running.clear();},
+ return {analyze,clear:()=>{generation++;finished.clear();running.clear();versions.clear();},
   stats:()=>({cached:finished.size,inFlight:running.size})};
 }
