@@ -63,3 +63,18 @@ test('project rejects invalid rates even when inventory is empty',()=>{
 test('project rejects malformed parts collections before estimating',()=>{
  for(const parts of [null,{},'parts'])assert.throws(()=>estimateProject({parts}),TypeError);
 });
+
+test('default-only operation does not certify missing routing evidence',()=>{
+ const r=estimateProject({parts:[{geometryId:'unknown',quantity:2,features:{cnc:{}}}]});
+ assert.equal(r.rows[0].routingEvidence,false);
+ assert.equal(r.missingRoutingOccurrences,2);
+ assert.equal(r.routedCostPln,null);
+ assert.equal(r.fullQuoteVerified,false);
+});
+test('explicit measured zero is distinct from absent routing measurement',()=>{
+ const r=estimateProject({parts:[{geometryId:'zero',features:{cut:{contourMm:0,setupMin:0}}}]});
+ assert.equal(r.rows[0].routingEvidence,true);
+ assert.equal(r.missingRoutingOccurrences,0);
+ assert.equal(r.routingStatus,'ROUTINGS_ESTIMATED');
+ assert.equal(r.fullQuoteVerified,false);
+});
