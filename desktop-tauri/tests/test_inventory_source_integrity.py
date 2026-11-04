@@ -41,3 +41,11 @@ assert "DS_CAD_SLOW_MEMBER_SECONDS" in text
 assert "DS_CAD_SLOW_MEMBER_LIMIT" in text
 assert "record_pair(time.perf_counter()-translation_started" in text
 assert "record_pair(time.perf_counter()-rigid_started" in text
+
+# Rejection-only member inertia filter must precede both Boolean proof paths.
+assert "inertia_spectra_match(current_moments, member_moments)" in source_text
+assert "memberInertiaRejections" in source_text
+helper_source = ast.get_source_segment(source_text, helper)
+assert helper_source.index("inertia_spectra_match(current_moments, member_moments)") < helper_source.index("equivalent_translation(")
+assert helper_source.index("inertia_spectra_match(current_moments, member_moments)") < helper_source.index("equivalent_rigid(")
+print("All-member inertia rejection-only prefilter: PASS")

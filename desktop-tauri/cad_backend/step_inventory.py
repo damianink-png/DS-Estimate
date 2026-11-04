@@ -23,11 +23,13 @@ except ImportError:
 try:
     from .rigid_match import (equivalent_rigid, equivalent_translation,
                               translation_signature, translation_signatures_match,
-                              has_unique_inertia_axes, cached_face_area_signature)
+                              has_unique_inertia_axes, cached_face_area_signature,
+                              _cached_properties, inertia_spectra_match)
 except ImportError:
     from rigid_match import (equivalent_rigid, equivalent_translation,
                              translation_signature, translation_signatures_match,
-                             has_unique_inertia_axes, cached_face_area_signature)
+                             has_unique_inertia_axes, cached_face_area_signature,
+                             _cached_properties, inertia_spectra_match)
 from pathlib import Path
 
 
@@ -153,6 +155,7 @@ def inventory(path, density=7850.0):
     member_face_area_computations = 0
     member_validation_failures = 0
     member_validation_rejections = 0
+    member_inertia_rejections = 0
     # Bounded per-pair profiler: expensive group verification currently dominates
     # DockHub. Emit only slow pairs to stderr, never stdout (JSON protocol).
     slow_member_threshold = max(0.0, float(os.environ.get("DS_CAD_SLOW_MEMBER_SECONDS", "1.0")))
@@ -192,7 +195,7 @@ def inventory(path, density=7850.0):
         """Tolerance-based equivalence is not transitive: validate each occurrence."""
         nonlocal member_validation_seconds, member_validation_calls
         nonlocal member_validation_pairs, member_face_area_computations, member_partner_skips
-        nonlocal member_validation_failures, member_validation_rejections
+        nonlocal member_validation_failures, member_validation_rejections, member_inertia_rejections
         nonlocal slow_member_logs, slow_member_worst_seconds, slow_member_worst_group
         validation_started = time.perf_counter()
         # This scope is diagnostic only; do not change any geometric decisions.
@@ -210,6 +213,7 @@ def inventory(path, density=7850.0):
                     "logged": slow_member_logs}), file=sys.stderr, flush=True)
         member_validation_calls += 1
         current_face_areas = None
+        current_moments = None
         # Tolerance-based Boolean matches are NOT transitive. However, OCCT
         # IsPartner is exact TShape identity (location-independent). Once a
         # candidate has passed a two-way B-Rep check against one member, all
@@ -235,6 +239,16 @@ def inventory(path, density=7850.0):
                 member_partner_skips += 1
                 continue
             member_validation_pairs += 1
+            # Rigid motions preserve centroidal principal moments. This is
+            # rejection-only, never an identity proof. Keep two-way Cuts.
+            if current_moments is None:
+                current_moments = _cached_properties(shape, rigid_geometry_cache)[3]
+            member_moments = _cached_properties(member, rigid_geometry_cache)[3]
+            if not inertia_spectra_match(current_moments, member_moments):
+                member_inertia_rejections += 1
+                member_validation_rejections += 1
+                member_validation_seconds += time.perf_counter() - validation_started
+                return False
             member_signature, member_dims, member_face_areas = member_invariants[id(member)]
             # Identical translated shapes necessarily have equal axis dimensions
             # and matching centroid-relative vertices. Skip costly OCCT Cuts
@@ -428,6 +442,7 @@ def inventory(path, density=7850.0):
                 'memberValidationCalls': member_validation_calls,
                 'memberValidationPairs': member_validation_pairs,
                 'memberPartnerSkips': member_partner_skips,
+                'memberInertiaRejections': member_inertia_rejections,
                 'cuttingHintSeconds': round(cutting_hint_seconds, 3)
             }), file=sys.stderr, flush=True)
     # Profile-only occurrence-to-group audit: identify an unexpected merge
@@ -483,6 +498,7 @@ def inventory(path, density=7850.0):
                    "memberValidationCalls": member_validation_calls,
                    "memberValidationPairs": member_validation_pairs,
                     "memberPartnerSkips": member_partner_skips,
+                    "memberInertiaRejections": member_inertia_rejections,
                     "slowMemberWorstSeconds": round(slow_member_worst_seconds, 3),
                     "slowMemberWorstGroup": slow_member_worst_group,
                    "memberFaceAreaComputations": member_face_area_computations,
