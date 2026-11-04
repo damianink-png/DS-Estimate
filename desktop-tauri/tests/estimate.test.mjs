@@ -55,3 +55,11 @@ test('complete explicit routing and empty inventory are distinguished',()=>{
  assert.equal(empty.routingStatus,'NO_PARTS');
  assert.equal(empty.routedCostPln,null);
 });
+
+test('project rejects invalid rates even when inventory is empty',()=>{
+ for(const ratePerHour of [-1,NaN,Infinity])assert.throws(()=>estimateProject({parts:[],ratePerHour}),RangeError);
+ assert.equal(estimateProject({parts:[],ratePerHour:0}).totalCost,0);
+});
+test('project rejects malformed parts collections before estimating',()=>{
+ for(const parts of [null,{},'parts'])assert.throws(()=>estimateProject({parts}),TypeError);
+});
