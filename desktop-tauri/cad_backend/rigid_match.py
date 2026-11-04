@@ -19,8 +19,8 @@ def _properties(shape):
     eigenvalues, axes = np.linalg.eigh(tensor)
     # Degenerate eigenvalues: orientation cannot be determined reliably.
     if min(abs(eigenvalues[i]-eigenvalues[j]) for i,j in ((0,1),(1,2),(0,2))) < max(1e-8, max(abs(eigenvalues))*1e-7):
-        return props.Mass(), np.array([center.X(),center.Y(),center.Z()]), None
-    return props.Mass(), np.array([center.X(),center.Y(),center.Z()]), axes
+        return props.Mass(), np.array([center.X(),center.Y(),center.Z()]), None, eigenvalues
+    return props.Mass(), np.array([center.X(),center.Y(),center.Z()]), axes, eigenvalues
 
 def _cached_properties(shape, cache=None):
     """Reuse volume inertia and principal axes across comparisons of one STEP occurrence."""
@@ -30,6 +30,26 @@ def _cached_properties(shape, cache=None):
     if "properties" not in entry:
         entry["properties"] = _properties(shape)
     return entry["properties"]
+
+
+def inertia_spectra_match(first, second, relative_tol=1e-4):
+    """Necessary rigid-motion invariant, never a standalone equality proof.
+
+    GProp_GProps.MatrixOfInertia is about the centroid; its three eigenvalues
+    are independent of translation, rotation, STEP face/edge partitioning.
+    Allow small numerical differences on imported CAD, but do not let two
+    substantially different mass distributions reach expensive Boolean Cuts.
+    Non-finite or missing spectra can never certify a match.
+    """
+    if first is None or second is None:
+        return False
+    a, b = np.asarray(first, dtype=float), np.asarray(second, dtype=float)
+    if a.shape != (3,) or b.shape != (3,):
+        return False
+    if not np.all(np.isfinite(a)) or not np.all(np.isfinite(b)):
+        return False
+    tolerance = np.maximum(1e-6, np.maximum(np.abs(a), np.abs(b)) * relative_tol)
+    return bool(np.all(np.abs(a-b) <= tolerance))
 
 
 def has_unique_inertia_axes(props):
@@ -257,8 +277,8 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
             return None
 
     try:
-        va, ca, axa = _cached_properties(a, cache)
-        vb, cb, axb = _cached_properties(b, cache)
+        va, ca, axa, moments_a = _cached_properties(a, cache)
+        vb, cb, axb, moments_b = _cached_properties(b, cache)
         if (not np.isfinite(va) or not np.isfinite(vb) or va <= 0 or vb <= 0):
             return False
         threshold = max(tolerance_mm**3, max(va, vb)*relative_volume_tol)
@@ -266,6 +286,14 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
             return False
         if a.IsPartner(b):
             return True
+        # A rigid motion cannot change the three principal moments of inertia.
+        # Unlike edge/face partition signatures this tests the actual solid's
+        # mass distribution, so it also screens distinct topology partitions.
+        # It is rejection-only: Boolean Cut remains mandatory for acceptance.
+        if not inertia_spectra_match(moments_a, moments_b):
+            if metrics is not None:
+                metrics["inertiaSpectrumRejected"] = metrics.get("inertiaSpectrumRejected", 0) + 1
+            return False
         # Independent face partition check before expensive orientation trials.
         # A successful Boolean alone is not a reliable identity certificate.
         if not _matching_face_areas(a, b, cache=cache):
@@ -278,9 +306,11 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
         # Edge partitions are therefore diagnostic, not a necessary rigid
         # invariant. Keep the two directional Boolean Cuts as the acceptance
         # criterion; never merge from matching edge lengths alone.
-        if not _matching_edge_lengths(a, b, cache=cache):
-            if metrics is not None:
-                metrics["edgePartitionMismatch"] = metrics.get("edgePartitionMismatch", 0) + 1
+        # Edge partition is diagnostic ONLY: gathering it during thousands of
+        # member checks adds work without affecting any geometric decision.
+        # The representative path passes metrics and retains this diagnostic.
+        if metrics is not None and not _matching_edge_lengths(a, b, cache=cache):
+            metrics["edgePartitionMismatch"] = metrics.get("edgePartitionMismatch", 0) + 1
         if axa is None or axb is None:
             return False  # Degenerate inertia handled by translation verifier.
         target_bounds = bounds(a)

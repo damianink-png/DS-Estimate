@@ -75,11 +75,17 @@ def proof(step_path):
         c = p.CentreOfMass()
         m = p.MatrixOfInertia()
         tensor = np.array([[m.Value(i,j) for j in range(1,4)] for i in range(1,4)])
-        _, axes = np.linalg.eigh(tensor)
-        return p.Mass(), np.array([c.X(),c.Y(),c.Z()]), axes
+        moments, axes = np.linalg.eigh(tensor)
+        return p.Mass(), np.array([c.X(),c.Y(),c.Z()]), axes, moments
 
-    va, ca, axa = props(a)
-    vb, cb, axb = props(b)
+    va, ca, axa, moments_a = props(a)
+    vb, cb, axb, moments_b = props(b)
+    print("DOCKHUB_SOURCE_INERTIA_SPECTRA", {
+        "247": [float(x) for x in moments_a],
+        "267": [float(x) for x in moments_b],
+        "relativeDelta": [float(abs(x-y)/max(abs(x),abs(y),1e-12))
+                          for x,y in zip(moments_a,moments_b)],
+    }, flush=True)
     threshold = max(0.01**3, max(va,vb)*1e-6)
     if not math.isfinite(va) or not math.isfinite(vb) or abs(va-vb)>threshold:
         raise AssertionError("Volumes differ")
@@ -121,6 +127,10 @@ if __name__=="__main__":
     proof(args.step)
     if args.inventory:
         import json
+        if not args.inventory.is_file():
+            raise AssertionError(
+                "UNVERIFIED: compiled engine inventory unavailable (e.g. ENGINE_TIMEOUT); "
+                "source B-Rep check is not evidence that engine grouped the pair correctly")
         data = json.loads(args.inventory.read_text(encoding="utf-8"))
         solids = data["solids"]
         if len(solids) < 267:

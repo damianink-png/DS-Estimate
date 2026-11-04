@@ -153,6 +153,32 @@ class RigidTwoWayCutRegression(unittest.TestCase):
         self.assertEqual(stats.get("edgePartitionMismatch"), 1)
         self.assertGreater(stats.get("twoWayCutAttempts", 0), 0)
 
+    def test_inertia_spectrum_invariant_under_rigid_rotation(self):
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = self.rotated(BRepPrimAPI_MakeBox(10, 20, 30).Shape())
+        pa = rigid_match._cached_properties(a)
+        pb = rigid_match._cached_properties(b)
+        self.assertTrue(rigid_match.inertia_spectra_match(pa[3], pb[3]))
+        self.assertTrue(equivalent_rigid(a, b))
+
+    def test_inertia_spectrum_rejects_unequal_mass_distribution_without_cut(self):
+        # Equal volumes do not imply equal solids (or inertia spectra).
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = BRepPrimAPI_MakeBox(5, 20, 60).Shape()
+        self.assertAlmostEqual(props(a).Mass(), props(b).Mass(), places=5)
+        stats = {}
+        with patch.object(rigid_match, "verify_two_way_cut") as cut_calls:
+            self.assertFalse(equivalent_rigid(a, b, metrics=stats))
+        self.assertEqual(cut_calls.call_count, 0)
+        self.assertGreater(stats.get("inertiaSpectrumRejected", 0), 0)
+
+    def test_member_rigid_checks_skip_edge_only_diagnostics(self):
+        a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+        b = self.rotated(BRepPrimAPI_MakeBox(10, 20, 30).Shape())
+        with patch.object(rigid_match, "_matching_edge_lengths",
+                          side_effect=AssertionError("diagnostic evaluated on hot path")):
+            self.assertTrue(equivalent_rigid(a, b))
+
     def test_rigid_verification_does_not_mutate_inputs(self):
         a = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
         b = self.rotated(BRepPrimAPI_MakeBox(10, 20, 30).Shape())
