@@ -112,6 +112,13 @@ def main():
                     # whether RHS, UPN or plates were correctly recognised.
                     # Keep every occurrence and its uncertainty in artifacts.
                     audit=stock_audit(data)
+                    # Presence is mandatory in the newly compiled engine; an
+                    # old/mispackaged executable must not be mistaken for a
+                    # successful stock-recognition test of a welded frame.
+                    if audit['statusCounts'].get('MISSING_HINT', 0):
+                        raise ValueError(
+                            f'CAD EXE omitted stockHint for {audit["statusCounts"]["MISSING_HINT"]} '
+                            f'of {audit["occurrences"]} real STEP solids')
                     write_stock_csv(folder/'stock_recognition.csv',audit['rows'])
                     result['stockAudit']={k:v for k,v in audit.items() if k!='rows'}
                     (folder/'stock_recognition_summary.json').write_text(
