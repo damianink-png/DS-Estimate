@@ -4,18 +4,18 @@ export function estimateCnc({removedCm3=0,removalCm3Min=8,holes=[],setupMin=20,t
  for(const [k,v] of Object.entries({removedCm3,setupMin,toolChanges,toolChangeMin,handlingMin,ratePerHour}))valid(v,k);valid(removalCm3Min,'removalCm3Min',true);
  const millingMin=removedCm3/removalCm3Min;
  const drillingMin=holes.reduce((s,h)=>s+valid(h.count,'count')*valid(h.depthMm,'depthMm')/valid(h.feedMmMin,'feedMmMin',true),0);
- const totalMin=millingMin+drillingMin+setupMin+toolChanges*toolChangeMin+handlingMin;
- return {millingMin,drillingMin,totalMin,cost:totalMin*ratePerHour/60};
+ const totalMin=valid(millingMin+drillingMin+setupMin+toolChanges*toolChangeMin+handlingMin,'cnc.totalMin');
+ return {millingMin,drillingMin,totalMin,cost:valid(totalMin*ratePerHour/60,'cnc.cost')};
 }
 export function estimateCut({contourMm=0,feedMmMin=1500,pierces=0,pierceSec=2,rapidMm=0,rapidMmMin=10000,setupMin=10,ratePerHour=388}={}){
  for(const [k,v] of Object.entries({contourMm,pierces,pierceSec,rapidMm,setupMin,ratePerHour}))valid(v,k);
  valid(feedMmMin,'feedMmMin',true);valid(rapidMmMin,'rapidMmMin',true);
- const cuttingMin=contourMm/feedMmMin,piercingMin=pierces*pierceSec/60,rapidMin=rapidMm/rapidMmMin,totalMin=cuttingMin+piercingMin+rapidMin+setupMin;
- return {cuttingMin,piercingMin,rapidMin,totalMin,cost:totalMin*ratePerHour/60};
+ const cuttingMin=contourMm/feedMmMin,piercingMin=pierces*pierceSec/60,rapidMin=rapidMm/rapidMmMin,totalMin=valid(cuttingMin+piercingMin+rapidMin+setupMin,'cut.totalMin');
+ return {cuttingMin,piercingMin,rapidMin,totalMin,cost:valid(totalMin*ratePerHour/60,'cut.cost')};
 }
 export function estimateBending({bends=0,secondsPerBend=25,setupMin=15,handlingMin=0,ratePerHour=388}={}){
  for(const [k,v] of Object.entries({bends,secondsPerBend,setupMin,handlingMin,ratePerHour}))valid(v,k);
- const totalMin=bends*secondsPerBend/60+setupMin+handlingMin;return {totalMin,cost:totalMin*ratePerHour/60};
+ const totalMin=valid(bends*secondsPerBend/60+setupMin+handlingMin,'bend.totalMin');return {totalMin,cost:valid(totalMin*ratePerHour/60,'bend.cost')};
 }
 export function estimateProject({parts=[],ratePerHour=388}={}){
  valid(ratePerHour,'ratePerHour');
@@ -36,7 +36,7 @@ export function estimateProject({parts=[],ratePerHour=388}={}){
   // geometry occurs in several rows. Machine cycles scale with occurrences.
   const setupMin=setupsCharged.has(key)?0:unit.unitSetupMin;
   setupsCharged.add(key);
-  const rowMin=setupMin+unit.unitRunMin*quantity;
+  const rowMin=valid(setupMin+unit.unitRunMin*quantity,'row.totalMin');
   // Missing process features are unknown, not a free operation. Keep the
   // legacy numeric totals as *known* subtotals for backward compatibility.
   // A selected operation with only default parameters is not measurement evidence.
@@ -55,9 +55,9 @@ export function estimateProject({parts=[],ratePerHour=388}={}){
    selectedRoutes.every(([route,keys])=>hasInput(route,keys));
   if(!routingEvidence)missingRoutingOccurrences+=quantity;
   const row={geometryId,quantity,...unit,batchSetupMin:setupMin,totalMin:rowMin,
-   totalCost:rowMin*ratePerHour/60,routingEvidence};
+   totalCost:valid(rowMin*ratePerHour/60,'row.totalCost'),routingEvidence};
   if(!Number.isSafeInteger(occurrences+quantity))throw new RangeError('total occurrences exceed safe integer range');
-  totalMin+=row.totalMin;totalCost+=row.totalCost;occurrences+=quantity;return row;
+  totalMin=valid(totalMin+row.totalMin,'project.totalMin');totalCost=valid(totalCost+row.totalCost,'project.totalCost');occurrences+=quantity;return row;
  });
  const hasCompleteRouting=occurrences>0&&missingRoutingOccurrences===0;
  return {rows,totalMin,totalCost,occurrences,uniqueCalculations:cache.size,
