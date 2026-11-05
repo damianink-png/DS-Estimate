@@ -168,6 +168,18 @@ def _classify_section(edges, tol):
     return None
 
 
+def _measured_solid_volume(solid):
+    """Independent 3-D volume check; section sampling alone can miss a slot."""
+    from OCC.Core.BRepGProp import brepgprop
+    from OCC.Core.GProp import GProp_GProps
+    props = GProp_GProps()
+    brepgprop.VolumeProperties(solid, props)
+    volume = float(props.Mass())
+    if not math.isfinite(volume) or volume <= 0:
+        raise ValueError('Invalid OCCT solid volume')
+    return volume
+
+
 def recognize_stock(solid, bounds, plate_hint=None):
     """Recognise prismatic shapes or a measured *candidate* plate; no catalogue proof."""
     dims = [bounds[i+3]-bounds[i] for i in range(3)]
@@ -206,6 +218,19 @@ def recognize_stock(solid, bounds, plate_hint=None):
         if any(abs(v-other[k])>max(tol*10,.02*max(abs(v),abs(other[k])))
                for k,v in first.items() if k!='kind'):
             return {'kind':'unknown','reason':'Section size changes along part'}
+    # Cross-sections can all match while a pocket or notch exists between
+    # sampling planes. Compare independent B-Rep volume against the prism
+    # implied by the measured section and its full bounding length.
+    if solid is not None:
+        try:
+            measured_volume = _measured_solid_volume(solid)
+        except Exception as exc:
+            return {'kind':'unknown','reason':'Independent volume check unavailable: '+type(exc).__name__}
+        expected_volume = first['sectionAreaMm2'] * length
+        if not math.isfinite(expected_volume) or expected_volume <= 0:
+            return {'kind':'unknown','reason':'Invalid predicted extrusion volume'}
+        if abs(measured_volume-expected_volume) > max(1.0, expected_volume*.02):
+            return {'kind':'unknown','reason':'3-D volume inconsistent with constant stock section (possible pocket, notch or end machining)'}
     return {**first,'lengthMm':length,'confidence':'cross-section-consistent',
             'source':'OCCT sections at 10/25/50/75/90% length',
             'limitations':'Cannot determine material grade, nominal standard, plate vs flat-bar procurement or end-cut stock length'}
