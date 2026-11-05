@@ -6,7 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cad_backend.stock_patterns import orthogonal_section_kind
-from cad_backend.stock_recognition import _classify_section
+from cad_backend.stock_recognition import _classify_section, recognize_stock
+from unittest.mock import patch
 
 
 def close(points):
@@ -68,6 +69,30 @@ class StockPatternTests(unittest.TestCase):
         # but is 25% of a 2 mm wall: do not certify SHS.
         bad = _classify_section(square(0,0,80)+square(2.5,2,76), .002)
         self.assertIsNone(bad)
+
+    def test_five_samples_reject_near_end_section_change(self):
+        def rect(w, h):
+            pts=[(0,0),(w,0),(w,h),(0,h),(0,0)]
+            return [(pts[i:i+2],False,None) for i in range(4)]
+        calls=[]
+        def sample(shape,bounds,axis,fraction):
+            calls.append(fraction)
+            return rect(40,20 if fraction < .2 else 40)
+        with patch('cad_backend.stock_recognition._section_edges',side_effect=sample):
+            result=recognize_stock(None,(0,0,0,40,40,1000))
+        self.assertEqual(result['kind'],'unknown')
+        self.assertIn('changes',result['reason'])
+        self.assertEqual(calls,[.10,.25,.50,.75,.90])
+
+    def test_five_samples_constant_section(self):
+        def rect():
+            pts=[(0,0),(40,0),(40,40),(0,40),(0,0)]
+            return [(pts[i:i+2],False,None) for i in range(4)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=rect()) as mocked:
+            result=recognize_stock(None,(0,0,0,40,40,1000))
+        self.assertEqual(result['kind'],'square-bar')
+        self.assertEqual(mocked.call_count,5)
+        self.assertEqual(result['lengthMm'],1000)
 
     def test_rectangle_and_open_profile_are_not_structural_ones(self):
         self.assertIsNone(orthogonal_section_kind(close([(0,0),(10,0),(10,10),(0,10)]), 0.002))
