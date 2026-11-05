@@ -80,26 +80,27 @@ export function estimateWelding({joints=[],depositionKgHour=2.5,arcOnFraction=0.
   // Idealized equal-leg fillet cross-section: A = a^2. Passes affect routing,
   // not deposited cross-section: do not multiply weld mass by passes.
   const massKg=count*lengthMm*throatMm**2*1e-9*densityKgM3;
-  const arcMin=massKg/depositionKgHour*60;
-  const processMin=arcMin/arcOnFraction;
+  valid(massKg,'weld.massKg');
+  const arcMin=valid(massKg/depositionKgHour*60,'weld.arcMin');
+  const processMin=valid(arcMin/arcOnFraction,'weld.processMin');
   return {index:i,count,lengthMm:count*lengthMm,massKg,arcMin,processMin,passes};
  });
- const weldLengthMm=lines.reduce((s,x)=>s+x.lengthMm,0);
- const massKg=lines.reduce((s,x)=>s+x.massKg,0);
- const arcMin=lines.reduce((s,x)=>s+x.arcMin,0);
- const totalMin=setupMin+lines.reduce((s,x)=>s+x.processMin,0);
- return {lines,weldLengthMm,massKg,arcMin,totalMin,cost:totalMin*ratePerHour/60};
+ const weldLengthMm=valid(lines.reduce((s,x)=>s+x.lengthMm,0),'weld.lengthMm');
+ const massKg=valid(lines.reduce((s,x)=>s+x.massKg,0),'weld.totalMassKg');
+ const arcMin=valid(lines.reduce((s,x)=>s+x.arcMin,0),'weld.totalArcMin');
+ const totalMin=valid(setupMin+lines.reduce((s,x)=>s+x.processMin,0),'weld.totalMin');
+ return {lines,weldLengthMm,massKg,arcMin,totalMin,cost:valid(totalMin*ratePerHour/60,'weld.cost')};
 }
 export function estimateAssembly({operations=[],ratePerHour=388}={}){
  valid(ratePerHour,'ratePerHour');
  const lines=operations.map((op,i)=>{
   const count=valid(op.count??1,'operation.count');
   const minutesEach=valid(op.minutesEach,'operation.minutesEach');
-  const totalMin=count*minutesEach;
+  const totalMin=valid(count*minutesEach,'assembly.operation.totalMin');
   return {index:i,name:op.name??'Operation',count,minutesEach,totalMin};
  });
- const totalMin=lines.reduce((s,x)=>s+x.totalMin,0);
- return {lines,totalMin,cost:totalMin*ratePerHour/60};
+ const totalMin=valid(lines.reduce((s,x)=>s+x.totalMin,0),'assembly.totalMin');
+ return {lines,totalMin,cost:valid(totalMin*ratePerHour/60,'assembly.cost')};
 }
 export function estimateFabrication({assembly,welding,cutting,cnc,finishing,ratePerHour=388}={}){
  valid(ratePerHour,'ratePerHour');
@@ -108,6 +109,6 @@ export function estimateFabrication({assembly,welding,cutting,cnc,finishing,rate
   cutting:cutting?estimateCut({...cutting,ratePerHour}):null,
   cnc:cnc?estimateCnc({...cnc,ratePerHour}):null,
   finishing:finishing?estimateAssembly({...finishing,ratePerHour}):null};
- const totalMin=Object.values(steps).reduce((s,x)=>s+(x?.totalMin??0),0);
- return {steps,totalMin,totalCost:totalMin*ratePerHour/60,ratePerHour};
+ const totalMin=valid(Object.values(steps).reduce((s,x)=>s+(x?.totalMin??0),0),'fabrication.totalMin');
+ return {steps,totalMin,totalCost:valid(totalMin*ratePerHour/60,'fabrication.totalCost'),ratePerHour};
 }
