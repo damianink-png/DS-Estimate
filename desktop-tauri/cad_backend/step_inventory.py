@@ -30,6 +30,10 @@ except ImportError:
                              translation_signature, translation_signatures_match,
                              has_unique_inertia_axes, cached_face_area_signature,
                              _cached_properties, inertia_spectra_match)
+try:
+    from .stock_recognition import recognize_stock
+except ImportError:
+    from stock_recognition import recognize_stock
 from pathlib import Path
 
 
@@ -416,6 +420,9 @@ def inventory(path, density=7850.0):
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
         stage_start = time.perf_counter()
         cut_hint = planar_plate_cutting_hint(solid, dims)
+        # Independent evidence for future raw-stock selection; does not affect
+        # grouping, cutting-time routing, mass or quote acceptance.
+        stock_hint = recognize_stock(solid, (xmin,ymin,zmin,xmax,ymax,zmax))
         cutting_hint_seconds += time.perf_counter() - stage_start
         solids.append({
             "id": f"solid-{len(solids)+1}",
@@ -423,6 +430,7 @@ def inventory(path, density=7850.0):
             "areaMm2": area,
             "bboxMm": dims,
             "cuttingHint": cut_hint,
+            "stockHint": stock_hint,
             "densityKgM3": density,
             "massKg": volume * density * 1e-9,
             "verifiedShapeKey": f"shared-tshape-{existing}",
