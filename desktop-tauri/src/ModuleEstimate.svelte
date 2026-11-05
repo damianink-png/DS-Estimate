@@ -10,11 +10,34 @@
  import {kwantflowKnownCost} from './lib/modular-kwantflow.js';
 
  let {onTools=()=>{}}:{onTools?:()=>void}=$props();
- type Inv={count:number;totalMassKg:number;solids:Array<{id:string;verifiedShapeKey:string;volumeMm3:number;massKg:number;bboxMm:number[];verificationMethod?:string}>;groups:Array<{geometryId:string;quantity:number;massKg:number}>;limitations?:string[]};
+ type StockHint={kind:string;confidence?:string;reason?:string;source?:string;limitations?:string;lengthMm?:number;widthMm?:number;heightMm?:number;diameterMm?:number;thicknessMm?:number;wallMm?:number;sectionAreaMm2?:number};
+ type Inv={count:number;totalMassKg:number;solids:Array<{id:string;verifiedShapeKey:string;volumeMm3:number;massKg:number;bboxMm:number[];verificationMethod?:string;stockHint?:StockHint}>;groups:Array<{geometryId:string;quantity:number;massKg:number}>;limitations?:string[]};
  type Edit={value:number|null};
  type CustomRow={key:string;name:string;kind:'time'|'amount'};
  const money=(x:number)=>x.toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2});
  const number=(x:number)=>x.toLocaleString('pl-PL',{maximumFractionDigits:2});
+ const stockLabels:Record<string,string>={
+  'plate-candidate':'Blacha / płyta — kandydat',
+  'flat-section':'Przekrój płaskownika (kandydat)',
+  'square-bar':'Pręt kwadratowy',
+  'rectangular-bar':'Pręt prostokątny',
+  'round-bar':'Pręt okrągły',
+  'round-tube':'Rura okrągła',
+  'square-hollow':'Profil zamknięty kwadratowy',
+  'rectangular-hollow':'Profil zamknięty prostokątny',
+  'angle':'Kątownik',
+  'channel':'Ceownik',
+  'tee':'Teownik',
+  'i-section':'Dwuteownik',
+  'unknown':'Nieustalony'
+ };
+ const stockText=(stock:StockHint|undefined)=>{
+  if(!stock || stock.kind==='unknown') return stock?.reason||'Nie potwierdzono półfabrykatu';
+  const parts:[string,number|undefined][]=[['szer.',stock.widthMm],['wys.',stock.heightMm],
+   ['Ø',stock.diameterMm],['ścianka',stock.wallMm],['grubość',stock.thicknessMm],['L',stock.lengthMm]];
+  return parts.filter((x):x is [string,number]=>typeof x[1]==='number'&&Number.isFinite(x[1]))
+   .map(([key,v])=>key+' '+number(v)+' mm').join(' · ')||'Wymiary do weryfikacji';
+ };
  const filename=(p:string)=>p.split(/[\\/]/).pop()||p;
  const isStep=(p:string)=>/\.(step|stp)$/i.test(p);
  const isPdf=(p:string)=>/\.pdf$/i.test(p);
@@ -329,6 +352,9 @@
        <dt>Objętość</dt><dd>{number(part.volumeMm3)} mm³</dd>
        <dt>Masa przy 7850 kg/m³</dt><dd>{number(part.massKg)} kg</dd>
        <dt>Metoda grupowania</dt><dd>{part.verificationMethod||'brak danych'}</dd>
+       <dt>Przekrój / półfabrykat</dt><dd>{stockLabels[part.stockHint?.kind||'unknown']||'Nierozpoznany'}</dd>
+       <dt>Wymiary przekroju</dt><dd>{stockText(part.stockHint)}</dd>
+       <dt>Pewność</dt><dd>{part.stockHint?.confidence||'Wymaga sprawdzenia'}</dd>
       </dl>
      {/if}
      <p class="hint">Pełny model 3D B-Rep wymaga osobnej wizualizacji; ten panel wykorzystuje jedynie istniejące wyniki analizy.</p>
