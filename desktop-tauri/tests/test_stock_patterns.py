@@ -126,6 +126,17 @@ class StockPatternTests(unittest.TestCase):
             with self.subTest(bad=bad):
                 self.assertEqual(recognize_stock(None,bounds,plate_hint=bad)['kind'],'unknown')
 
+    def test_boolean_is_not_a_measured_plate_thickness(self):
+        # Python bool subclasses int: True == 1 must not certify a 1 mm plate.
+        bounds=(0,0,0,100,50,1)
+        self.assertEqual(
+            recognize_stock(None,bounds,plate_hint={'kind':'plate-outline','thicknessMm':1})['kind'],
+            'plate-candidate')
+        for value in (True, False):
+            self.assertEqual(
+                recognize_stock(None,bounds,plate_hint={'kind':'plate-outline','thicknessMm':value})['kind'],
+                'unknown')
+
     def test_rectangle_and_open_profile_are_not_structural_ones(self):
         self.assertIsNone(orthogonal_section_kind(close([(0,0),(10,0),(10,10),(0,10)]), 0.002))
         self.assertIsNone(orthogonal_section_kind([(0,0),(30,0),(30,5),(5,5)], 0.002))
