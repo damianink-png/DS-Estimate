@@ -112,3 +112,10 @@ test('CNC drilling rejects malformed hole lists and unsafe counts',()=>{
  }
  assert.equal(estimateCnc({holes:[{count:0,depthMm:10,feedMmMin:100}],setupMin:0}).totalMin,0);
 });
+
+
+test('CNC drilling rejects arrays used as hole records',()=>{
+ const disguised=Object.assign([], {count:1,depthMm:10,feedMmMin:100});
+ assert.throws(()=>estimateCnc({holes:[disguised]}),TypeError);
+ assert.equal(estimateCnc({holes:[{count:1,depthMm:10,feedMmMin:100}],setupMin:0}).drillingMin,0.1);
+});
