@@ -6,7 +6,7 @@ export function estimateCnc({removedCm3=0,removalCm3Min=8,holes=[],setupMin=20,t
  if(!Array.isArray(holes))throw new TypeError('holes must be an array');
  const drillingMin=holes.reduce((s,h)=>{
   if(!h||typeof h!=='object')throw new TypeError('hole must be an object');
-  if(!Number.isSafeInteger(h.count)||h.count<1)throw new RangeError('hole.count');
+  if(!Number.isSafeInteger(h.count)||h.count<0)throw new RangeError('hole.count');
   return s+h.count*valid(h.depthMm,'depthMm')/valid(h.feedMmMin,'feedMmMin',true);
  },0);
  const totalMin=valid(millingMin+drillingMin+setupMin+toolChanges*toolChangeMin+handlingMin,'cnc.totalMin');
