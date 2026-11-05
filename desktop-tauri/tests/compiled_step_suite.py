@@ -13,7 +13,9 @@ from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCC.Core.gp import gp_Pnt
 
 from test_stock_patterns import run_suite
+from test_public_stock_audit import run_suite as run_stock_report_suite
 run_suite()
+run_stock_report_suite()
 
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 
