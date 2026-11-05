@@ -119,3 +119,15 @@ test('CNC drilling rejects arrays used as hole records',()=>{
  assert.throws(()=>estimateCnc({holes:[disguised]}),TypeError);
  assert.equal(estimateCnc({holes:[{count:1,depthMm:10,feedMmMin:100}],setupMin:0}).drillingMin,0.1);
 });
+
+
+test('discrete machining counts must be safe integers, not fractional or imprecise',()=>{
+ for(const value of [-1,0.5,Number.MAX_SAFE_INTEGER+1]){
+  assert.throws(()=>estimateCnc({toolChanges:value}),RangeError);
+  assert.throws(()=>estimateCut({pierces:value}),RangeError);
+  assert.throws(()=>estimateBending({bends:value}),RangeError);
+ }
+ assert.equal(estimateCnc({toolChanges:0,setupMin:0}).totalMin,0);
+ assert.equal(estimateCut({pierces:0,contourMm:0,setupMin:0}).totalMin,0);
+ assert.equal(estimateBending({bends:0,setupMin:0}).totalMin,0);
+});
