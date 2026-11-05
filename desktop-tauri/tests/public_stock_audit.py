@@ -92,8 +92,9 @@ def stock_audit(inventory):
             status = "MISSING_HINT"
             reason = "Compiled engine provided no stockHint for this STEP solid"
             kind = "unknown"
-        elif not isinstance(raw, dict) or not isinstance(kind, str) or kind not in STOCK_KINDS or not finite or missing_required or bad_wall
-                or not _section_area_consistent(kind, hint):
+        elif (not isinstance(raw, dict) or not isinstance(kind, str)
+              or kind not in STOCK_KINDS or not finite or missing_required
+              or bad_wall or not _section_area_consistent(kind, hint)):
             status = "INVALID_HINT"
             reason = reason or "Malformed stock evidence"
             kind = "unknown"
