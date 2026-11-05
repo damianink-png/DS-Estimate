@@ -2,6 +2,7 @@
 import json, subprocess, tempfile, math
 from pathlib import Path
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
+from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
 from OCC.Core.BRep import BRep_Builder
 from OCC.Core.TopoDS import TopoDS_Compound
 from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
@@ -10,7 +11,7 @@ from OCC.Core.gp import gp_Trsf, gp_Vec
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 
 EXE=Path('src-tauri/cad-backend/ds-cad-engine.exe').resolve()
-def check(name, shapes, count, volume, density=7850):
+def check(name, shapes, count, volume, density=7850, expected_stock=None):
     with tempfile.TemporaryDirectory() as td:
         path=Path(td)/(name+'.step')
         builder=BRep_Builder(); compound=TopoDS_Compound();builder.MakeCompound(compound)
@@ -25,6 +26,15 @@ def check(name, shapes, count, volume, density=7850):
         assert d['count']==count,(name,'count',d['count'],count)
         assert abs(d['totalMassKg']-expected_mass)<max(1e-5,expected_mass*1e-5),(name,'mass',d['totalMassKg'],expected_mass)
         assert abs(sum(x['volumeMm3'] for x in d['solids'])-volume)<max(1e-3,volume*1e-5)
+        if expected_stock:
+            stock=d['solids'][0].get('stockHint')
+            assert stock is not None, (name,'missing stockHint')
+            assert stock['kind']==expected_stock['kind'],(name,stock,expected_stock)
+            for field, expected in expected_stock.items():
+                if field == 'kind':
+                    continue
+                assert abs(stock.get(field, float('nan'))-expected)<0.05, (name,field,stock,expected)
+            assert stock.get('confidence')=='cross-section-consistent',(name,stock)
         if name == 'plate_100x50x10':
             hint=d['solids'][0].get('cuttingHint')
             assert hint is not None, ('missing measured plate cut loops',d['solids'][0], 'CAD stderr:', p.stderr)
@@ -48,4 +58,15 @@ check('two_different_parts',[box(100,50,10),moved(box(20,20,20),200,0,0)],2,5800
 check('five_identical_plates',[moved(box(100,50,10),i*150,0,0) for i in range(5)],5,250000)
 check('mixed_ten_parts',[moved(box(10+i,20,30),i*100,0,0) for i in range(10)],10,sum((10+i)*20*30 for i in range(10)))
 check('aluminium_density',[box(100,50,10)],1,50000,2700)
-print('ALL 8 COMPILED STEP INVENTORY CASES PASS',flush=True)
+# Two shapes with identical outside dimensions but DIFFERENT raw stock.
+solid40 = box(40,40,1000)
+hollow40 = BRepAlgoAPI_Cut(box(40,40,1000),moved(box(36,36,1000),2,2,0)).Shape()
+hollow80 = BRepAlgoAPI_Cut(box(80,40,1000),moved(box(74,34,1000),3,3,0)).Shape()
+tube60 = BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(30,1000).Shape(),BRepPrimAPI_MakeCylinder(27,1000).Shape()).Shape()
+check('stock_square_solid',[solid40],1,1600000,expected_stock={'kind':'square-bar','widthMm':40,'heightMm':40})
+check('stock_shs_40x40x2',[hollow40],1,304000,expected_stock={'kind':'square-hollow','widthMm':40,'heightMm':40,'wallMm':2})
+check('stock_rhs_80x40x3',[hollow80],1,684000,expected_stock={'kind':'rectangular-hollow','widthMm':80,'heightMm':40,'wallMm':3})
+check('stock_round_bar_30',[BRepPrimAPI_MakeCylinder(15,1000).Shape()],1,math.pi*225000,expected_stock={'kind':'round-bar','diameterMm':30})
+check('stock_round_tube_60x3',[tube60],1,math.pi*171000,expected_stock={'kind':'round-tube','diameterMm':60,'wallMm':3})
+check('stock_flat_section',[box(40,5,1000)],1,200000,expected_stock={'kind':'flat-section','widthMm':40,'heightMm':5})
+print('ALL 8 INVENTORY + 6 STOCK CROSS-SECTION CASES PASS',flush=True)
