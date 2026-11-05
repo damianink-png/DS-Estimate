@@ -3,7 +3,12 @@ const valid=(v,name,positive=false)=>{if(!Number.isFinite(v)||v<0||(positive&&v=
 export function estimateCnc({removedCm3=0,removalCm3Min=8,holes=[],setupMin=20,toolChanges=0,toolChangeMin=2,handlingMin=0,ratePerHour=388}={}){
  for(const [k,v] of Object.entries({removedCm3,setupMin,toolChanges,toolChangeMin,handlingMin,ratePerHour}))valid(v,k);valid(removalCm3Min,'removalCm3Min',true);
  const millingMin=removedCm3/removalCm3Min;
- const drillingMin=holes.reduce((s,h)=>s+valid(h.count,'count')*valid(h.depthMm,'depthMm')/valid(h.feedMmMin,'feedMmMin',true),0);
+ if(!Array.isArray(holes))throw new TypeError('holes must be an array');
+ const drillingMin=holes.reduce((s,h)=>{
+  if(!h||typeof h!=='object')throw new TypeError('hole must be an object');
+  if(!Number.isSafeInteger(h.count)||h.count<1)throw new RangeError('hole.count');
+  return s+h.count*valid(h.depthMm,'depthMm')/valid(h.feedMmMin,'feedMmMin',true);
+ },0);
  const totalMin=valid(millingMin+drillingMin+setupMin+toolChanges*toolChangeMin+handlingMin,'cnc.totalMin');
  return {millingMin,drillingMin,totalMin,cost:valid(totalMin*ratePerHour/60,'cnc.cost')};
 }
