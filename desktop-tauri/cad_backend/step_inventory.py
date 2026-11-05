@@ -422,7 +422,7 @@ def inventory(path, density=7850.0):
         cut_hint = planar_plate_cutting_hint(solid, dims)
         # Independent evidence for future raw-stock selection; does not affect
         # grouping, cutting-time routing, mass or quote acceptance.
-        stock_hint = recognize_stock(solid, (xmin,ymin,zmin,xmax,ymax,zmax))
+        stock_hint = recognize_stock(solid, (xmin,ymin,zmin,xmax,ymax,zmax), plate_hint=cut_hint)
         cutting_hint_seconds += time.perf_counter() - stage_start
         solids.append({
             "id": f"solid-{len(solids)+1}",
