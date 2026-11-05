@@ -5,6 +5,10 @@ non-manifold, changing or non-standard section stays unknown. This classifier
 does not change B-Rep grouping, mass, cutting routes or prices.
 """
 import math
+try:
+    from .stock_patterns import orthogonal_section_kind
+except ImportError:
+    from stock_patterns import orthogonal_section_kind
 
 
 def _section_edges(shape, bounds, axis, fraction):
@@ -147,6 +151,10 @@ def _classify_section(edges, tol):
         small,large=sorted((outer['w'],outer['h']))
         kind = 'flat-section' if large/small>=4 else 'square-bar' if large/small<=1.02 else 'rectangular-bar'
         return {'kind':kind,'widthMm':large,'heightMm':small,'sectionAreaMm2':outer['area']}
+    if inner is None and not any(loops[0][1]):
+        # Unmodified one-loop orthogonal sections only. Rounded corners or
+        # unexpected transitions stay unclassified, not catalogued by bbox.
+        return orthogonal_section_kind(loops[0][0], tol)
     return None
 
 
