@@ -151,3 +151,12 @@ Decyzja użytkownika: **PAUSED** wszystkie pozostałe silniki i punkty planu 24 
 - **UNVERIFIED:** skompilowany na Windows pythonocc `ds-cad-engine.exe`, nowy zestaw 8+11 syntetycznych STEP, pełna paczka NSIS oraz złączenie UI→STOCK dla aktualnego SHA. Lokalne środowisko ma OCP, ale nie ma `pythonocc-core` używanego w produkcji; potwierdzenie testami CI wymagane. Status wcześniejszych kompilacji Windows i trzech publicznych modeli dotyczy starszych SHA — nie jest dowodem dla tej wersji.
 - **Nieudowodnione / przyszły zakres:** promienie walcowania profili IPE/HEA, przekroje nietypowe i zmienne, profile pochylone w 3D, złożone obróbki krawędzi, niezawodne dopasowanie do katalogów hutniczych i klasyfikacja blacha vs płaskownik. Nie wyznaczamy nominalnego gatunku, normy, zakupu ani kosztu z samego podobieństwa.
 - Żadnej biblioteki Quiddity / komercyjnego SMRU nie dołączono. Priorytetem jest weryfikowalny mechanizm OCCT już obecny w aplikacji (bez dodatkowych zmian licencji/dystrybucji). W kolejnej iteracji przeanalizować Windows Actions i artefakty błędów, usunąć ewentualne FAIL, a następnie rozszerzać tolerancje promieni i orientacji tylko na podstawie znanych modeli i dokumentacji.
+
+
+### Iteracja 2026-11-05 07:55 CET — odporność klasyfikatora przekrojów
+
+- Przed zmianą sprawdzono roadmap i aktualne źródła `stock_patterns.py`, `test_stock_patterns.py` oraz zapytano o workflow powiązane z SHA `ddac8b545696bde14ee7b239298ed989a7153245`. API zwróciło pustą listę (ten endpoint filtruje do uruchomień PR), więc nie jest to dowód braku aktywnych Actions. Nie uruchomiono żadnego ciężkiego benchmarku.
+- [e26e7531](https://github.com/damianink-png/DS-Estimate/commit/e26e75314f73ff5d876589655dd14c1c01679313): odrzucenie niepoprawnych współrzędnych NaN/Infinity i tolerancji; jawny warunek ceownika z jednostronnym środnikiem.
+- [993eb832](https://github.com/damianink-png/DS-Estimate/commit/993eb832cd7954a64eff134af4db057a027655bb): testy odwróconego kierunku pętli, odbicia i zamiany osi ceownika, współrzędnych nie-skończonych i zerowej tolerancji.
+- **CODED / CI UNVERIFIED**: w tej iteracji nie uruchomiono skompilowanego Windows EXE, pełnej paczki NSIS ani publicznych złożeń; nie zgłaszać PASS nowego SHA. Następny etap: uruchomić szybki unittest oraz skompilowany STEP suite na Windows; przeanalizować FAIL, w szczególności orientację profili, dokładność tolerancji i zamknięcie pętli. Później testy rzeczywistych publicznych STEP + BOM/PDF, bez DockHub.
+- Pozostałe silniki i dawny plan 24 punktów **PAUSED**; DockHub **SUSPENDED**.
