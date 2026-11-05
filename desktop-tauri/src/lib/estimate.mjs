@@ -1,7 +1,8 @@
 // DS Estimate 2.0 — estimates operate on normalized features, not STEP files.
 const valid=(v,name,positive=false)=>{if(!Number.isFinite(v)||v<0||(positive&&v===0))throw new RangeError(name);return v};
+const count=(v,name)=>{if(!Number.isSafeInteger(v)||v<0)throw new RangeError(name);return v};
 export function estimateCnc({removedCm3=0,removalCm3Min=8,holes=[],setupMin=20,toolChanges=0,toolChangeMin=2,handlingMin=0,ratePerHour=388}={}){
- for(const [k,v] of Object.entries({removedCm3,setupMin,toolChanges,toolChangeMin,handlingMin,ratePerHour}))valid(v,k);valid(removalCm3Min,'removalCm3Min',true);
+ for(const [k,v] of Object.entries({removedCm3,setupMin,toolChanges,toolChangeMin,handlingMin,ratePerHour}))valid(v,k);valid(removalCm3Min,'removalCm3Min',true);count(toolChanges,'toolChanges');
  const millingMin=removedCm3/removalCm3Min;
  if(!Array.isArray(holes))throw new TypeError('holes must be an array');
  const drillingMin=holes.reduce((s,h)=>{
@@ -14,12 +15,13 @@ export function estimateCnc({removedCm3=0,removalCm3Min=8,holes=[],setupMin=20,t
 }
 export function estimateCut({contourMm=0,feedMmMin=1500,pierces=0,pierceSec=2,rapidMm=0,rapidMmMin=10000,setupMin=10,ratePerHour=388}={}){
  for(const [k,v] of Object.entries({contourMm,pierces,pierceSec,rapidMm,setupMin,ratePerHour}))valid(v,k);
- valid(feedMmMin,'feedMmMin',true);valid(rapidMmMin,'rapidMmMin',true);
+ valid(feedMmMin,'feedMmMin',true);valid(rapidMmMin,'rapidMmMin',true);count(pierces,'pierces');
  const cuttingMin=contourMm/feedMmMin,piercingMin=pierces*pierceSec/60,rapidMin=rapidMm/rapidMmMin,totalMin=valid(cuttingMin+piercingMin+rapidMin+setupMin,'cut.totalMin');
  return {cuttingMin,piercingMin,rapidMin,totalMin,cost:valid(totalMin*ratePerHour/60,'cut.cost')};
 }
 export function estimateBending({bends=0,secondsPerBend=25,setupMin=15,handlingMin=0,ratePerHour=388}={}){
  for(const [k,v] of Object.entries({bends,secondsPerBend,setupMin,handlingMin,ratePerHour}))valid(v,k);
+ count(bends,'bends');
  const totalMin=valid(bends*secondsPerBend/60+setupMin+handlingMin,'bend.totalMin');return {totalMin,cost:valid(totalMin*ratePerHour/60,'bend.cost')};
 }
 export function estimateProject({parts=[],ratePerHour=388}={}){
