@@ -39,7 +39,11 @@ def stock_audit(inventory):
             and math.isfinite(hint[name]) and hint[name] > 0
             for name in DIMENSIONS if name in hint
         )
-        if kind not in STOCK_KINDS or not finite:
+        if raw is None:
+            status = "MISSING_HINT"
+            reason = "Compiled engine provided no stockHint for this STEP solid"
+            kind = "unknown"
+        elif not isinstance(kind, str) or kind not in STOCK_KINDS or not finite:
             status = "INVALID_HINT"
             reason = reason or "Malformed stock evidence"
             kind = "unknown"
@@ -67,7 +71,7 @@ def stock_audit(inventory):
         rows.append(row)
         statuses[status] += 1
         types[kind] += 1
-        if status in ("UNKNOWN", "INVALID_HINT", "UNVERIFIED"):
+        if status in ("UNKNOWN", "INVALID_HINT", "UNVERIFIED", "MISSING_HINT"):
             reasons[reason] += 1
     count = len(rows)
     return {
