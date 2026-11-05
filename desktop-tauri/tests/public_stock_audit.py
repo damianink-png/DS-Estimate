@@ -33,6 +33,36 @@ CSV_COLUMNS = ("id", "verifiedShapeKey", "kind", "status", "confidence",
                *DIMENSIONS, "reason", "source", "limitations")
 
 
+def _section_area_consistent(kind, hint):
+    """Reject contradictory measured section areas, not catalogue guesses.
+
+    Only analytically exact circle/rectangle stock sections are checked.
+    Structural rolled profiles and plate candidates have no such simple
+    area formula; do not pretend their bounding boxes prove anything.
+    """
+    if kind not in ("round-bar", "round-tube", "square-bar",
+                    "rectangular-bar", "flat-section",
+                    "square-hollow", "rectangular-hollow"):
+        return True
+    try:
+        area = hint["sectionAreaMm2"]
+        if kind == "round-bar":
+            expected = math.pi * hint["diameterMm"] ** 2 / 4
+        elif kind == "round-tube":
+            d, wall = hint["diameterMm"], hint["wallMm"]
+            expected = math.pi * (d * wall - wall * wall)
+        else:
+            w, h = hint["widthMm"], hint["heightMm"]
+            expected = w * h
+            if kind in ("square-hollow", "rectangular-hollow"):
+                wall = hint["wallMm"]
+                expected -= (w - 2 * wall) * (h - 2 * wall)
+        return (math.isfinite(expected) and expected > 0
+                and abs(area - expected) <= max(0.05, expected * 0.02))
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+
+
 def stock_audit(inventory):
     solids = inventory.get("solids")
     if not isinstance(solids, list) or inventory.get("count") != len(solids):
@@ -62,7 +92,8 @@ def stock_audit(inventory):
             status = "MISSING_HINT"
             reason = "Compiled engine provided no stockHint for this STEP solid"
             kind = "unknown"
-        elif not isinstance(raw, dict) or not isinstance(kind, str) or kind not in STOCK_KINDS or not finite or missing_required or bad_wall:
+        elif not isinstance(raw, dict) or not isinstance(kind, str) or kind not in STOCK_KINDS or not finite or missing_required or bad_wall
+                or not _section_area_consistent(kind, hint):
             status = "INVALID_HINT"
             reason = reason or "Malformed stock evidence"
             kind = "unknown"
