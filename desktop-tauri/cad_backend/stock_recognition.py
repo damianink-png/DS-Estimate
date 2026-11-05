@@ -1,6 +1,6 @@
 """Conservative STEP stock-section recognition; never a purchasing or steel-grade proof.
 
-Samples OCCT intersections at 25/50/75% of an elongated solid. An incomplete,
+Samples OCCT intersections at 10/25/50/75/90% of an elongated solid. An incomplete,
 non-manifold, changing or non-standard section stays unknown. This classifier
 does not change B-Rep grouping, mass, cutting routes or prices.
 """
@@ -191,7 +191,7 @@ def recognize_stock(solid, bounds, plate_hint=None):
     tol = max(.002,min(other[0]*.0001,.02))
     profiles = []
     try:
-        for fraction in (.25,.5,.75):
+        for fraction in (.10,.25,.50,.75,.90):
             edges = _section_edges(solid,bounds,axis,fraction)
             profile = _classify_section(edges,tol) if edges else None
             if profile is None:
@@ -207,5 +207,5 @@ def recognize_stock(solid, bounds, plate_hint=None):
                for k,v in first.items() if k!='kind'):
             return {'kind':'unknown','reason':'Section size changes along part'}
     return {**first,'lengthMm':length,'confidence':'cross-section-consistent',
-            'source':'OCCT sections at 25/50/75% length',
+            'source':'OCCT sections at 10/25/50/75/90% length',
             'limitations':'Cannot determine material grade, nominal standard, plate vs flat-bar procurement or end-cut stock length'}
