@@ -158,8 +158,8 @@ def _classify_section(edges, tol):
     return None
 
 
-def recognize_stock(solid, bounds):
-    """Analyze measured cross-sections. Return explicit UNKNOWN on uncertainty."""
+def recognize_stock(solid, bounds, plate_hint=None):
+    """Recognise prismatic shapes or a measured *candidate* plate; no catalogue proof."""
     dims = [bounds[i+3]-bounds[i] for i in range(3)]
     if any(not math.isfinite(x) or x<=0 for x in dims):
         return {'kind':'unknown','reason':'Invalid STEP dimensions'}
@@ -167,6 +167,16 @@ def recognize_stock(solid, bounds):
     other = sorted(dims[i] for i in range(3) if i != axis)
     length = dims[axis]
     if length/other[-1]<3.5:
+        # Prefer geometrically evidenced planar sheet over a bare bbox ratio.
+        # The planar-face contour can also be present on pocketed/finished
+        # parts, so plate is a procurement CANDIDATE rather than a proof.
+        if (isinstance(plate_hint, dict) and plate_hint.get('kind') == 'plate-outline'
+                and other[1] / other[0] >= 5 - 1e-5):
+            return {'kind':'plate-candidate','thicknessMm':other[0],
+                    'widthMm':other[1],'lengthMm':length,
+                    'confidence':'candidate',
+                    'source':'OCCT major planar faces and measured outline',
+                    'limitations':'Validate blank outline, material and manufacturing process against drawing/BOM'}
         return {'kind':'unknown','reason':'Not an axis-aligned elongated extrusion; plate or custom stock needs BOM'}
     tol = max(.002,min(other[0]*.0001,.02))
     profiles = []
