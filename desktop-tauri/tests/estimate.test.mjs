@@ -103,3 +103,12 @@ test('finite cycle times cannot overflow monetary totals or project quantity sca
  assert.throws(()=>estimateCut({contourMm:1e300,feedMmMin:1,setupMin:0,ratePerHour:1e300}),RangeError);
  assert.throws(()=>estimateProject({parts:[{geometryId:'large',quantity:1e9,features:{cut:{contourMm:1e300,feedMmMin:1,setupMin:0}}}]}),RangeError);
 });
+
+
+test('CNC drilling rejects malformed hole lists and unsafe counts',()=>{
+ for(const holes of [null,{},'bad'])assert.throws(()=>estimateCnc({holes}),TypeError);
+ for(const holes of [[null],[{}],[{count:-1,depthMm:10,feedMmMin:100}],[{count:1.5,depthMm:10,feedMmMin:100}],[{count:Number.MAX_SAFE_INTEGER+1,depthMm:10,feedMmMin:100}]]){
+  assert.throws(()=>estimateCnc({holes}));
+ }
+ assert.equal(estimateCnc({holes:[{count:0,depthMm:10,feedMmMin:100}],setupMin:0}).totalMin,0);
+});
