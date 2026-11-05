@@ -35,6 +35,22 @@ class PublicStockAuditTests(unittest.TestCase):
         self.assertEqual(result['rows'][2]['reason'],'Cross-section changes along part')
         self.assertIn('NOT accuracy proof',result['purpose'])
 
+    def test_false_positive_profile_without_dimensions_rejected(self):
+        result=stock_audit({'count':3,'solids':[
+            {'id':'bad-shs','stockHint':{'kind':'square-hollow',
+                'confidence':'cross-section-consistent','lengthMm':1000,
+                'widthMm':40,'heightMm':40,'wallMm':25,'sectionAreaMm2':200}},
+            {'id':'bad-tube','stockHint':{'kind':'round-tube',
+                'confidence':'cross-section-consistent','diameterMm':30,
+                'wallMm':2,'lengthMm':1000}},
+            {'id':'good-tube','stockHint':{'kind':'round-tube',
+                'confidence':'cross-section-consistent','diameterMm':30,
+                'wallMm':2,'lengthMm':1000,'sectionAreaMm2':175.93}}
+        ]})
+        self.assertEqual(result['statusCounts']['INVALID_HINT'],2)
+        self.assertEqual(result['statusCounts']['GEOMETRY_ONLY'],1)
+        self.assertEqual(result['geometryEvidencePct'],33.3)
+
     def test_malformed_occurrence_inventory_rejected(self):
         with self.assertRaises(ValueError):
             stock_audit({'count':2,'solids':[{'id':'1'}]})
