@@ -21,3 +21,16 @@ settles every source, dependency or binary distribution obligation.
 Upstream: https://github.com/deepnest-next/deepnest
 No actual Deepnest placement engine is bundled or running in this project.
 Review upstream and transitive dependency licenses before integration.
+
+## DS Compare 0.6.4 interface patterns
+
+The DS Estimate 0.3 desktop workspace adapts the dark/light palette, navigation,
+native multi-file picker, drop-event lifetime handling, and window work-area sizing
+from the user's DS Compare project: `damianink-png/test`, branch
+`build/dscompare-0.6.4-20261105`, commit
+`1cae4bc` (`portable/frontend/style.css`, `api.ts`, `main.rs`).
+Comparison, registration, WebGL previews and DS Compare's launcher are not presented
+as estimation engines. The existing pythonocc-core/OCCT estimator remains the single
+CAD backend, and the existing Kwantflow costing adapter remains in use.
+
+Lucide icons: lucide-svelte 0.468.0, ISC license (upstream lucide-icons/lucide).

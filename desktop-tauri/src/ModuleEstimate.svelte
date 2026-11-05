@@ -1,7 +1,11 @@
 <script lang="ts">
  import {onMount} from 'svelte';
- import {invoke} from '@tauri-apps/api/core';
- import {getCurrentWebview} from '@tauri-apps/api/webview';
+ import {call as invoke,native,pickInputs,watchDrops,saveReport} from './lib/desktop-api';
+ import {Layers3,FolderOpen,FilePlus2,Plus,Upload,Scale,Settings2,Sun,Moon,Download,Check,ChevronRight,X,Files,RotateCcw,ClipboardList,Search} from 'lucide-svelte';
+ import {mergeProjectFiles,preferredStep,moduleReport,csvCell} from './lib/project-files.mjs';
+ import {MATERIALS,defaultMaterial,groupMaterial} from './lib/part-materials.mjs';
+ import {calculateWeld} from './lib/welding.mjs';
+ import {estimateBending,estimateCnc} from './lib/estimate.mjs';
  import {createCadSession} from './lib/cad-session.mjs';
  import {validateStepBom} from './lib/inventory-validate.mjs';
  import {evaluateModules} from './lib/modular-quote.mjs';
@@ -9,7 +13,6 @@
  import {parseExplicitFilletNotes} from './lib/weld-document.mjs';
  import {kwantflowKnownCost} from './lib/modular-kwantflow.js';
 
- let {onTools=()=>{}}:{onTools?:()=>void}=$props();
  type StockHint={kind:string;confidence?:string;reason?:string;source?:string;limitations?:string;lengthMm?:number;widthMm?:number;heightMm?:number;diameterMm?:number;thicknessMm?:number;wallMm?:number;sectionAreaMm2?:number};
  type Inv={count:number;totalMassKg:number;solids:Array<{id:string;verifiedShapeKey:string;volumeMm3:number;massKg:number;bboxMm:number[];verificationMethod?:string;stockHint?:StockHint}>;groups:Array<{geometryId:string;quantity:number;massKg:number}>;limitations?:string[]};
  type Edit={value:number|null};
@@ -65,11 +68,26 @@
  let excluded=$state<Record<string,boolean>>({});
  let custom=$state<Record<string,CustomRow[]>>({});
  let grade=$state('unknown');
+ let partMaterials=$state<Record<string,any>>({});
+ let theme=$state('dark');
+ let dragActive=$state(false);
+ let showFiles=$state(true);
+ let showReport=$state(false);
+ let materialQuery=$state('');
+ let notice=$state('');
+ let showCalculator=$state(false);
+ let weldLength=$state(0),weldA=$state(4),deposition=$state(2.5),arcPercent=$state(35),weldSetup=$state(20);
+ let bendCount=$state(0),bendSeconds=$state(30),bendSetup=$state(20);
+ let cncRemoved=$state(0),cncQ=$state(10),cncSetup=$state(20);
+ let assemblyPerPart=$state(2.5),assemblyJoints=$state(0),assemblyPerJoint=$state(1.5),assemblySetup=$state(20);
+ let weldResult=$derived.by(()=>{try{return calculateWeld({lengthM:weldLength,throatMm:weldA,depositionKgH:deposition,arcFactor:arcPercent/100,setupMin:weldSetup})}catch{return null}});
+ let bendResult=$derived.by(()=>{try{return estimateBending({bends:bendCount,secondsPerBend:bendSeconds,setupMin:bendSetup,ratePerHour:rates.bending??0})}catch{return null}});
+ let cncResult=$derived.by(()=>{try{return estimateCnc({removedCm3:cncRemoved,removalCm3Min:cncQ,setupMin:cncSetup,ratePerHour:rates.cnc??0})}catch{return null}});
  let materialApproved=$state(false);
  let selectedSolid=$state(0);
  let projectKey=$state('');
  let added=$state(0);
- let report=$derived(evaluateModules({inventory,pdfText,rates,edits,confirmed,excluded,custom,grade,materialApproved}));
+ let report=$derived(evaluateModules({inventory,pdfText,rates,edits,confirmed,excluded,custom,grade,materialApproved,partMaterials}));
  let selected=$derived(report.modules.find(m=>m.id===active)??report.modules[0]);
  let part=$derived(inventory?.solids[selectedSolid]??null);
  let weldNotes=$derived(pdfText?parseExplicitFilletNotes(pdfText):[]);
@@ -83,16 +101,16 @@
  }
  function saveProject(){
   if(!projectKey)return;
-  try{localStorage.setItem(projectStorage(),JSON.stringify({edits,confirmed,excluded,custom,grade,materialApproved}));}catch{}
+  try{localStorage.setItem(projectStorage(),JSON.stringify({edits,confirmed,excluded,custom,grade,materialApproved,partMaterials}));}catch{}
  }
  function restoreProject(){
-  edits={};confirmed={};excluded={};custom={};grade='unknown';materialApproved=false;
+  edits={};confirmed={};excluded={};custom={};grade='unknown';materialApproved=false;partMaterials={};
   try{
    const saved=JSON.parse(localStorage.getItem(projectStorage())||'null');
    if(saved && typeof saved==='object'){
     edits=saved.edits||{};confirmed=saved.confirmed||{};
     excluded=saved.excluded||{};custom=saved.custom||{};
-    grade=saved.grade||'unknown';materialApproved=saved.materialApproved===true;
+    grade=saved.grade||'unknown';materialApproved=saved.materialApproved===true;partMaterials=saved.partMaterials||{};
    }
   }catch{}
  }
@@ -136,6 +154,7 @@
    inventory=data;
    if(projectKey!==key){projectKey=key;restoreProject();}
    selectedSolid=0;
+   partMaterials=Object.fromEntries(data.groups.map(g=>[g.geometryId,{...defaultMaterial(),...(partMaterials[g.geometryId]||{})}]));
    const documents=files.filter(isPdf);
    const texts:string[]=[];
    notes=[];
@@ -159,11 +178,15 @@
   if(busy||!paths.length)return;
   busy=true;error='';status='Przegląd plików…';
   try{
-   const lists=await Promise.all(paths.map(path=>invoke<string[]>('scan_project',{path})));
-   files=[...new Set(lists.flat())];
+   const lists=await Promise.allSettled(paths.map(path=>invoke<string[]>('scan_project',{path})));
+   const added=lists.flatMap(r=>r.status==='fulfilled'?r.value:[]);
+   const failed=lists.filter(r=>r.status==='rejected');
+   if(!added.length&&failed.length)throw (failed[0] as PromiseRejectedResult).reason;
+   files=mergeProjectFiles(files,added);
+   if(failed.length)notice='Nie udało się dodać '+failed.length+' ścieżek. Pozostałe pliki są dostępne.';
    candidateSteps=files.filter(isStep).sort((a,b)=>modelScore(a)-modelScore(b)||a.localeCompare(b));
-   if(!candidateSteps.length)throw new Error('Brak pliku STEP. Dokumentacja bez modelu wymaga ręcznego przedmiaru.');
-   selectedStep=candidateSteps[0];
+   if(!candidateSteps.length){status='Dokumenty dodane · dodaj model STEP';busy=false;return;}
+   selectedStep=preferredStep(files,selectedStep);
   }catch(e){error=String(e);status='Sprawdź wskazaną ścieżkę';busy=false;return;}
   busy=false;
   await analyzeSelected();
@@ -178,11 +201,11 @@
     }
    }
   }catch{}
-  let unlisten:(()=>void)|null=null;
-  getCurrentWebview().onDragDropEvent(e=>{
-   if(e.payload.type==='drop')void openInputs(e.payload.paths);
-  }).then(cb=>unlisten=cb).catch(()=>{});
-  return ()=>{unlisten?.();};
+  try{theme=localStorage.getItem('ds-estimate-theme')==='light'?'light':'dark';}catch{}
+  let unlisten:(()=>void)|null=null,alive=true;
+  watchDrops((paths,hover)=>{if(!alive)return;dragActive=hover;if(paths)void openInputs(paths);})
+   .then(cb=>{if(alive)unlisten=cb;else cb();}).catch(e=>{error='Nie można uruchomić przeciągania: '+String(e);});
+  return ()=>{alive=false;unlisten?.();};
  });
  const severity=(s:string)=>s==='verified'?'ok':s==='excluded'?'idle':
   s==='review'||s==='partial'?'warn':s==='idle'?'idle':'bad';
@@ -190,257 +213,177 @@
   verified:'OK',excluded:'Nie dotyczy',review:'Do potwierdzenia',
   partial:'Niepełne',missing:'Brak danych',idle:'Nieanalizowane',error:'Błąd modułu'
  } as Record<string,string>)[s]||'Weryfikacja';
+
+ let materialRows=$derived.by(()=>!inventory?[]:inventory.groups.map(g=>{
+  try{return {group:g,material:groupMaterial(inventory,g,partMaterials[g.geometryId],rates.materialPriceKg),error:''};}
+  catch(e){return {group:g,material:null,error:String(e)};}
+ }));
+ let totalMass=$derived(materialRows.reduce((sum,r)=>sum+(r.material?.totalMassKg??0),0));
+ let stockMass=$derived(materialRows.reduce((sum,r)=>sum+(r.material?.totalStockMassKg??0),0));
+ let visibleMaterialRows=$derived(materialRows.filter(r=>r.group.geometryId.toLowerCase().includes(materialQuery.toLowerCase())));
+ async function chooseInputs(folder=false){try{const paths=await pickInputs(folder);if(paths.length)await openInputs(paths);}catch(e){error=String(e);}}
+ function changeMaterial(key:string,field:string,value:any){
+  partMaterials={...partMaterials,[key]:{...defaultMaterial(),...partMaterials[key],[field]:value}};
+  confirmed={...confirmed,material:false,cutting:false};materialApproved=false;saveProject();
+ }
+ function chooseGrade(key:string,value:string){const m=MATERIALS.find(x=>x.grade===value);if(!m)return;
+  partMaterials={...partMaterials,[key]:{...defaultMaterial(),...partMaterials[key],grade:m.grade,density:m.density}};
+  materialApproved=false;confirmed={...confirmed,material:false,cutting:false};saveProject();
+ }
+ function resetValue(moduleId:string,key:string){const own={...edits[moduleId]};delete own[key];
+  edits={...edits,[moduleId]:own};confirmed={...confirmed,[moduleId]:false};saveProject();}
+ function removeFile(path:string){if(busy)return;files=files.filter(f=>f!==path);candidateSteps=files.filter(isStep);
+  if(path===selectedStep){selectedStep=preferredStep(files);inventory=null;projectKey='';restoreProject();if(selectedStep)void analyzeSelected();}}
+ function newProject(){if(busy)return;files=[];candidateSteps=[];selectedStep='';inventory=null;projectKey='';pdfText='';notes=[];error='';notice='';restoreProject();status='Dodaj pliki projektu';showReport=false;showSettings=false;active='material';}
+ function toggleTheme(){theme=theme==='dark'?'light':'dark';try{localStorage.setItem('ds-estimate-theme',theme);}catch{}}
+ function autoText(row:any){const value=row.kind==='time'?row.autoHours:row.autoAmount;return typeof value==='number'?number(value):'—';}
+ async function exportStatus(format:'json'|'csv'){
+  try{const data=moduleReport(report,{step:selectedStep,files,solidCount:inventory?.count??0,totalMassKg:totalMass,stockMassKg:stockMass});
+   const text=format==='json'?JSON.stringify(data,null,2):'\uFEFF'+[
+    ['Moduł','Stan','Brakujące pozycje','Znany koszt PLN'],
+    ...data.modules.map(m=>[m.name,statusName(m.status),m.missing,m.costPln]),[],
+    ['Moduł','Operacja','Rodzaj','Automat','Przyjęto','Koszt PLN','Korekta'],
+    ...data.modules.flatMap(m=>m.rows.map(r=>[m.name,r.name,r.kind,r.automatic,r.value,r.costPln,r.manuallyEdited?'tak':'nie']))
+   ].map(row=>row.map(csvCell).join(';')).join('\r\n');
+   if(await saveReport(text,format))notice='Zapisano zestawienie '+format.toUpperCase()+'.';
+  }catch(e){error=String(e);}
+ }
+ function applyCalculator(){
+  if(active==='welding'&&weldResult){editValue(active,'setup',String(weldSetup/60));editValue(active,'weld',String((weldResult.totalMinutes-weldSetup)/60));}
+  if(active==='bending'&&bendResult){editValue(active,'setup',String(bendSetup/60));editValue(active,'bends',String((bendResult.totalMin-bendSetup)/60));}
+  if(active==='cnc'&&cncResult){editValue(active,'program',String(cncSetup/60));editValue(active,'milling',String(cncResult.millingMin/60));}
+  if(active==='assembly'&&inventory&&[assemblySetup,assemblyPerPart,assemblyJoints,assemblyPerJoint].every(v=>Number.isFinite(v)&&v>=0)){
+   editValue(active,'fixtures',String(assemblySetup/60));editValue(active,'fitup',String(inventory.count*assemblyPerPart/60));editValue(active,'tacks',String(assemblyJoints*assemblyPerJoint/60));
+  }
+  notice='Przyjęto oszacowanie do tabeli operacji. Możesz je dalej korygować.';
+ }
 </script>
-
-<div class="module-app">
- <div class="top">
-  <div class="brand"><span class="logo">DS</span><strong>DS Estimate</strong><span class="small">moduły wyceny</span></div>
-  <div class="project-name">{selectedStep?filename(selectedStep):'Nowy projekt'}</div>
-  <div class="top-actions">
-   <button class:chosen={showSettings} onclick={()=>showSettings=!showSettings} title="Stawki godzinowe i cena materiału">⚙ Ustawienia</button>
-   <button onclick={onTools} title="Poprzednie narzędzia">Narzędzia</button>
+<div class="app" data-theme={theme}>
+ <aside class="rail">
+  <div class="brand"><span class="brand-mark"><Layers3 size={23}/></span><strong>DS Estimate</strong></div>
+  <nav aria-label="Moduły wyceny">
+   <button class:active={!showSettings&&!showReport&&active==='project'} onclick={()=>{active='project';showSettings=false;showReport=false;}}><Files size={18}/><span>Pliki projektu</span><small class="nav-count">{files.length}</small></button>
+   <div class="rail-caption">ETAPY WYCENY</div>
+   {#each report.modules as mod}
+    <button class:active={!showSettings&&!showReport&&active===mod.id} title={mod.title+' — '+statusName(mod.status)} onclick={()=>{active=mod.id;showSettings=false;showReport=false;showCalculator=false;}}>
+     <span class={'stage-dot '+severity(mod.status)}>{mod.status==='verified'?'✓':mod.status==='excluded'?'–':''}</span>
+     <span>{mod.title}</span>
+    </button>
+   {/each}
+  </nav>
+  <div class="rail-bottom">
+   <button class:active={showReport} onclick={()=>{showReport=true;showSettings=false;}}><ClipboardList size={18}/><span>Stan modułów</span></button>
+   <button class:active={showSettings} onclick={()=>{showSettings=true;showReport=false;}}><Settings2 size={18}/><span>Stawki i ustawienia</span></button>
+   <small>DS Estimate 0.3 · zapis lokalny</small>
   </div>
- </div>
- <div class="project-bar">
-  <input aria-label="Folder lub plik projektu" placeholder="Ścieżka folderu lub STEP…" bind:value={inputPath}
-   onkeydown={e=>{if(e.key==='Enter'&&inputPath.trim())void openInputs([inputPath.trim()]);}}/>
-  <button class="primary" disabled={busy||!inputPath.trim()} onclick={()=>void openInputs([inputPath.trim()])}>
-   {busy?'Analizuję…':'Analizuj'}
-  </button>
-  {#if candidateSteps.length>1}
-   <select aria-label="Wybierz model główny" value={selectedStep} disabled={busy}
-    onchange={e=>{selectedStep=e.currentTarget.value;void analyzeSelected();}}>
-    {#each candidateSteps as step}<option value={step}>{filename(step)}</option>{/each}
-   </select>
-  {/if}
-  <span class="muted">{status}</span>
- </div>
- {#if error}<p class="error" role="alert">{error}</p>{/if}
-
- {#if showSettings}
-  <section class="rate-panel">
-   <div><h2>Stawki i ustawienia</h2><p>Wspólne dla projektu. Zmiana stawki przelicza zł bez ponownego uruchomienia CAD. Wartości początkowe są przykładowe.</p></div>
-   <div class="rate-grid">
-    <label>Cena materiału [zł/kg]
-     <input type="number" min="0" step=".1" value={rates.materialPriceKg??''}
-      oninput={e=>changeRate('materialPriceKg',e.currentTarget.value)}/>
-    </label>
-    {#each MODULES.filter(x=>x.rateKey) as m}
-     <label>{m.title} [zł/h]
-      <input type="number" min="0" step="1" value={rates[m.rateKey]??''}
-       oninput={e=>changeRate(m.rateKey,e.currentTarget.value)}/>
-     </label>
-    {/each}
+ </aside>
+ <div class="workspace">
+  <header>
+   <div class="breadcrumb"><strong>{showSettings?'Stawki i ustawienia':showReport?'Stan modułów':active==='project'?'Pliki projektu':selected.title}</strong><ChevronRight size={14}/><span>{selectedStep?filename(selectedStep):'Nowy projekt'}</span></div>
+   <div class="header-actions">
+    <button class="subtle" disabled={busy} onclick={newProject}><Plus size={16}/>Nowy projekt</button>
+    <button class="subtle" onclick={()=>exportStatus('csv')} disabled={!inventory}><Download size={16}/>Eksport CSV</button>
+    <button class="icon-button" onclick={toggleTheme} aria-label="Zmień motyw">{#if theme==='dark'}<Sun size={18}/>{:else}<Moon size={18}/>{/if}</button>
    </div>
-  </section>
- {:else}
-  <div class="layout">
-   <aside class="modules">
-    <div class="side-head"><strong>Etapy wyceny</strong><span>{report.completedModules}/{report.totalModules}</span></div>
-    <div class="progress"><div style:width={(report.completedModules/report.totalModules*100)+'%'}></div></div>
-    {#each report.modules as mod}
-     <button class:active={mod.id===active} class="module-entry" onclick={()=>active=mod.id}>
-      <span class:ok={severity(mod.status)==='ok'} class:warn={severity(mod.status)==='warn'}
-       class:bad={severity(mod.status)==='bad'} class:idle={severity(mod.status)==='idle'}
-       class="indicator">{severity(mod.status)==='ok'?'✓':severity(mod.status)==='bad'?'!':
-        severity(mod.status)==='warn'?'•':'–'}</span>
-      <span class="mod-text"><strong>{mod.title}</strong><small>{statusName(mod.status)}</small></span>
-      <span class="chevron">›</span>
-     </button>
-    {/each}
-    <div class="side-foot"><span>Import STEP</span><strong>{inventory?inventory.count+' brył · '+inventory.groups.length+' grup':'brak danych'}</strong></div>
-   </aside>
-
-   <main class="content">
-    <div class="section-title">
-     <div><small>MODUŁ WYCENY</small><h1>{selected.title}</h1>
-      <p>{selected.detail}</p>
-     </div>
-     <span class:ok={severity(selected.status)==='ok'} class:warn={severity(selected.status)==='warn'}
-      class:bad={severity(selected.status)==='bad'} class:idle={severity(selected.status)==='idle'}
-      class="pill">{statusName(selected.status)}</span>
+  </header>
+  <main>
+   {#if !native}<div class="banner info">Podgląd interfejsu. Dodawanie lokalnych plików i analiza CAD działają w programie Windows.</div>{/if}
+   {#if error}<div class="banner danger" role="alert"><div><strong>Nie udało się ukończyć operacji</strong><p>{error}</p></div><button aria-label="Zamknij błąd" onclick={()=>error=''}><X size={16}/></button></div>{/if}
+   {#if notice}<div class="banner info" role="status"><span>{notice}</span><button aria-label="Zamknij informację" onclick={()=>notice=''}><X size={16}/></button></div>{/if}
+   <div class="page-heading">
+    <div><h1>{showSettings?'Stawki i ustawienia':showReport?'Stan poszczególnych modułów':!inventory?'Wycena konstrukcji':active==='project'?'Pliki projektu':selected.title}</h1>
+     <p>{showSettings?'Jedno miejsce dla cen materiału i stawek stanowisk.':showReport?'Sprawdź, co jest policzone, a co wymaga uzupełnienia.':!inventory?'Dodaj modele STEP i dokumentację. Przejdź przez kolejne etapy wyceny.':active==='project'?'Wybierz model główny. Pozostałe pliki pozostają dokumentacją projektu.':selected.detail}</p>
     </div>
+    <div class="heading-actions"><button class="primary" disabled={busy} onclick={()=>chooseInputs()}><FilePlus2 size={17}/>Dodaj pliki</button><button disabled={busy} onclick={()=>chooseInputs(true)}><FolderOpen size={17}/>Dodaj folder</button></div>
+   </div>
 
-    {#if inventory}
-     <div class="section-metrics">
-      <div><small>Koszt policzonych pozycji</small><strong>{money(selected.knownCostPln)} zł</strong></div>
-      <div><small>Do uzupełnienia</small><strong>{selected.missing} pozycji</strong></div>
-     </div>
-     {#if active==='material'}
-      <div class="material-options">
-       <label>Gatunek materiału
-        <select bind:value={grade} onchange={()=>{confirmed={...confirmed,material:false};saveProject();}}>
-         <option value="unknown">Nieustalony</option><option value="S235">S235</option>
-         <option value="S355">S355</option><option value="S690QL">S690QL</option>
-         <option value="S960QL">S960QL</option><option value="stainless">Nierdzewna</option>
-         <option value="aluminium">Aluminium</option>
-        </select>
-       </label>
-       <label class="inline"><input type="checkbox" bind:checked={materialApproved}
-        onchange={()=>{confirmed={...confirmed,material:false};saveProject();}}/>
-        Potwierdzam gatunek, zakres i masę do wyceny</label>
-      </div>
-     {/if}
-     <div class="table-box">
-      <table><thead><tr><th>Operacja</th><th>Podstawa</th><th>{active==='material'||active==='purchased'?'Kwota [zł]':'Czas [h]'}</th><th>Koszt [zł]</th></tr></thead>
-      <tbody>
-       {#each selected.rows as row (row.key)}
-        <tr>
-         <td>
-          {#if row.key.startsWith('custom-')}
-           <input class="edit-label" aria-label="Nazwa operacji" value={row.name}
-            oninput={e=>renameOperation(row.key,e.currentTarget.value)}/>
-          {:else}<strong>{row.name}</strong>{/if}
-          {#if active==='cutting'}<button class="tiny" title="Pokaż detale B-Rep" onclick={()=>{
-           const idx=inventory?.solids.findIndex(x=>x.verifiedShapeKey===row.key)??-1;
-           if(idx>=0)selectedSolid=idx;
-          }}>Detal</button>{/if}
-         </td>
-         <td class="basis">{row.detail}</td>
-         <td><input type="number" min="0" step=".01" aria-label={'Wartość '+row.name}
-          placeholder="—" value={row.value??''} disabled={selected.omitted}
-          oninput={e=>editValue(active,row.key,e.currentTarget.value)}/></td>
-         <td class="cost">{row.costPln===null?'—':money(row.costPln)}</td>
+   {#if !showSettings}
+    <div class:drop-active={dragActive} class:compact={inventory&&active!=='project'} class="upload-panel panel" aria-label="Obszar dodawania plików">
+     <Upload size={inventory?22:32}/><div><strong>{dragActive?'Upuść pliki tutaj':busy?status:'Przeciągnij pliki lub folder do programu'}</strong><p>STEP / STP · PDF · DXF / DWG · obrazy · Excel</p></div>
+     <button class="subtle" onclick={()=>showFiles=!showFiles} aria-expanded={showFiles}>{files.length} plików <ChevronRight size={15}/></button>
+    </div>
+    {#if busy}<div class="analysis-progress" role="status"><span class="spinner"></span>{status}<span>Nie zamykaj programu.</span></div>{/if}
+    {#if files.length&&showFiles}
+     <section class="panel files-panel" aria-label="Pliki projektu">
+      <div class="panel-title"><h2>Pliki projektu</h2><span class="muted">Jeden wybrany STEP stanowi zakres wyceny.</span></div>
+      <ul class="file-list">
+       {#each files as file}<li class:chosen={file===selectedStep}>
+        <span class="file-type">{file.split('.').pop()?.toUpperCase()}</span><div class="file-name"><strong title={file}>{filename(file)}</strong><small>{file===selectedStep?'Model wyceniany':isStep(file)?'Dodatkowy model — nie doliczany do masy':isPdf(file)?'Dokumentacja PDF — odczyt warstwy tekstowej':'Załącznik — bez automatycznej analizy'}</small></div>
+        {#if isStep(file)&&file!==selectedStep}<button class="tiny" disabled={busy} onclick={()=>{selectedStep=file;void analyzeSelected();}}>Wyceń ten model</button>{/if}
+        {#if file===selectedStep}<span class="pill ok">Model główny</span>{/if}
+        <button class="icon-button" title="Usuń z projektu" aria-label={'Usuń '+filename(file)} disabled={busy} onclick={()=>removeFile(file)}><X size={14}/></button>
+       </li>{/each}
+      </ul>
+      <details class="manual-path"><summary>Wklej ścieżkę ręcznie</summary><div class="input-action"><input aria-label="Ścieżka pliku lub folderu" bind:value={inputPath} placeholder="C:\modele\zlozenie.step" onkeydown={e=>{if(e.key==='Enter'&&inputPath.trim())void openInputs([inputPath.trim()]);}}/><button disabled={busy||!inputPath.trim()} onclick={()=>openInputs([inputPath.trim()])}>Dodaj</button></div></details>
+     </section>
+    {/if}
+   {/if}
+
+   {#if showSettings}
+    <div class="settings-grid">
+     <section class="panel"><h2>Materiał i stanowiska</h2><p>Wartości startowe są przykładowe. Zmiany nie uruchamiają ponownie silnika CAD.</p><div class="form-grid">
+      <label>Domyślna cena materiału [zł/kg]<input type="number" min="0" step=".01" value={rates.materialPriceKg??''} placeholder="Brak ceny" onchange={e=>changeRate('materialPriceKg',e.currentTarget.value)}/></label>
+      {#each MODULES.filter(x=>x.rateKey) as m}<label>{m.title} [zł/h]<input type="number" min="0" value={rates[m.rateKey]??''} onchange={e=>changeRate(m.rateKey,e.currentTarget.value)}/></label>{/each}
+     </div></section>
+     <section class="panel"><h2>Geometria i zapis</h2><p>STEP jest odczytywany przez lokalny silnik OCCT. Przeliczenie kosztów korzysta z zapisanego wyniku analizy.</p><dl><dt>Gęstość domyślna</dt><dd>7850 kg/m³</dd><dt>Gatunek bez danych</dt><dd>Puste pole</dd><dt>Ustawienia części i korekty</dt><dd>Zapis lokalny dla wybranego modelu i jego wersji</dd><dt>Dokumentacja</dt><dd>PDF: warstwa tekstowa; DXF, DWG, obrazy i Excel: lista załączników</dd></dl><button onclick={toggleTheme}>{theme==='dark'?'Włącz jasny motyw':'Włącz ciemny motyw'}</button><p class="hint">Zmiana pliku STEP unieważnia jego poprzedni przedmiar. Żaden moduł nie traktuje brakujących czasów jak potwierdzonych zer.</p></section>
+    </div>
+   {:else if showReport}
+    <section class="panel results-panel"><div class="panel-title"><h2>Gotowość wyceny</h2><span class="pill">{report.completedModules} / {report.totalModules} etapów</span></div>
+     <div class="table-scroll"><table><thead><tr><th>Moduł</th><th>Stan</th><th>Brakujące pozycje</th><th>Znany koszt</th><th></th></tr></thead><tbody>{#each report.modules as mod}<tr><td><strong>{mod.title}</strong></td><td><span class={'pill '+severity(mod.status)}>{statusName(mod.status)}</span></td><td>{mod.missing}</td><td>{money(mod.knownCostPln)} zł</td><td><button class="tiny" onclick={()=>{showReport=false;active=mod.id;}}>Otwórz</button></td></tr>{/each}</tbody></table></div>
+     <div class="panel-actions"><button disabled={!inventory} onclick={()=>exportStatus('json')}><Download size={15}/>Zapisz raport JSON</button><button disabled={!inventory} onclick={()=>exportStatus('csv')}><Download size={15}/>Zapisz raport CSV</button></div>
+    </section><div class="banner info">Potwierdzenie etapu oznacza sprawdzenie danych przez operatora. Nie jest potwierdzeniem pełnej automatyzacji rozpoznawania technologii.</div>
+   {:else if inventory&&active!=='project'}
+    <div class="metrics"><article><Scale size={17}/><div><small>Masa konstrukcji</small><strong>{number(totalMass)} <em>kg</em></strong></div></article><article><Layers3 size={17}/><div><small>Półfabrykaty z naddatkami</small><strong>{number(stockMass)} <em>kg</em></strong></div></article><article><Files size={17}/><div><small>Bryły / grupy geometrii</small><strong>{inventory.count} <em>/ {inventory.groups.length}</em></strong></div></article><article><Check size={17}/><div><small>Potwierdzone etapy</small><strong>{report.completedModules} <em>/ {report.totalModules}</em></strong></div></article></div>
+
+    {#if active==='material'}
+     <section class="panel results-panel"><div class="panel-title"><div><h2>Części i materiały</h2><p>Wiersz obejmuje wszystkie wystąpienia identycznej geometrii.</p></div><label class="search"><Search size={15}/><input aria-label="Szukaj grupy części" bind:value={materialQuery} placeholder="Szukaj części…"/></label></div>
+      <div class="table-scroll"><table><thead><tr><th>Grupa części / wyrób</th><th>Szt.</th><th>Gatunek</th><th>Gęstość kg/m³</th><th>Masa / szt.</th><th>Cena zł/kg</th><th>Naddatek pocz. / kon. mm</th><th>Półfabrykat kg/szt.</th></tr></thead><tbody>
+       {#each visibleMaterialRows as item (item.group.geometryId)}
+        {@const g=item.group}{@const m=item.material}{@const solid=inventory.solids.find(s=>s.verifiedShapeKey===g.geometryId)}
+        <tr><td><strong>{g.geometryId}</strong><small class="cell-note">{stockLabels[solid?.stockHint?.kind||'unknown']||'Nierozpoznany'}{solid?.stockHint?.confidence?' · '+solid.stockHint.confidence:''}</small><button class="tiny text" onclick={()=>selectedSolid=inventory.solids.findIndex(s=>s.verifiedShapeKey===g.geometryId)}>Szczegóły</button></td><td>{g.quantity}</td>
+         <td><select aria-label={'Gatunek '+g.geometryId} value={m?.grade??''} onchange={e=>chooseGrade(g.geometryId,e.currentTarget.value)}>{#each MATERIALS as mat}<option value={mat.grade}>{mat.label}</option>{/each}</select></td>
+         <td><input class="number-input" aria-label={'Gęstość '+g.geometryId} type="number" min="1" value={m?.density??7850} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'density',Number(e.currentTarget.value));}}/></td>
+         <td>{m?number(m.massKg):'—'}<small class="cell-note">kg</small></td>
+         <td><input class="number-input" aria-label={'Cena '+g.geometryId} type="number" min="0" step=".01" placeholder={rates.materialPriceKg===null?'—':String(rates.materialPriceKg)} value={partMaterials[g.geometryId]?.price??''} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'price',e.currentTarget.value===''?null:Number(e.currentTarget.value));}}/></td>
+         <td><div class="paired"><input aria-label={'Naddatek początek '+g.geometryId} type="number" min="0" step=".1" value={m?.allowStart??0} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'allowStart',Number(e.currentTarget.value));}}/><span>/</span><input aria-label={'Naddatek koniec '+g.geometryId} type="number" min="0" step=".1" value={m?.allowEnd??0} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'allowEnd',Number(e.currentTarget.value));}}/></div></td>
+         <td><input class="number-input" aria-label={'Znana masa półfabrykatu '+g.geometryId} title="Puste = szacunek z naddatków. Wpisz znaną masę, aby ją przyjąć." type="number" min="0" step=".001" placeholder={m?number(m.stockMassKg):'—'} value={partMaterials[g.geometryId]?.stockMassKg??''} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'stockMassKg',e.currentTarget.value===''?null:Number(e.currentTarget.value));}}/>{#if item.error}<small class="cell-note bad">{item.error}</small>{/if}</td>
         </tr>
        {/each}
-      </tbody></table>
-     </div>
-     <div class="control-row">
-      <button class="quiet" onclick={addOperation} disabled={selected.omitted}>+ Operacja</button>
-      <div class="checks">
-       <label><input type="checkbox" checked={selected.omitted}
-        onchange={e=>toggleExcluded(e.currentTarget.checked)}/> Nie dotyczy</label>
-       <label><input type="checkbox" checked={confirmed[active]===true}
-        disabled={selected.missing>0||selected.omitted||selected.status==='error'}
-        onchange={e=>toggleConfirmed(e.currentTarget.checked)}/> Potwierdź etap</label>
-      </div>
-     </div>
-     {#if selected.missing>0&&!selected.omitted}
-      <div class="notice">Brak danych dla {selected.missing} pozycji. Nie są naliczane jako 0 zł.</div>
-     {/if}
-     {#if active==='welding'}
-      <div class="notice">Odczyt tekstu PDF: {weldNotes.length} możliwych oznaczeń spoin.
-       Nie są automatycznie mapowane do połączeń 3D. Potwierdź długości, metodę i czas ręcznie.</div>
-     {/if}
-     {#if active==='cutting'}
-      <p class="hint">Czasy automatyczne pochodzą z konturów OCCT i przykładowych parametrów maszyn; ustawienia stawek są centralne. Brak konturu oznacza brak czasu.</p>
-     {/if}
-    {:else}
-     <div class="empty">Dodaj folder z dokumentacją lub plik STEP, aby rozpocząć. Analizę B-Rep wykonujemy tylko raz na niezmieniony plik.</div>
+      </tbody></table></div>
+      <div class="panel-actions"><label class="check"><input type="checkbox" bind:checked={materialApproved} onchange={()=>{confirmed={...confirmed,material:false};saveProject();}}/>Potwierdzam gęstości, ceny i zakres materiału</label><span class="muted">Gatunek może pozostać pusty.</span></div>
+     </section>
+     <p class="hint">Naddatki są liczone na długości półfabrykatu według wymiaru rozpoznanego przekroju lub najdłuższego boku bbox. To szacunek; dla nietypowej części wpisz znaną masę półfabrykatu. Naddatek nie zmienia masy gotowej konstrukcji.</p>
     {/if}
-   </main>
 
-   <aside class="details">
-    <h2>Dane modelu</h2>
-    {#if inventory}
-     <div class="mini-stats"><span>Bryły <strong>{inventory.count}</strong></span><span>Grupy <strong>{inventory.groups.length}</strong></span></div>
-     <label class="part-select">Wystąpienie STEP
-      <select value={selectedSolid} onchange={e=>selectedSolid=Number(e.currentTarget.value)}>
-       {#each inventory.solids as s,i}<option value={i}>{s.id} · {s.verifiedShapeKey}</option>{/each}
-      </select>
-     </label>
-     {#if part}
-      <div class="bbox">
-       <svg viewBox="0 0 220 140" role="img" aria-label="Schemat gabarytów wybranej bryły, nie geometria B-Rep">
-        <path d="M35 53 L128 23 L191 55 L99 87 Z M35 53 L35 105 L99 137 L99 87 M99 137 L191 107 L191 55 M35 105 L128 75 L191 107 M128 23 L128 75"
-         fill="none" stroke="#73849a" stroke-width="2" stroke-linejoin="round"/>
-       </svg>
-       <small>Schemat bbox · nie podgląd powierzchni 3D</small>
-      </div>
-      <dl>
-       <dt>Wymiary bbox</dt><dd>{part.bboxMm.map(number).join(' × ')} mm</dd>
-       <dt>Objętość</dt><dd>{number(part.volumeMm3)} mm³</dd>
-       <dt>Masa przy 7850 kg/m³</dt><dd>{number(part.massKg)} kg</dd>
-       <dt>Metoda grupowania</dt><dd>{part.verificationMethod||'brak danych'}</dd>
-       <dt>Przekrój / półfabrykat</dt><dd>{stockLabels[part.stockHint?.kind||'unknown']||'Nierozpoznany'}</dd>
-       <dt>Wymiary przekroju</dt><dd>{stockText(part.stockHint)}</dd>
-       <dt>Pewność</dt><dd>{part.stockHint?.confidence||'Wymaga sprawdzenia'}</dd>
-      </dl>
-     {/if}
-     <p class="hint">Pełny model 3D B-Rep wymaga osobnej wizualizacji; ten panel wykorzystuje jedynie istniejące wyniki analizy.</p>
-    {:else}
-     <p class="hint">Wyniki analizy pojawią się po imporcie.</p>
+    <section class="panel results-panel">
+     <div class="panel-title"><div><h2>{active==='material'?'Koszt materiału':'Operacje — '+selected.title}</h2><p>Automat i wartość przyjęta są rozdzielone. Korekta pozostaje po zmianie stawek.</p></div><span class={'pill '+severity(selected.status)}>{statusName(selected.status)}</span></div>
+     {#if selected.status==='error'}<div class="banner danger" role="alert">{selected.error}</div>{/if}
+     <div class="table-scroll"><table><thead><tr><th>Operacja</th><th>Podstawa</th><th>Automat {active==='material'||active==='purchased'?'[zł]':'[h]'}</th><th>Przyjęto {active==='material'||active==='purchased'?'[zł]':'[h]'}</th><th>Koszt [zł]</th><th></th></tr></thead><tbody>
+      {#each selected.rows as row (row.key)}<tr><td>{#if row.key.startsWith('custom-')}<input class="edit-label" aria-label="Nazwa operacji" value={row.name} onchange={e=>renameOperation(row.key,e.currentTarget.value)}/>{:else}<strong>{row.name}</strong>{/if}{#if row.manuallyEdited}<small class="cell-note accent">Korekta ręczna</small>{/if}</td><td class="basis">{row.detail}</td><td>{autoText(row)}</td><td><input class:overridden={row.manuallyEdited} class="number-input" type="number" min="0" step=".01" aria-label={'Przyjęto '+row.name} placeholder="—" value={row.value??''} disabled={selected.omitted} onchange={e=>editValue(active,row.key,e.currentTarget.value)}/></td><td class="cost">{row.costPln===null?'—':money(row.costPln)}</td><td>{#if row.manuallyEdited}<button class="icon-button" aria-label={'Przywróć automat '+row.name} title="Przywróć obliczenie automatyczne" onclick={()=>resetValue(active,row.key)}><RotateCcw size={14}/></button>{/if}</td></tr>{/each}
+     </tbody></table></div>
+     <div class="panel-actions"><button class="subtle" onclick={addOperation} disabled={selected.omitted}><Plus size={15}/>Dodaj operację</button><div class="checks"><label class="check"><input type="checkbox" checked={selected.omitted} onchange={e=>toggleExcluded(e.currentTarget.checked)}/>Nie dotyczy</label><label class="check"><input type="checkbox" checked={confirmed[active]===true} disabled={selected.missing>0||selected.omitted||selected.status==='error'} onchange={e=>toggleConfirmed(e.currentTarget.checked)}/>Potwierdź etap</label></div></div>
+    </section>
+    {#if selected.missing>0&&!selected.omitted}<div class="banner warning">Do uzupełnienia: {selected.missing} pozycji. Brak danych nie oznacza zerowego kosztu.</div>{/if}
+
+    {#if ['welding','bending','cnc','assembly'].includes(active)}
+     <section class="panel calculator"><button class="subtle" aria-expanded={showCalculator} onclick={()=>showCalculator=!showCalculator}><Settings2 size={16}/>Kalkulator czasu — {selected.title}<ChevronRight size={15}/></button>
+      {#if showCalculator}<p>Podaj parametry całej wycenianej partii. Wynik zostanie wpisany do odpowiednich operacji.</p><div class="form-grid">
+       {#if active==='welding'}<label>Długość spoin [m]<input type="number" min="0" bind:value={weldLength}/></label><label>Gardziel a [mm]<input type="number" min="0" bind:value={weldA}/></label><label>Wydajność stapiania [kg/h]<input type="number" min=".01" bind:value={deposition}/></label><label>Wykorzystanie łuku [%]<input type="number" min="1" max="100" bind:value={arcPercent}/></label><label>Przygotowanie [min]<input type="number" min="0" bind:value={weldSetup}/></label>
+       {:else if active==='bending'}<label>Liczba gięć całej partii<input type="number" min="0" step="1" bind:value={bendCount}/></label><label>Czas gięcia [s]<input type="number" min="0" bind:value={bendSeconds}/></label><label>Przezbrojenie [min]<input type="number" min="0" bind:value={bendSetup}/></label>
+       {:else if active==='cnc'}<label>Objętość do usunięcia [cm³]<input type="number" min="0" bind:value={cncRemoved}/></label><label>Wydajność usuwania [cm³/min]<input type="number" min=".01" bind:value={cncQ}/></label><label>Program i przezbrojenie [min]<input type="number" min="0" bind:value={cncSetup}/></label>
+       {:else}<label>Przygotowanie stanowiska [min]<input type="number" min="0" bind:value={assemblySetup}/></label><label>Ustawienie jednej bryły [min]<input type="number" min="0" bind:value={assemblyPerPart}/></label><label>Liczba sczepianych połączeń<input type="number" min="0" step="1" bind:value={assemblyJoints}/></label><label>Sczepianie połączenia [min]<input type="number" min="0" bind:value={assemblyPerJoint}/></label>{/if}
+      </div><div class="panel-actions"><span class="muted">{active==='welding'?(weldResult?number(weldResult.totalMinutes)+' min':'Nieprawidłowe parametry'):active==='bending'?(bendResult?number(bendResult.totalMin)+' min':'Nieprawidłowe parametry'):active==='cnc'?(cncResult?number(cncResult.totalMin)+' min':'Nieprawidłowe parametry'):number(assemblySetup+inventory.count*assemblyPerPart+assemblyJoints*assemblyPerJoint)+' min'}</span><button class="primary" disabled={selected.omitted||(active==='welding'&&!weldResult)||(active==='bending'&&!bendResult)||(active==='cnc'&&!cncResult)} onclick={applyCalculator}>Przyjmij czas do wyceny</button></div>
+      {#if active==='welding'}<p class="hint">Spoiny pachwinowe o równych ramionach. Czas z masy stopiwa, wydajności i wykorzystania łuku. Nie wykrywamy automatycznie spoin ani faz.</p>{/if}{/if}
+     </section>
     {/if}
-    {#if notes.length}
-     <h3>Dokumentacja</h3>
-     {#each notes as n}<p class="hint">{n}</p>{/each}
-    {/if}
-   </aside>
-  </div>
-  <div class="bottom-bar">
-   <div><small>Koszt znanych operacji · niepełna oferta</small>
-    <strong>{money(knownCost)} zł</strong></div>
-   <div><small>Ręcznie określony / oszacowany czas</small><strong>{number(knownHours)} h</strong></div>
-   <div><small>Etapy wymagające sprawdzenia</small>
-    <strong>{report.openModules}</strong></div>
-   <span class="summary-tag">{report.complete?'Etapy potwierdzone ręcznie':'Wycena niekompletna'}</span>
-  </div>
- {/if}
+    {#if active==='welding'}<p class="hint">PDF: {weldNotes.length} możliwych oznaczeń spoin. Długości i przypisanie do połączeń wymagają potwierdzenia.</p>{/if}
+
+    <details class="panel detail-panel"><summary>Dane geometrii i rozpoznanie wyrobu</summary><div class="detail-layout"><label>Wystąpienie STEP<select value={selectedSolid} onchange={e=>selectedSolid=Number(e.currentTarget.value)}>{#each inventory.solids as s,i}<option value={i}>{s.id} · {s.verifiedShapeKey}</option>{/each}</select></label>{#if part}<dl><dt>Objętość B-Rep</dt><dd>{number(part.volumeMm3)} mm³</dd><dt>Gabaryty</dt><dd>{part.bboxMm.map(number).join(' × ')} mm</dd><dt>Półfabrykat</dt><dd>{stockLabels[part.stockHint?.kind||'unknown']||'Nierozpoznany'}</dd><dt>Wymiary przekroju</dt><dd>{stockText(part.stockHint)}</dd><dt>Dowód grupowania</dt><dd>{part.verificationMethod||'Brak danych'}</dd></dl>{/if}</div></details>
+   {:else if !files.length}
+    <div class="intro-grid"><section class="panel"><Scale size={21}/><h2>Materiał i masa</h2><p>Puste pole gatunku, gęstość 7850 kg/m³. Zmieniaj materiał, gęstość i naddatki przy częściach.</p></section><section class="panel"><Settings2 size={21}/><h2>Etapy produkcji</h2><p>Cięcie, gięcie, montaż i spawanie w jednym interfejsie. W każdym etapie możesz poprawić czas.</p></section><section class="panel"><ClipboardList size={21}/><h2>Stan wyceny</h2><p>Widzisz policzone pozycje i brakujące dane. Zapiszesz zestawienie wszystkich modułów.</p></section></div>
+   {/if}
+   {#if notes.length}<details class="panel detail-panel"><summary>Uwagi do dokumentacji ({notes.length})</summary>{#each notes as n}<p>{n}</p>{/each}</details>{/if}
+  </main>
+  <footer><div><small>Koszt znanych pozycji</small><strong>{money(knownCost)} zł</strong></div><div><small>Czas przyjęty do wyceny</small><strong>{number(knownHours)} h</strong></div><span class:ok={report.complete} class="pill">{report.complete?'Etapy potwierdzone':'Wycena niekompletna'}</span><button class="subtle" onclick={()=>{showReport=true;showSettings=false;}}>Stan modułów <ChevronRight size={15}/></button></footer>
+ </div>
 </div>
-<style>
- .module-app{min-height:100vh;background:#0d1117;color:#e7edf5;font:13px system-ui,'Segoe UI',sans-serif;display:flex;flex-direction:column}
- .module-app *{box-sizing:border-box}
- .top{height:63px;border-bottom:1px solid #27303d;display:flex;align-items:center;gap:24px;padding:0 26px}
- .brand{display:flex;align-items:center;gap:10px;min-width:230px;font-size:17px}.brand .small{color:#8493a5;font-size:11px;font-weight:400}
- .logo{font-weight:900;font-size:15px;background:#785cc8;color:white;border-radius:7px;padding:7px}
- .project-name{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
- .top-actions{display:flex;gap:8px}
- button{font:inherit;cursor:pointer;border:1px solid #374357;background:#1b2431;color:#e7edf5;border-radius:8px;padding:10px 13px}
- button:hover{border-color:#6984a0}button:disabled{opacity:.45;cursor:default}
- .primary{background:#a58cfc;color:#130c24;border:0;font-weight:700}
- .project-bar{min-height:64px;display:flex;align-items:center;gap:10px;padding:11px 24px;border-bottom:1px solid #27303d;flex-wrap:wrap}
- input,select{background:#141c27;border:1px solid #354256;border-radius:7px;padding:9px;color:#e7edf5;font:inherit;min-width:0}
- .project-bar>input{width:min(410px,35vw)}.project-bar select{max-width:235px}.muted{color:#8f9eb1;font-size:12px}
- .error{color:#ffb4b6;padding:5px 26px}
- .layout{display:grid;grid-template-columns:248px minmax(460px,1fr) 260px;gap:16px;padding:18px;flex:1;min-height:0}
- .modules,.content,.details{background:#151d28;border:1px solid #293445;border-radius:12px}
- .modules{padding:12px;display:flex;flex-direction:column;min-height:560px}
- .side-head{display:flex;justify-content:space-between;padding:9px 8px 12px}.side-head span{color:#a0adbd}
- .progress{height:4px;border-radius:10px;background:#303e4d;margin:0 8px 12px;overflow:hidden}
- .progress>div{height:100%;background:#3eae72;transition:width .2s}
- .module-entry{border:0;background:transparent;display:flex;align-items:center;gap:9px;text-align:left;width:100%;padding:10px 9px;border-radius:7px;margin-bottom:2px}
- .module-entry.active{background:#31304b}.module-entry .mod-text{display:grid;gap:2px;flex:1}
- .mod-text strong{font-size:12px;font-weight:600}.mod-text small{font-size:10px;color:#97a5b5}.chevron{font-size:18px;color:#718396}
- .indicator{border-radius:50%;width:19px;height:19px;flex:none;display:grid;place-items:center;font-size:12px;font-weight:800}
- .indicator.ok{background:#174c36;color:#58d48d}.indicator.bad{background:#55262d;color:#ff8790}
- .indicator.warn{background:#51431e;color:#f6cd72}.indicator.idle{background:#293544;color:#8798ac}
- .side-foot{margin-top:auto;border-top:1px solid #293445;padding:15px 8px 5px;display:grid;gap:4px;color:#8293a6;font-size:11px}.side-foot strong{color:#dae2ed;font-size:12px}
- .content{padding:20px;min-width:0}.section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:19px}
- .section-title small{color:#9d8be6;letter-spacing:1px;font-size:10px}.section-title h1{font-size:24px;margin:7px 0 5px}.section-title p{margin:0;color:#90a0b2;font-size:12px;line-height:1.5}
- .pill{font-size:11px;white-space:nowrap;border-radius:7px;padding:8px 9px}.pill.ok{background:#163d30;color:#67d99a}
- .pill.warn{background:#463c28;color:#e8c070}.pill.bad{background:#512b35;color:#ffa2a5}.pill.idle{background:#26303c;color:#96a5b5}
- .section-metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:17px}
- .section-metrics>div{padding:17px;border:1px solid #2d3849;border-radius:9px;display:grid;gap:8px}
- .section-metrics small{color:#8b9aae}.section-metrics strong{font-size:20px}
- .table-box{overflow:auto;border:1px solid #303a49;border-radius:9px}table{width:100%;border-collapse:collapse;font-size:12px}
- th{text-align:left;background:#222b39;color:#aeb9c6;font-weight:500}td,th{padding:12px 10px;border-bottom:1px solid #2b3545}
- td strong{font-weight:550}.basis{color:#8799ac;font-size:11px;max-width:210px}.cost{font-variant-numeric:tabular-nums;font-weight:600}
- td input[type=number]{width:100px;text-align:right}td input.edit-label{width:160px}.tiny{margin-left:6px;padding:3px 6px;font-size:10px}
- .control-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:17px;flex-wrap:wrap}
- .checks{display:flex;gap:20px}.checks label,.inline{display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer}
- .checks input,.inline input{accent-color:#a58cfc}.quiet{background:transparent;border-style:dashed}
- .notice{border:1px solid #574b31;color:#dfc792;background:#30291b;border-radius:8px;padding:12px;margin-top:16px;font-size:12px}
- .hint{font-size:11px;color:#8e9db1;line-height:1.7}
- .material-options{display:flex;align-items:center;flex-wrap:wrap;gap:18px;margin-bottom:15px}
- .material-options label:not(.inline){display:grid;gap:6px;font-size:12px;color:#afbdcb}
- .empty{padding:90px 10px;text-align:center;color:#8696a7;line-height:1.7}
- .details{padding:17px;min-width:0}.details h2{font-size:15px;margin:0 0 15px}
- .mini-stats{display:flex;justify-content:space-between;gap:8px;color:#8c9cac;font-size:12px}
- .mini-stats strong{color:#d9e3ef}.part-select{display:grid;gap:7px;margin:17px 0;font-size:11px;color:#90a2b6}
- .part-select select{width:100%}.bbox{background:#101720;border:1px solid #2c3644;border-radius:9px;padding:10px;text-align:center}
- .bbox svg{width:100%;height:130px}.bbox small{color:#8a9aad;font-size:10px}
- dl{display:grid;grid-template-columns:1fr 1.1fr;gap:11px 7px;border-top:1px solid #293445;margin:16px 0;padding-top:15px;font-size:11px}
- dt{color:#8798ab}dd{margin:0;overflow-wrap:anywhere}
- .details h3{font-size:13px;margin-top:20px}
- .bottom-bar{margin:0 18px 16px;display:flex;align-items:center;gap:24px;padding:15px 20px;background:#192231;border:1px solid #303b4c;border-radius:11px;flex-wrap:wrap}
- .bottom-bar>div{display:grid;gap:4px;flex:1}.bottom-bar small{color:#8d9caf;font-size:11px}
- .bottom-bar strong{font-size:20px}.summary-tag{color:#e6c282;font-size:12px;margin-left:auto}
- .rate-panel{margin:18px 24px;padding:22px;border:1px solid #293445;border-radius:12px;background:#151d28}
- .rate-panel h2{margin:0 0 8px}.rate-panel p{color:#90a0b2;margin-bottom:20px}
- .rate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:16px}
- .rate-grid label{display:grid;gap:7px;color:#a8b8c8;font-size:12px}
- @media(max-width:1250px){.layout{grid-template-columns:215px minmax(410px,1fr)}.details{grid-column:2}}
- @media(max-width:750px){.layout{display:block;padding:10px}.modules{min-height:0;margin-bottom:12px}.content{padding:13px}.details{margin-top:12px}
-  .module-entry{display:inline-flex;width:calc(50% - 6px)}.top{padding:0 12px;gap:12px}.brand .small{display:none}
-  .project-bar>input{width:100%}.bottom-bar{margin:10px}.top-actions button{padding:7px}.section-metrics strong{font-size:16px}}
-</style>

@@ -1,0 +1,1 @@
+{"identifier":"main-window","description":"File selection and desktop events for the single estimation workspace","windows":["main"],"permissions":["core:default","dialog:allow-open","dialog:allow-save"]}

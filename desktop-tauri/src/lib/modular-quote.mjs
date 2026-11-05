@@ -13,9 +13,9 @@ function rowValue(entry,override){
  */
 export function evaluateModules({
  inventory=null, pdfText='',rates=DEFAULT_RATES,edits={},
- confirmed={},excluded={},custom={},grade='unknown',materialApproved=false
+ confirmed={},excluded={},custom={},grade='unknown',materialApproved=false,partMaterials=null
 }={}){
- const settings={rates,grade,materialApproved,pdfText};
+ const settings={rates,grade,materialApproved,pdfText,partMaterials};
  const modules=MODULES.map(mod=>{
   try{
    const own=mod.rows({inventory,settings});
@@ -37,6 +37,7 @@ export function evaluateModules({
      costPln:known&&validRate?(x.kind==='time'?value*rate:value):null,
      manuallyEdited:Object.prototype.hasOwnProperty.call(edits[mod.id]?.[x.key]||{},'value')};
    });
+   if(rows.some(r=>r.costPln!==null&&!Number.isFinite(r.costPln)))throw new RangeError('Przekroczono zakres kosztu operacji');
    const missing=rows.filter(x=>x.costPln===null).length;
    const full=rows.length>0 && missing===0;
    const omitted=excluded[mod.id]===true;
@@ -44,6 +45,7 @@ export function evaluateModules({
      (missing===rows.length?'missing':'partial'):
      confirmed[mod.id]?'verified':'review';
    const knownCostPln=omitted?0:rows.reduce((s,x)=>s+(x.costPln??0),0);
+   if(!Number.isFinite(knownCostPln))throw new RangeError('Przekroczono zakres kosztu modułu');
    return {id:mod.id,title:mod.title,detail:mod.detail,rows,missing,status,omitted,
     knownCostPln,verifiedCostPln:status==='verified'?knownCostPln:null,
     requiredReview:status!=='verified'&&status!=='excluded',

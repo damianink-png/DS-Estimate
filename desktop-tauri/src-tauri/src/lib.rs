@@ -17,7 +17,14 @@ fn analyze_step_blocking(app: tauri::AppHandle, path: String) -> Result<String, 
     if !backend.is_file() {
         return Err(format!("Silnik CAD nie jest zainstalowany: {}", backend.display()));
     }
-    let result = Command::new(&backend).arg(&input).output()
+    let mut command = Command::new(&backend);
+    command.arg(&input);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW: CAD never opens a second console/UI.
+    }
+    let result = command.output()
         .map_err(|e| format!("Nie można uruchomić silnika CAD: {e}"))?;
     if !result.status.success() {
         return Err(format!("Błąd analizy STEP: {}", String::from_utf8_lossy(&result.stderr)));
@@ -95,10 +102,36 @@ fn scan_project(path: String) -> Result<Vec<String>, String> {
     Ok(files)
 }
 
+/// Save only text reports after the native save dialog has selected a path.
+#[tauri::command]
+fn write_report(path: String, content: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    let ext = target.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+    if !matches!(ext.as_str(), "json" | "csv") { return Err("Wybierz format JSON lub CSV".into()); }
+    if content.len() > 32 * 1024 * 1024 { return Err("Raport jest za duży".into()); }
+    std::fs::write(target, content).map_err(|e| format!("Nie można zapisać raportu: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![analyze_step, step_fingerprint, extract_pdf_text, scan_project])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![analyze_step, step_fingerprint, extract_pdf_text, scan_project, write_report])
+                .setup(|app| {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                if let Some(monitor) = window.current_monitor()? {
+                    let scale = monitor.scale_factor();
+                    let area = monitor.work_area();
+                    let width = (area.size.width as f64 / scale * 0.92).min(1440.0);
+                    let height = (area.size.height as f64 / scale * 0.92).min(960.0);
+                    window.set_min_size(Some(tauri::LogicalSize::new(480.0_f64.min(width), 360.0_f64.min(height))))?;
+                    window.set_size(tauri::LogicalSize::new(width, height))?;
+                    window.center()?;
+                }
+            }
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("Błąd uruchamiania DS Estimate");
 }

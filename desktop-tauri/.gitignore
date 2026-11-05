@@ -1,3 +1,10 @@
 
 # Locally fetched third-party source; review licenses before distribution
 vendor-engines/
+
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/cad-backend/
+src-tauri/icons/
+evidence/
