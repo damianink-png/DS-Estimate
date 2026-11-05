@@ -126,7 +126,13 @@ def _classify_section(edges, tol):
     if outer is None or (len(loops)==2 and inner is None):
         return None
     if inner:
-        if math.dist(outer['center'],inner['center']) > max(tol*5,.01*max(outer['w'],outer['h'])):
+        # A small offset relative to the overall profile size can be a
+        # substantial fraction of the wall thickness. Require concentricity
+        # relative to the measured wall, not the outside bbox.
+        wall_estimate = (min(outer['w']-inner['w'], outer['h']-inner['h']) / 2)
+        if wall_estimate <= tol:
+            return None
+        if math.dist(outer['center'], inner['center']) > max(tol*5, .05*wall_estimate):
             return None
         if outer['circle'] and inner['circle']:
             diameter = outer['w']
