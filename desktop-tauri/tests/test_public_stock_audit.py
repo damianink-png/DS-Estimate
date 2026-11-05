@@ -29,7 +29,7 @@ class PublicStockAuditTests(unittest.TestCase):
         result=stock_audit(inventory)
         self.assertEqual(result['occurrences'],5)
         self.assertEqual(result['statusCounts'],{
-            'CANDIDATE':1,'GEOMETRY_ONLY':1,'INVALID_HINT':1,'UNKNOWN':2})
+            'CANDIDATE':1,'GEOMETRY_ONLY':1,'INVALID_HINT':1,'MISSING_HINT':1,'UNKNOWN':1})
         self.assertEqual(result['unresolvedOccurrences'],4)
         self.assertEqual(result['geometryEvidencePct'],20)
         self.assertEqual(result['rows'][2]['reason'],'Cross-section changes along part')
