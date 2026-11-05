@@ -118,7 +118,18 @@ def _loop_metrics(loop, tol):
     if min(w,h) <= tol:
         return None
     perim = sum(math.dist(pts[i],pts[i+1]) for i in range(len(pts)-1))
-    rectangular = (not any(kinds) and area/(w*h)>.985 and
+    # A nearly rectangular parallelogram can satisfy area/bbox and
+    # perimeter heuristics while having non-orthogonal walls. Demand that
+    # EVERY measured straight edge is parallel to one of the local axes.
+    # This also permits collinear split edges from STEP topology.
+    axis_aligned_edges = all(
+        min(abs((q[0]-p[0])*si-(q[1]-p[1])*co),
+            abs((q[0]-p[0])*co+(q[1]-p[1])*si))
+        <= max(tol, .002 * length)
+        for length, p, q in segments
+    )
+    rectangular = (not any(kinds) and axis_aligned_edges
+                   and area/(w*h)>.985 and
                    abs(perim-2*(w+h))<max(tol*10,.01*perim))
     return {'w':w,'h':h,'area':area,'circle':False,
             'rectangle':rectangular,'center':center,'edgeAngleRad':angle}
