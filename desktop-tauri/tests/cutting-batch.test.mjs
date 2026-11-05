@@ -118,3 +118,16 @@ test('fully priced evidence retains the previous complete batch cost',()=>{
  assert.equal(r.acceptedCostPln,r.knownCostPln);
  assert.equal(r.completeness,'CUTTING_ESTIMATED');
 });
+
+
+test('cutting batch rejects monetary overflow rather than reporting Infinity PLN',()=>{
+ assert.throws(()=>planCuttingBatches({groups:[group('sheet',10)],
+  overrides:{sheet:{minutes:1e308}}}),RangeError);
+});
+
+test('cutting batch rejects overflow of total occurrences even for unknown routes',()=>{
+ const unknown=(key,quantity)=>({key,quantity,solid:{bboxMm:[1000,40,40],volumeMm3:50000}});
+ assert.throws(()=>planCuttingBatches({groups:[
+  unknown('first',Number.MAX_SAFE_INTEGER),unknown('second',1)
+ ]}),RangeError);
+});
