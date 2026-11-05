@@ -13,7 +13,20 @@ STOCK_KINDS = frozenset({
     "round-bar", "round-tube", "square-hollow", "rectangular-hollow",
     "angle", "channel", "tee", "i-section", "unknown"
 })
-HOLLOW = {"round-tube", "square-hollow", "rectangular-hollow"}
+REQUIRED_DIMENSIONS = {
+    "plate-candidate": ("thicknessMm", "widthMm", "lengthMm"),
+    "flat-section": ("widthMm", "heightMm", "lengthMm", "sectionAreaMm2"),
+    "square-bar": ("widthMm", "heightMm", "lengthMm", "sectionAreaMm2"),
+    "rectangular-bar": ("widthMm", "heightMm", "lengthMm", "sectionAreaMm2"),
+    "round-bar": ("diameterMm", "lengthMm", "sectionAreaMm2"),
+    "round-tube": ("diameterMm", "wallMm", "lengthMm", "sectionAreaMm2"),
+    "square-hollow": ("widthMm", "heightMm", "wallMm", "lengthMm", "sectionAreaMm2"),
+    "rectangular-hollow": ("widthMm", "heightMm", "wallMm", "lengthMm", "sectionAreaMm2"),
+    "angle": ("lengthMm", "sectionAreaMm2"),
+    "channel": ("lengthMm", "sectionAreaMm2"),
+    "tee": ("lengthMm", "sectionAreaMm2"),
+    "i-section": ("lengthMm", "sectionAreaMm2"),
+}
 DIMENSIONS = ("lengthMm", "widthMm", "heightMm", "diameterMm",
               "wallMm", "thicknessMm", "sectionAreaMm2")
 CSV_COLUMNS = ("id", "verifiedShapeKey", "kind", "status", "confidence",
@@ -39,11 +52,17 @@ def stock_audit(inventory):
             and math.isfinite(hint[name]) and hint[name] > 0
             for name in DIMENSIONS if name in hint
         )
+        required = REQUIRED_DIMENSIONS.get(kind, ())
+        missing_required = any(name not in hint for name in required)
+        bad_wall = (kind in ("round-tube", "square-hollow", "rectangular-hollow")
+                    and type(hint.get("wallMm")) in (int, float)
+                    and type(hint.get("diameterMm", hint.get("heightMm"))) in (int, float)
+                    and hint["wallMm"] * 2 >= hint.get("diameterMm", hint.get("heightMm")))
         if raw is None:
             status = "MISSING_HINT"
             reason = "Compiled engine provided no stockHint for this STEP solid"
             kind = "unknown"
-        elif not isinstance(raw, dict) or not isinstance(kind, str) or kind not in STOCK_KINDS or not finite:
+        elif not isinstance(raw, dict) or not isinstance(kind, str) or kind not in STOCK_KINDS or not finite or missing_required or bad_wall:
             status = "INVALID_HINT"
             reason = reason or "Malformed stock evidence"
             kind = "unknown"
