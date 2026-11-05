@@ -90,6 +90,9 @@ def _loop_metrics(loop, tol):
     pts, kinds, radii, area = loop
     xy = pts[:-1]
     xs, ys = [p[0] for p in xy], [p[1] for p in xy]
+    # World-aligned bbox centres are not geometric centres of a rotated
+    # rectangular loop, especially when its sides have unequal lengths.
+    # Use the section's own edge-aligned frame for rectangular loops below.
     center = ((min(xs)+max(xs))/2, (min(ys)+max(ys))/2)
     if all(kinds) and radii and max(radii)-min(radii) <= tol*2:
         radius = sum(radii)/len(radii)
@@ -105,8 +108,13 @@ def _loop_metrics(loop, tol):
     angle = math.atan2(b[1]-a[1], b[0]-a[0])
     co, si = math.cos(angle), math.sin(angle)
     uv = [(x*co+y*si, -x*si+y*co) for x,y in xy]
-    w = max(x for x,y in uv)-min(x for x,y in uv)
-    h = max(y for x,y in uv)-min(y for x,y in uv)
+    umin, umax = min(x for x,y in uv), max(x for x,y in uv)
+    vmin, vmax = min(y for x,y in uv), max(y for x,y in uv)
+    w, h = umax-umin, vmax-vmin
+    # The inner and outer loops can have different tessellation or corner
+    # detail; world-axis bbox centres can drift despite a concentric hole.
+    uc, vc = (umin+umax)/2, (vmin+vmax)/2
+    center = (uc*co-vc*si, uc*si+vc*co)
     if min(w,h) <= tol:
         return None
     perim = sum(math.dist(pts[i],pts[i+1]) for i in range(len(pts)-1))
