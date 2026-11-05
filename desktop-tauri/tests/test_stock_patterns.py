@@ -23,6 +23,28 @@ class StockPatternTests(unittest.TestCase):
             'i-section': [(0,0),(40,0),(40,5),(23,5),(23,35),(40,35),(40,40),(0,40),(0,35),(17,35),(17,5),(0,5)],
         }
 
+    def test_rotated_rhs_sections_and_offset_hole(self):
+        # Real OCCT sections may be rotated inside the cutting plane.
+        # The outer and inner loops must have a common geometric centre,
+        # and an eccentric hole must not be certified as RHS.
+        angle = math.radians(37)
+        c, s = math.cos(angle), math.sin(angle)
+
+        def edges(w, h, offset=(0, 0)):
+            ox, oy = offset
+            vertices = [(-w/2+ox, -h/2+oy), (w/2+ox, -h/2+oy),
+                        (w/2+ox, h/2+oy), (-w/2+ox, h/2+oy)]
+            points = [(x*c-y*s, x*s+y*c) for x, y in vertices]
+            return [([points[i], points[(i+1) % 4]], False, None)
+                    for i in range(4)]
+
+        good = _classify_section(edges(80, 40)+edges(74, 34), 0.002)
+        self.assertIsNotNone(good)
+        self.assertEqual(good['kind'], 'rectangular-hollow')
+        self.assertAlmostEqual(good['wallMm'], 3, places=3)
+        bad = _classify_section(edges(80, 40)+edges(74, 34, (0.5, 0)), 0.002)
+        self.assertIsNone(bad)
+
     def test_four_known_outlines(self):
         for expected, vertices in self.profiles().items():
             with self.subTest(expected=expected):
