@@ -159,6 +159,17 @@ class StockPatternTests(unittest.TestCase):
                 recognize_stock(None,bounds,plate_hint={'kind':'plate-outline','thicknessMm':value})['kind'],
                 'unknown')
 
+    def test_sheared_parallelogram_not_certified_as_rectangular_stock(self):
+        # 80 x 40 with a 0.35 mm skew: area and perimeter almost
+        # identical to a rectangle. A bbox heuristic falsely certifies it.
+        pts=[(0,0),(80,0),(80.35,40),(0.35,40),(0,0)]
+        edges=[(pts[i:i+2],False,None) for i in range(4)]
+        self.assertIsNone(_classify_section(edges,.002))
+        # True rectangular geometry still works, including split edges.
+        rect=[(0,0),(40,0),(80,0),(80,40),(0,40),(0,0)]
+        edges=[(rect[i:i+2],False,None) for i in range(len(rect)-1)]
+        self.assertEqual(_classify_section(edges,.002)['kind'],'rectangular-bar')
+
     def test_rectangle_and_open_profile_are_not_structural_ones(self):
         self.assertIsNone(orthogonal_section_kind(close([(0,0),(10,0),(10,10),(0,10)]), 0.002))
         self.assertIsNone(orthogonal_section_kind([(0,0),(30,0),(30,5),(5,5)], 0.002))
