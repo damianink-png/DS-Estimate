@@ -160,3 +160,11 @@ Decyzja użytkownika: **PAUSED** wszystkie pozostałe silniki i punkty planu 24 
 - [993eb832](https://github.com/damianink-png/DS-Estimate/commit/993eb832cd7954a64eff134af4db057a027655bb): testy odwróconego kierunku pętli, odbicia i zamiany osi ceownika, współrzędnych nie-skończonych i zerowej tolerancji.
 - **CODED / CI UNVERIFIED**: w tej iteracji nie uruchomiono skompilowanego Windows EXE, pełnej paczki NSIS ani publicznych złożeń; nie zgłaszać PASS nowego SHA. Następny etap: uruchomić szybki unittest oraz skompilowany STEP suite na Windows; przeanalizować FAIL, w szczególności orientację profili, dokładność tolerancji i zamknięcie pętli. Później testy rzeczywistych publicznych STEP + BOM/PDF, bez DockHub.
 - Pozostałe silniki i dawny plan 24 punktów **PAUSED**; DockHub **SUSPENDED**.
+
+
+### Uzupełnienie audytu bezpieczeństwa — otwór obrócony względem profilu
+
+- [4aebab2d](https://github.com/damianink-png/DS-Estimate/commit/4aebab2dadadf63d4570d1b7485e5cefa3d3d85f): nie uznawaj ukośnie obróconego otworu wewnętrznego za stałą grubość ścianki SHS/RHS, choć pola i wymiary zewnętrzne mogą wyglądać poprawnie. Weryfikacja równoległości osi wewnętrznych i zewnętrznych prostokątów.
+- [6b7243a7](https://github.com/damianink-png/DS-Estimate/commit/6b7243a70f46a2ac318728e3661a3388d6a10ced): realny geometryczny test negatywny B-Rep, otwór 40×40 obrócony o 20° w 80×80, wynik `unknown` zamiast profilu SHS.
+- Lokalne testy **PASS** (nie jest to wynik produkcyjnego pythonocc EXE): pure Python 3/3 testy wzorców; realny OpenCascade/OCP 4/4 profile L/U/T/I, dodatkowo sprawdzono liczbę zamkniętych pętli SHS/RHS/rura/pręt i odchylenie osi wnętrza obróconego o 20°. Fragment TypeScript dla wyświetlania `stockHint` przeszedł `tsc --strict`.
+- **Windows NSIS, zintegrowany silnik pythonocc i testy realnych STEP na najnowszym SHA: UNVERIFIED.** GitHub Actions commit-status nie zwraca potwierdzonych checków; nie uznawać PASS na podstawie starszych uruchomień. CI ma rozszerzony `tests/compiled_step_suite.py`, ale brak dowodu z nowego workflow.
