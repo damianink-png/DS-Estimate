@@ -41,7 +41,11 @@ def check(name, shapes, count, volume, density=7850, expected_stock=None):
                 if field == 'kind':
                     continue
                 assert abs(stock.get(field, float('nan'))-expected)<0.05, (name,field,stock,expected)
-            assert stock.get('confidence')=='cross-section-consistent',(name,stock)
+            if stock['kind']=='unknown':
+                assert stock.get('reason'), (name,stock)
+            else:
+                expected_confidence='candidate' if stock['kind']=='plate-candidate' else 'cross-section-consistent'
+                assert stock.get('confidence')==expected_confidence,(name,stock)
         if name == 'plate_100x50x10':
             hint=d['solids'][0].get('cuttingHint')
             assert hint is not None, ('missing measured plate cut loops',d['solids'][0], 'CAD stderr:', p.stderr)
@@ -65,7 +69,7 @@ def prismatic_section(points, length=1000):
 def moved(shape,dx,dy,dz):
     t=gp_Trsf();t.SetTranslation(gp_Vec(dx,dy,dz))
     return BRepBuilderAPI_Transform(shape,t,True).Shape()
-check('plate_100x50x10',[box(100,50,10)],1,50000)
+check('plate_100x50x10',[box(100,50,10)],1,50000,expected_stock={'kind':'plate-candidate','thicknessMm':10})
 check('block_200x100x50',[box(200,100,50)],1,1000000)
 check('thin_plate_100x100x1',[box(100,100,1)],1,10000)
 check('cylinder_r10_h100',[BRepPrimAPI_MakeCylinder(10,100).Shape()],1,math.pi*10000)
@@ -95,4 +99,10 @@ section_cases = [
 for name, section, volume, kind in section_cases:
     check(name, [prismatic_section(section)], 1, volume, expected_stock={'kind':kind})
 
-print('ALL 8 INVENTORY + 10 STOCK CROSS-SECTION CASES PASS',flush=True)
+# Tapered cone has an axial circular section, but NOT a constant-stock
+# diameter. It must not be presented as a standard round bar.
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCone
+check('stock_tapered_unknown',[BRepPrimAPI_MakeCone(30,20,1000).Shape()],1,
+      math.pi*1000*(30**2+30*20+20**2)/3,
+      expected_stock={'kind':'unknown'})
+print('ALL 8 INVENTORY + 11 STOCK CROSS-SECTION CASES PASS',flush=True)
