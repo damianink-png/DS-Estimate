@@ -198,7 +198,7 @@ def recognize_stock(solid, bounds, plate_hint=None):
         # mistaken for the raw sheet thickness.
         measured_thickness = plate_hint.get('thicknessMm') if isinstance(plate_hint, dict) else None
         if (isinstance(plate_hint, dict) and plate_hint.get('kind') == 'plate-outline'
-                and isinstance(measured_thickness, (int, float))
+                and type(measured_thickness) in (int, float)
                 and math.isfinite(measured_thickness) and measured_thickness > 0
                 and abs(measured_thickness-other[0]) <= max(.02, .01*other[0])
                 and other[1] / other[0] >= 5 - 1e-5):
