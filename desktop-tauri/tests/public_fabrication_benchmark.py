@@ -12,6 +12,7 @@ artifact includes source hashes, extracted evidence, results and logs.
 import argparse, csv, hashlib, io, json, os, subprocess, sys, time, urllib.request
 from pathlib import Path
 from urllib.parse import quote
+from public_stock_audit import stock_audit, write_stock_csv
 
 MAX_BYTES = 32 * 1024 * 1024
 UA = 'DS-Estimate-public-fabrication-benchmark/1.0 (source attribution in report)'
@@ -107,6 +108,21 @@ def main():
                         raise ValueError('No solid/group inventory returned')
                     inventoryFile=folder/'ds_estimate_inventory.json'
                     inventoryFile.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
+                    # Only diagnostics: the previous public gate did not test
+                    # whether RHS, UPN or plates were correctly recognised.
+                    # Keep every occurrence and its uncertainty in artifacts.
+                    audit=stock_audit(data)
+                    write_stock_csv(folder/'stock_recognition.csv',audit['rows'])
+                    result['stockAudit']={k:v for k,v in audit.items() if k!='rows'}
+                    (folder/'stock_recognition_summary.json').write_text(
+                        json.dumps(result['stockAudit'],ensure_ascii=False,indent=2),
+                        encoding='utf-8')
+                    print('PUBLIC_STOCK_AUDIT',id,json.dumps({
+                        'count':audit['occurrences'],
+                        'statuses':audit['statusCounts'],
+                        'kinds':audit['kindCounts'],
+                        'unresolvedReasons':audit['unresolvedReasons']
+                    },ensure_ascii=False),flush=True)
                     result['status']='ENGINE_OK'
                     result['engine']={'solids':data['count'],'groups':len(data['groups']),
                                       'massKgAssumed7850':data['totalMassKg'],
