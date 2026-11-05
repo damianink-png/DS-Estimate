@@ -34,6 +34,8 @@ jobs:
           python-version: '3.11'
       - run: npm ci --no-audit --no-fund
       - run: npm test
+      - name: Stock report fixture regression (no CAD dependencies)
+        run: python tests/test_public_stock_audit.py
       - run: npm run build
       - run: python -m pip install playwright==1.64.1
       - run: python -m playwright install --with-deps chromium

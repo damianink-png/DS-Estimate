@@ -248,7 +248,14 @@
    if(await saveReport(text,format))notice='Zapisano zestawienie '+format.toUpperCase()+'.';
   }catch(e){error=String(e);}
  }
+ function revealPart(key:string){
+  selectedSolid=inventory?.solids.findIndex(s=>s.verifiedShapeKey===key)??0;
+  const panel=document.getElementById('geometry-details') as HTMLDetailsElement|null;
+  if(panel){panel.open=true;panel.scrollIntoView({block:'nearest',behavior:'smooth'});}
+ }
  function applyCalculator(){
+  if(active==='assembly'&&(!inventory||![assemblySetup,assemblyPerPart,assemblyJoints,assemblyPerJoint].every(v=>Number.isFinite(v)&&v>=0)||!Number.isInteger(assemblyJoints))){error='Podaj nieujemne normy i całkowitą liczbę połączeń.';return;}
+
   if(active==='welding'&&weldResult){editValue(active,'setup',String(weldSetup/60));editValue(active,'weld',String((weldResult.totalMinutes-weldSetup)/60));}
   if(active==='bending'&&bendResult){editValue(active,'setup',String(bendSetup/60));editValue(active,'bends',String((bendResult.totalMin-bendSetup)/60));}
   if(active==='cnc'&&cncResult){editValue(active,'program',String(cncSetup/60));editValue(active,'milling',String(cncResult.millingMin/60));}
@@ -340,7 +347,7 @@
       <div class="table-scroll"><table><thead><tr><th>Grupa części / wyrób</th><th>Szt.</th><th>Gatunek</th><th>Gęstość kg/m³</th><th>Masa / szt.</th><th>Cena zł/kg</th><th>Naddatek pocz. / kon. mm</th><th>Półfabrykat kg/szt.</th></tr></thead><tbody>
        {#each visibleMaterialRows as item (item.group.geometryId)}
         {@const g=item.group}{@const m=item.material}{@const solid=inventory.solids.find(s=>s.verifiedShapeKey===g.geometryId)}
-        <tr><td><strong>{g.geometryId}</strong><small class="cell-note">{stockLabels[solid?.stockHint?.kind||'unknown']||'Nierozpoznany'}{solid?.stockHint?.confidence?' · '+solid.stockHint.confidence:''}</small><button class="tiny text" onclick={()=>selectedSolid=inventory.solids.findIndex(s=>s.verifiedShapeKey===g.geometryId)}>Szczegóły</button></td><td>{g.quantity}</td>
+        <tr><td><strong>{g.geometryId}</strong><small class="cell-note">{stockLabels[solid?.stockHint?.kind||'unknown']||'Nierozpoznany'}{solid?.stockHint?.confidence?' · '+solid.stockHint.confidence:''}</small><button class="tiny text" onclick={()=>revealPart(g.geometryId)}>Szczegóły</button></td><td>{g.quantity}</td>
          <td><select aria-label={'Gatunek '+g.geometryId} value={m?.grade??''} onchange={e=>chooseGrade(g.geometryId,e.currentTarget.value)}>{#each MATERIALS as mat}<option value={mat.grade}>{mat.label}</option>{/each}</select></td>
          <td><input class="number-input" aria-label={'Gęstość '+g.geometryId} type="number" min="1" value={m?.density??7850} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'density',Number(e.currentTarget.value));}}/></td>
          <td>{m?number(m.massKg):'—'}<small class="cell-note">kg</small></td>
@@ -373,12 +380,12 @@
        {:else if active==='cnc'}<label>Objętość do usunięcia [cm³]<input type="number" min="0" bind:value={cncRemoved}/></label><label>Wydajność usuwania [cm³/min]<input type="number" min=".01" bind:value={cncQ}/></label><label>Program i przezbrojenie [min]<input type="number" min="0" bind:value={cncSetup}/></label>
        {:else}<label>Przygotowanie stanowiska [min]<input type="number" min="0" bind:value={assemblySetup}/></label><label>Ustawienie jednej bryły [min]<input type="number" min="0" bind:value={assemblyPerPart}/></label><label>Liczba sczepianych połączeń<input type="number" min="0" step="1" bind:value={assemblyJoints}/></label><label>Sczepianie połączenia [min]<input type="number" min="0" bind:value={assemblyPerJoint}/></label>{/if}
       </div><div class="panel-actions"><span class="muted">{active==='welding'?(weldResult?number(weldResult.totalMinutes)+' min':'Nieprawidłowe parametry'):active==='bending'?(bendResult?number(bendResult.totalMin)+' min':'Nieprawidłowe parametry'):active==='cnc'?(cncResult?number(cncResult.totalMin)+' min':'Nieprawidłowe parametry'):number(assemblySetup+inventory.count*assemblyPerPart+assemblyJoints*assemblyPerJoint)+' min'}</span><button class="primary" disabled={selected.omitted||(active==='welding'&&!weldResult)||(active==='bending'&&!bendResult)||(active==='cnc'&&!cncResult)} onclick={applyCalculator}>Przyjmij czas do wyceny</button></div>
-      {#if active==='welding'}<p class="hint">Spoiny pachwinowe o równych ramionach. Czas z masy stopiwa, wydajności i wykorzystania łuku. Nie wykrywamy automatycznie spoin ani faz.</p>{/if}{/if}
+      {#if active==='welding'}<p class="hint">Spoiny pachwinowe stalowe (7850 kg/m³) o równych ramionach. Czas z masy stopiwa, wydajności i wykorzystania łuku. Nie wykrywamy automatycznie spoin ani faz.</p>{/if}{/if}
      </section>
     {/if}
     {#if active==='welding'}<p class="hint">PDF: {weldNotes.length} możliwych oznaczeń spoin. Długości i przypisanie do połączeń wymagają potwierdzenia.</p>{/if}
 
-    <details class="panel detail-panel"><summary>Dane geometrii i rozpoznanie wyrobu</summary><div class="detail-layout"><label>Wystąpienie STEP<select value={selectedSolid} onchange={e=>selectedSolid=Number(e.currentTarget.value)}>{#each inventory.solids as s,i}<option value={i}>{s.id} · {s.verifiedShapeKey}</option>{/each}</select></label>{#if part}<dl><dt>Objętość B-Rep</dt><dd>{number(part.volumeMm3)} mm³</dd><dt>Gabaryty</dt><dd>{part.bboxMm.map(number).join(' × ')} mm</dd><dt>Półfabrykat</dt><dd>{stockLabels[part.stockHint?.kind||'unknown']||'Nierozpoznany'}</dd><dt>Wymiary przekroju</dt><dd>{stockText(part.stockHint)}</dd><dt>Dowód grupowania</dt><dd>{part.verificationMethod||'Brak danych'}</dd></dl>{/if}</div></details>
+    <details id="geometry-details" class="panel detail-panel"><summary>Dane geometrii i rozpoznanie wyrobu</summary><div class="detail-layout"><label>Wystąpienie STEP<select value={selectedSolid} onchange={e=>selectedSolid=Number(e.currentTarget.value)}>{#each inventory.solids as s,i}<option value={i}>{s.id} · {s.verifiedShapeKey}</option>{/each}</select></label>{#if part}<dl><dt>Objętość B-Rep</dt><dd>{number(part.volumeMm3)} mm³</dd><dt>Gabaryty</dt><dd>{part.bboxMm.map(number).join(' × ')} mm</dd><dt>Półfabrykat</dt><dd>{stockLabels[part.stockHint?.kind||'unknown']||'Nierozpoznany'}</dd><dt>Wymiary przekroju</dt><dd>{stockText(part.stockHint)}</dd><dt>Dowód grupowania</dt><dd>{part.verificationMethod||'Brak danych'}</dd></dl>{/if}</div></details>
    {:else if !files.length}
     <div class="intro-grid"><section class="panel"><Scale size={21}/><h2>Materiał i masa</h2><p>Puste pole gatunku, gęstość 7850 kg/m³. Zmieniaj materiał, gęstość i naddatki przy częściach.</p></section><section class="panel"><Settings2 size={21}/><h2>Etapy produkcji</h2><p>Cięcie, gięcie, montaż i spawanie w jednym interfejsie. W każdym etapie możesz poprawić czas.</p></section><section class="panel"><ClipboardList size={21}/><h2>Stan wyceny</h2><p>Widzisz policzone pozycje i brakujące dane. Zapiszesz zestawienie wszystkich modułów.</p></section></div>
    {/if}

@@ -41,6 +41,7 @@ try:
   assert page.get_by_label('Gęstość A',exact=True).input_value()=='7850'
   page.get_by_label('Gęstość A',exact=True).fill('2700');page.get_by_label('Gęstość A',exact=True).press('Tab')
   assert '5,4' in page.locator('.metrics').inner_text()
+  page.get_by_role('button',name='Szczegóły',exact=True).click();assert page.locator('#geometry-details').get_attribute('open') is not None
   page.evaluate("window.__mockFiles=['C:\\\\job\\\\drawing.pdf']")
   page.get_by_role('button',name='Dodaj pliki',exact=True).click()
   page.get_by_text('drawing.pdf',exact=True).wait_for()

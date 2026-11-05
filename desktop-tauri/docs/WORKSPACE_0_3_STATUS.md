@@ -34,7 +34,7 @@ ale nie jest importowany ani dostępny z UI.
 | Gięcie | Kalkulator liczby gięć, cyklu i przezbrojenia; edycja czasu | Brak automatycznego rozwinięcia i liczby gięć |
 | CNC | Kalkulator usuwanej objętości i przezbrojenia, ręczne wiercenie | Brak CAM, automatycznego przypisania narzędzi i trajektorii |
 | Montaż / sczepianie | Kalkulator liczby brył i połączeń, normy operatora | Liczba złączy i normy wymagają danych operatora |
-| Spawanie | Kalkulator pachwin a², masa stopiwa, wydajność, wykorzystanie łuku, przygotowanie | Brak automatycznych styków, faz i integracji ESAB |
+| Spawanie | Kalkulator stalowych pachwin a², masa stopiwa, wydajność, wykorzystanie łuku, przygotowanie | Brak automatycznych styków, faz i integracji ESAB |
 | Po spawaniu | Ręczne czasy prostowania, szlifowania i obróbki | Brak automatycznego zakresu |
 | Powłoki | Ręczne czasy i operacje | Brak automatycznej powierzchni do malowania / cynkowania |
 | Kontrola / NDT | Ręczne czasy i stawki | Brak automatycznej interpretacji wymagań badań |
@@ -46,7 +46,7 @@ ale nie jest importowany ani dostępny z UI.
 ## Weryfikacja
 
 Testy Node obejmują istniejące obliczenia oraz nowy przepływ plików, materiały,
-naddatki, puste gatunki i eksport. W istniejącym teście przepełnienia kosztu cięcia
+naddatki, puste gatunki i eksport. Uzupełniono też wymiary poprawnego kandydata blachy w danych testowych raportu public_stock_audit i dodano osobny przypadek odrzucenia niepełnego kandydata. Walidacja raportu nie została osłabiona. W istniejącym teście przepełnienia kosztu cięcia
 uzupełniono brakujący materiał S355: bez niego żaden dostępny profil maszyny nie
 miał stawki, więc test nie wykonywał operacji mnożenia, którą miał weryfikować.
 
