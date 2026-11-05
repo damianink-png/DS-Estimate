@@ -7,7 +7,7 @@ from OCC.Core.BRep import BRep_Builder
 from OCC.Core.TopoDS import TopoDS_Compound
 from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
 from OCC.Core.IFSelect import IFSelect_RetDone
-from OCC.Core.gp import gp_Trsf, gp_Vec
+from OCC.Core.gp import gp_Trsf, gp_Vec, gp_Ax1, gp_Dir, gp_Pnt
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform, BRepBuilderAPI_MakePolygon, BRepBuilderAPI_MakeFace
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCC.Core.gp import gp_Pnt
@@ -105,4 +105,16 @@ from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCone
 check('stock_tapered_unknown',[BRepPrimAPI_MakeCone(30,20,1000).Shape()],1,
       math.pi*1000*(30**2+30*20+20**2)/3,
       expected_stock={'kind':'unknown'})
-print('ALL 8 INVENTORY + 11 STOCK CROSS-SECTION CASES PASS',flush=True)
+# Invalid RHS impostor: centred rotated square opening has the same bbox
+# dimensions/area as a square tube, but the walls are not parallel.
+internal=box(40,40,1000)
+tr=gp_Trsf()
+tr.SetTranslation(gp_Vec(20,20,0))
+internal=BRepBuilderAPI_Transform(internal,tr,True).Shape()
+rot=gp_Trsf()
+rot.SetRotation(gp_Ax1(gp_Pnt(40,40,0),gp_Dir(0,0,1)),math.radians(20))
+internal=BRepBuilderAPI_Transform(internal,rot,True).Shape()
+invalid_hollow=BRepAlgoAPI_Cut(box(80,80,1000),internal).Shape()
+check('stock_rotated_hole_unknown',[invalid_hollow],1,4800000,
+      expected_stock={'kind':'unknown'})
+print('ALL 8 INVENTORY + 12 STOCK CROSS-SECTION CASES PASS',flush=True)
