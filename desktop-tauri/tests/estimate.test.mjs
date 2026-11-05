@@ -92,3 +92,14 @@ test('project rejects aggregate occurrence overflow across valid rows',()=>{
   {geometryId:'B',quantity:1,features:{cut:{contourMm:0,setupMin:0}}}
  ]}),RangeError);
 });
+
+
+test('finite inputs cannot overflow CNC, cutting or bending derived totals',()=>{
+ assert.throws(()=>estimateCnc({removedCm3:1e308,removalCm3Min:1e-308,setupMin:0}),RangeError);
+ assert.throws(()=>estimateCut({contourMm:1e308,feedMmMin:1e-308,setupMin:0}),RangeError);
+ assert.throws(()=>estimateBending({bends:1e308,secondsPerBend:1e308,setupMin:0}),RangeError);
+});
+test('finite cycle times cannot overflow monetary totals or project quantity scaling',()=>{
+ assert.throws(()=>estimateCut({contourMm:1e300,feedMmMin:1,setupMin:0,ratePerHour:1e300}),RangeError);
+ assert.throws(()=>estimateProject({parts:[{geometryId:'large',quantity:1e9,features:{cut:{contourMm:1e300,feedMmMin:1,setupMin:0}}}]}),RangeError);
+});
