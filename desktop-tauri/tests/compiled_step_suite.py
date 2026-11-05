@@ -8,6 +8,13 @@ from OCC.Core.TopoDS import TopoDS_Compound
 from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
 from OCC.Core.IFSelect import IFSelect_RetDone
 from OCC.Core.gp import gp_Trsf, gp_Vec
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform, BRepBuilderAPI_MakePolygon, BRepBuilderAPI_MakeFace
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
+from OCC.Core.gp import gp_Pnt
+
+from test_stock_patterns import run_suite
+run_suite()
+
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 
 EXE=Path('src-tauri/cad-backend/ds-cad-engine.exe').resolve()
@@ -47,6 +54,14 @@ def check(name, shapes, count, volume, density=7850, expected_stock=None):
         print(json.dumps({'case':name,'status':'PASS','solids':count,'expected_mass_kg':expected_mass,'actual_mass_kg':d['totalMassKg']}),flush=True)
 
 box=lambda x,y,z:BRepPrimAPI_MakeBox(x,y,z).Shape()
+def prismatic_section(points, length=1000):
+    wire = BRepBuilderAPI_MakePolygon()
+    for x, y in points:
+        wire.Add(gp_Pnt(x, y, 0))
+    wire.Close()
+    face=BRepBuilderAPI_MakeFace(wire.Wire()).Face()
+    return BRepPrimAPI_MakePrism(face, gp_Vec(0,0,length)).Shape()
+
 def moved(shape,dx,dy,dz):
     t=gp_Trsf();t.SetTranslation(gp_Vec(dx,dy,dz))
     return BRepBuilderAPI_Transform(shape,t,True).Shape()
@@ -69,4 +84,15 @@ check('stock_rhs_80x40x3',[hollow80],1,684000,expected_stock={'kind':'rectangula
 check('stock_round_bar_30',[BRepPrimAPI_MakeCylinder(15,1000).Shape()],1,math.pi*225000,expected_stock={'kind':'round-bar','diameterMm':30})
 check('stock_round_tube_60x3',[tube60],1,math.pi*171000,expected_stock={'kind':'round-tube','diameterMm':60,'wallMm':3})
 check('stock_flat_section',[box(40,5,1000)],1,200000,expected_stock={'kind':'flat-section','widthMm':40,'heightMm':5})
-print('ALL 8 INVENTORY + 6 STOCK CROSS-SECTION CASES PASS',flush=True)
+# Exact prismatic structural outline tests: no inference from bounding boxes.
+section_cases = [
+ ('stock_L_angle', [(0,0),(40,0),(40,5),(5,5),(5,40),(0,40)], 375000, 'angle'),
+ ('stock_C_channel', [(0,0),(40,0),(40,5),(5,5),(5,35),(40,35),(40,40),(0,40)], 550000, 'channel'),
+ ('stock_T_tee', [(0,0),(5,0),(5,25),(20,25),(20,30),(-15,30),(-15,25),(0,25)], 300000, 'tee'),
+ ('stock_I_section', [(0,0),(40,0),(40,5),(23,5),(23,35),(40,35),(40,40),(0,40),
+                      (0,35),(17,35),(17,5),(0,5)], 580000, 'i-section'),
+]
+for name, section, volume, kind in section_cases:
+    check(name, [prismatic_section(section)], 1, volume, expected_stock={'kind':kind})
+
+print('ALL 8 INVENTORY + 10 STOCK CROSS-SECTION CASES PASS',flush=True)
