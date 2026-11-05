@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cad_backend.stock_patterns import orthogonal_section_kind
+from cad_backend.stock_recognition import _classify_section
 
 
 def close(points):
@@ -55,6 +56,18 @@ class StockPatternTests(unittest.TestCase):
             points[1] = (invalid, 0)
             self.assertIsNone(orthogonal_section_kind(close(points), .002))
         self.assertIsNone(orthogonal_section_kind(close(base), 0))
+
+    def test_offcenter_hollow_is_unknown(self):
+        def square(x0, y0, side):
+            points=[(x0,y0),(x0+side,y0),(x0+side,y0+side),
+                    (x0,y0+side),(x0,y0)]
+            return [(points[i:i+2], False, None) for i in range(4)]
+        good = _classify_section(square(0,0,80)+square(2,2,76), .002)
+        self.assertEqual(good['kind'], 'square-hollow')
+        # 0.5 mm offset is only 0.6% of the 80 mm outer dimension,
+        # but is 25% of a 2 mm wall: do not certify SHS.
+        bad = _classify_section(square(0,0,80)+square(2.5,2,76), .002)
+        self.assertIsNone(bad)
 
     def test_rectangle_and_open_profile_are_not_structural_ones(self):
         self.assertIsNone(orthogonal_section_kind(close([(0,0),(10,0),(10,10),(0,10)]), 0.002))
