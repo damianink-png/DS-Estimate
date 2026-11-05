@@ -94,6 +94,25 @@ class StockPatternTests(unittest.TestCase):
         self.assertEqual(mocked.call_count,5)
         self.assertEqual(result['lengthMm'],1000)
 
+    def test_independent_volume_rejects_hidden_pocket_between_samples(self):
+        # All five sampled cross-sections look identical, but the B-Rep
+        # volume reveals a slot between sampling planes.
+        pts=[(0,0),(40,0),(40,40),(0,40),(0,0)]
+        edges=[(pts[i:i+2],False,None) for i in range(4)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',return_value=1400000):
+            result=recognize_stock(object(),(0,0,0,40,40,1000))
+        self.assertEqual(result['kind'],'unknown')
+        self.assertIn('volume',result['reason'])
+
+    def test_independent_volume_accepts_prismatic_bar(self):
+        pts=[(0,0),(40,0),(40,40),(0,40),(0,0)]
+        edges=[(pts[i:i+2],False,None) for i in range(4)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',return_value=1600000):
+            result=recognize_stock(object(),(0,0,0,40,40,1000))
+        self.assertEqual(result['kind'],'square-bar')
+
     def test_rectangle_and_open_profile_are_not_structural_ones(self):
         self.assertIsNone(orthogonal_section_kind(close([(0,0),(10,0),(10,10),(0,10)]), 0.002))
         self.assertIsNone(orthogonal_section_kind([(0,0),(30,0),(30,5),(5,5)], 0.002))
