@@ -113,7 +113,7 @@ def _loop_metrics(loop, tol):
     rectangular = (not any(kinds) and area/(w*h)>.985 and
                    abs(perim-2*(w+h))<max(tol*10,.01*perim))
     return {'w':w,'h':h,'area':area,'circle':False,
-            'rectangle':rectangular,'center':center}
+            'rectangle':rectangular,'center':center,'edgeAngleRad':angle}
 
 
 def _classify_section(edges, tol):
@@ -136,6 +136,10 @@ def _classify_section(edges, tol):
             return {'kind':'round-tube','diameterMm':diameter,'wallMm':wall,
                     'sectionAreaMm2':outer['area']-inner['area']}
         if outer['rectangle'] and inner['rectangle']:
+            # Parallel exterior/interior walls are essential evidence of RHS/SHS.
+            # Bbox and wall offsets alone incorrectly accept a rotated hole.
+            if abs(math.sin(2*(outer['edgeAngleRad'] - inner['edgeAngleRad']))) > 0.02:
+                return None
             dx,dy=(outer['w']-inner['w'])/2,(outer['h']-inner['h'])/2
             if min(dx,dy)<=tol or abs(dx-dy)>max(tol*5,.08*max(dx,dy)):
                 return None
