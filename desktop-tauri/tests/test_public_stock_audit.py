@@ -14,7 +14,8 @@ class PublicStockAuditTests(unittest.TestCase):
             'solids': [
                 {'id':'a','verifiedShapeKey':'g1','stockHint':{
                     'kind':'square-hollow','confidence':'cross-section-consistent',
-                    'lengthMm':1000,'widthMm':40,'heightMm':40,'wallMm':2}},
+                    'lengthMm':1000,'widthMm':40,'heightMm':40,'wallMm':2,
+                    'sectionAreaMm2':304}},
                 {'id':'b','verifiedShapeKey':'g2','stockHint':{
                     'kind':'plate-candidate','confidence':'candidate',
                     'thicknessMm':10}},
@@ -50,6 +51,27 @@ class PublicStockAuditTests(unittest.TestCase):
         self.assertEqual(result['statusCounts']['INVALID_HINT'],2)
         self.assertEqual(result['statusCounts']['GEOMETRY_ONLY'],1)
         self.assertEqual(result['geometryEvidencePct'],33.3)
+
+    def test_section_area_must_agree_with_measured_dimensions(self):
+        import math
+        examples=[
+            ('round-bar', {'diameterMm':30}, math.pi*225),
+            ('round-tube', {'diameterMm':30,'wallMm':2}, math.pi*56),
+            ('square-bar', {'widthMm':40,'heightMm':40}, 1600),
+            ('rectangular-bar', {'widthMm':80,'heightMm':40}, 3200),
+            ('flat-section', {'widthMm':40,'heightMm':5}, 200),
+            ('square-hollow', {'widthMm':40,'heightMm':40,'wallMm':2}, 304),
+            ('rectangular-hollow', {'widthMm':80,'heightMm':40,'wallMm':3}, 684),
+        ]
+        for kind, dimensions, area in examples:
+            with self.subTest(kind=kind):
+                hint={'kind':kind,'confidence':'cross-section-consistent',
+                      'lengthMm':1000,'sectionAreaMm2':area, **dimensions}
+                correct=stock_audit({'count':1,'solids':[{'stockHint':hint}]})
+                self.assertEqual(correct['statusCounts'],{'GEOMETRY_ONLY':1})
+                bad={**hint,'sectionAreaMm2':area*0.7}
+                rejected=stock_audit({'count':1,'solids':[{'stockHint':bad}]})
+                self.assertEqual(rejected['statusCounts'],{'INVALID_HINT':1})
 
     def test_malformed_occurrence_inventory_rejected(self):
         with self.assertRaises(ValueError):
