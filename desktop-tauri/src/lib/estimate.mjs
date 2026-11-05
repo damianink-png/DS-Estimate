@@ -29,8 +29,8 @@ export function estimateProject({parts=[],ratePerHour=388}={}){
    const cut=features.cut?estimateCut({...features.cut,ratePerHour}):null;
    const bend=features.bend?estimateBending({...features.bend,ratePerHour}):null;
    const unitSetupMin=(cnc?(features.cnc.setupMin??20):0)+(cut?(features.cut.setupMin??10):0)+(bend?(features.bend.setupMin??15):0);
-   const unitMin=[cnc,cut,bend].reduce((s,x)=>s+(x?.totalMin||0),0);
-   unit={cnc,cut,bend,unitMin,unitCost:unitMin*ratePerHour/60,unitSetupMin,unitRunMin:unitMin-unitSetupMin};
+   const unitMin=valid([cnc,cut,bend].reduce((s,x)=>s+(x?.totalMin||0),0),'unit.totalMin');
+   unit={cnc,cut,bend,unitMin,unitCost:valid(unitMin*ratePerHour/60,'unit.cost'),unitSetupMin,unitRunMin:unitMin-unitSetupMin};
    cache.set(key,unit)}
   // Setup is paid once per distinct geometry/routing batch, even if the same
   // geometry occurs in several rows. Machine cycles scale with occurrences.
