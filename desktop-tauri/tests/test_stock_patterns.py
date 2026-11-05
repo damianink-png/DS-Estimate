@@ -41,6 +41,21 @@ class StockPatternTests(unittest.TestCase):
                   (20,15),(10,15),(10,20),(0,20)]
         self.assertIsNone(orthogonal_section_kind(close(zigzag), 0.002))
 
+    def test_mirrored_and_reversed_channel(self):
+        base = self.profiles()['channel']
+        for vertices in ([(40-x,y) for x,y in base],
+                         list(reversed(base)),
+                         [(y,x) for x,y in base]):
+            self.assertEqual(orthogonal_section_kind(close(vertices), .002)['kind'], 'channel')
+
+    def test_invalid_coordinates_are_unknown(self):
+        base = self.profiles()['angle']
+        for invalid in (float('nan'), float('inf'), -float('inf')):
+            points = list(base)
+            points[1] = (invalid, 0)
+            self.assertIsNone(orthogonal_section_kind(close(points), .002))
+        self.assertIsNone(orthogonal_section_kind(close(base), 0))
+
     def test_rectangle_and_open_profile_are_not_structural_ones(self):
         self.assertIsNone(orthogonal_section_kind(close([(0,0),(10,0),(10,10),(0,10)]), 0.002))
         self.assertIsNone(orthogonal_section_kind([(0,0),(30,0),(30,5),(5,5)], 0.002))
