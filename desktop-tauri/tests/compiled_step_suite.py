@@ -117,4 +117,11 @@ internal=BRepBuilderAPI_Transform(internal,rot,True).Shape()
 invalid_hollow=BRepAlgoAPI_Cut(box(80,80,1000),internal).Shape()
 check('stock_rotated_hole_unknown',[invalid_hollow],1,4800000,
       expected_stock={'kind':'unknown'})
-print('ALL 8 INVENTORY + 12 STOCK CROSS-SECTION CASES PASS',flush=True)
+# A notch between 50% and 75% samples would escape five 2-D cuts.
+# The independent 3-D volume gate must reject it.
+hidden_notch = BRepAlgoAPI_Cut(
+    box(40,40,1000), moved(box(20,40,100),0,0,580)
+).Shape()
+check('stock_hidden_notch_unknown',[hidden_notch],1,1520000,
+      expected_stock={'kind':'unknown'})
+print('ALL 8 INVENTORY + 13 STOCK CROSS-SECTION CASES PASS',flush=True)
