@@ -113,6 +113,19 @@ class StockPatternTests(unittest.TestCase):
             result=recognize_stock(object(),(0,0,0,40,40,1000))
         self.assertEqual(result['kind'],'square-bar')
 
+    def test_plate_candidate_requires_consistent_measured_thickness(self):
+        bounds=(0,0,0,100,50,10)
+        good={'kind':'plate-outline','thicknessMm':10}
+        result=recognize_stock(None,bounds,plate_hint=good)
+        self.assertEqual(result['kind'],'plate-candidate')
+        self.assertEqual(result['confidence'],'candidate')
+        for bad in (None, {}, {'kind':'plate-outline','thicknessMm':5},
+                    {'kind':'plate-outline','thicknessMm':float('nan')},
+                    {'kind':'plate-outline','thicknessMm':0},
+                    {'kind':'plate-outline','thicknessMm':'10'}):
+            with self.subTest(bad=bad):
+                self.assertEqual(recognize_stock(None,bounds,plate_hint=bad)['kind'],'unknown')
+
     def test_rectangle_and_open_profile_are_not_structural_ones(self):
         self.assertIsNone(orthogonal_section_kind(close([(0,0),(10,0),(10,10),(0,10)]), 0.002))
         self.assertIsNone(orthogonal_section_kind([(0,0),(30,0),(30,5),(5,5)], 0.002))
