@@ -43,7 +43,7 @@ def stock_audit(inventory):
             status = "MISSING_HINT"
             reason = "Compiled engine provided no stockHint for this STEP solid"
             kind = "unknown"
-        elif not isinstance(kind, str) or kind not in STOCK_KINDS or not finite:
+        elif not isinstance(raw, dict) or not isinstance(kind, str) or kind not in STOCK_KINDS or not finite:
             status = "INVALID_HINT"
             reason = reason or "Malformed stock evidence"
             kind = "unknown"
