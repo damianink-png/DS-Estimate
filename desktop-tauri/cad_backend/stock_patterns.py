@@ -29,7 +29,9 @@ def orthogonal_section_kind(pts, tol):
     Strict grid occupancy prevents classifying a similar-looking arbitrary
     profile as a certified hot-rolled / standard structural section.
     """
-    if len(pts) < 7 or math.dist(pts[0], pts[-1]) > tol:
+    if (not math.isfinite(tol) or tol <= 0 or len(pts) < 7
+            or any(not math.isfinite(v) for p in pts for v in p)
+            or math.dist(pts[0], pts[-1]) > tol):
         return None
     segments = [(math.dist(a, b), a, b) for a, b in zip(pts, pts[1:])
                 if math.dist(a, b) > tol]
@@ -66,7 +68,10 @@ def orthogonal_section_kind(pts, tol):
         kind = 'angle'
     elif (w, h) in ((2, 3), (3, 2)):
         grid = occupied if w == 2 else [list(col) for col in zip(*occupied)]
-        if all(grid[row][0] and grid[row][1] for row in (0, 2)) and sum(grid[1]) == 1:
+        # A genuine U/C shape has two full flanges and a web on
+        # the SAME side. A central web is an I/H-like section.
+        if (all(grid[row][0] and grid[row][1] for row in (0, 2))
+                and grid[1] in ([True, False], [False, True])):
             kind = 'channel'
     elif w == 3 and h == 3:
         if all(occupied[row] == [True, True, True] for row in (0, 2)) and occupied[1] == [False, True, False]:
