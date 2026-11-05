@@ -9,6 +9,8 @@
 import {recommendCutting, SAMPLE_MACHINE_SETTINGS} from './cutting-plan.mjs';
 
 const valid=(n)=>typeof n==='number' && Number.isFinite(n) && n>=0;
+const finiteNonnegative=(n,label)=>{if(!valid(n))throw new RangeError(label);return n;};
+const safeOccurrences=(n,label)=>{if(!Number.isSafeInteger(n))throw new RangeError(label);return n;};
 const thicknessBucket=(n)=>Math.round(n*10)/10;
 
 export function planCuttingBatches({
@@ -59,30 +61,36 @@ export function planCuttingBatches({
    chargedSetup=groupSetup;
   }
   const calculatedMin=canCalculate ?
-   Number((chargedSetup+prediction.perPieceMin*group.quantity).toFixed(9)):null;
+   Number(finiteNonnegative(chargedSetup+prediction.perPieceMin*group.quantity,'cutting calculated minutes').toFixed(9)):null;
   const acceptedMin=manuallyAccepted?manual.minutes:calculatedMin;
   const rate=prediction.ratePlnHour;
-  const costPln=acceptedMin===null||rate===null?null:acceptedMin*rate/60;
-  if(acceptedMin===null)pendingOccurrences+=group.quantity;
+  if(acceptedMin!==null)finiteNonnegative(acceptedMin,'cutting accepted minutes');
+  const costPln=acceptedMin===null||rate===null?null:
+   finiteNonnegative(acceptedMin*rate/60,'cutting cost');
+  if(acceptedMin===null)pendingOccurrences=safeOccurrences(pendingOccurrences+group.quantity,'pending occurrences');
   else{
-   knownTimeOccurrences+=group.quantity;
+   knownTimeOccurrences=safeOccurrences(knownTimeOccurrences+group.quantity,'known occurrences');
    if(costPln!==null){
-    totalCostPln+=costPln;
-    pricedOccurrences+=group.quantity;
+    totalCostPln=finiteNonnegative(totalCostPln+costPln,'cutting total cost');
+    pricedOccurrences=safeOccurrences(pricedOccurrences+group.quantity,'priced occurrences');
    } else hasUnpriced=true;
   }
-  if(calculatedMin!==null){setupMinutes+=chargedSetup;runMinutes+=prediction.perPieceMin*group.quantity;}
+  if(calculatedMin!==null){
+   setupMinutes=finiteNonnegative(setupMinutes+chargedSetup,'cutting setup minutes');
+   runMinutes=finiteNonnegative(runMinutes+prediction.perPieceMin*group.quantity,'cutting run minutes');
+  }
   output.push({...group,cut:{...prediction,batchId,nominalThicknessMm:nominalThickness,
    setupAllocatedMin:chargedSetup,calculatedMin,acceptedMin,costPln,
    confidence:manuallyAccepted?'manual':prediction.confidence,
    warnings:manuallyAccepted?[...prediction.warnings,'Czas zmieniony ręcznie']:prediction.warnings}});
  }
- const occurrences=knownTimeOccurrences+pendingOccurrences;
+ const occurrences=safeOccurrences(knownTimeOccurrences+pendingOccurrences,'total occurrences');
+ const calculatedTimeMin=finiteNonnegative(setupMinutes+runMinutes,'cutting total minutes');
  const complete=occurrences>0 && pendingOccurrences===0 && !hasUnpriced;
  return {rows:output,knownTimeOccurrences,pendingOccurrences,pricedOccurrences,
   setupMinutes,runMinutes,
   // These are explicitly PARTIAL subtotals when any occurrence has unknown time/cost.
-  calculatedTimeMin:setupMinutes+runMinutes,
+  calculatedTimeMin,
   knownCostPln:totalCostPln,
   acceptedCostPln:complete?totalCostPln:null,
   batchCount:charged.size,
