@@ -275,12 +275,21 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None, axis_override=None):
 def _short_profile(shape,bounds,axis):
     dims=[bounds[i+3]-bounds[i] for i in range(3)];cross=sorted((dims[i] for i in range(3) if i!=axis),reverse=True)
     if dims[axis]/cross[0]>=3.5:return None
-    if not any(match_hint({'kind':kind,'widthMm':cross[0],'heightMm':cross[1]}) for kind in ('square-hollow','rectangular-hollow','round-tube','angle','channel','tee','i-section')):return None
+    catalog_fit=any(match_hint({'kind':kind,'widthMm':cross[0],'heightMm':cross[1]}) for kind in ('square-hollow','rectangular-hollow','round-tube','angle','channel','tee','i-section'))
+    if not catalog_fit:
+        # Imperial/non-catalogue closed sections still have geometric evidence.
+        # A cheap complexity limit avoids sectioning arbitrary vendor hardware.
+        try:from . import cad_measure as api
+        except ImportError:import cad_measure as api
+        if sum(1 for _ in api.shapes(shape,api.TopAbs_FACE))>32:return None
+        edges=_section_edges(shape,bounds,axis,.5)
+        mid=_classify_section(edges,max(.002,min(cross[1]*.0001,.02))) if edges else None
+        if not mid or mid.get('kind') not in ('square-hollow','rectangular-hollow','round-tube'):return None
     candidate=_recognize_axis_stock(shape,bounds,axis_override=axis)
     if candidate.get('kind') not in ('square-hollow','rectangular-hollow','round-tube','angle','channel','tee','i-section'):return None
     if candidate.get('lengthMm',0)<max(2,2*candidate.get('wallMm',1)):return None
-    if not match_hint(candidate):return None
-    return {**candidate,'source':'five sections along a catalogue-matched short extrusion axis'}
+    if not match_hint(candidate) and candidate['kind'] not in ('square-hollow','rectangular-hollow','round-tube'):return None
+    return {**candidate,'source':'five consistent sections and volume along a short extrusion axis'}
 
 def recognize_stock(solid, bounds, plate_hint=None):
     """Try the existing world frame, then a frame aligned with the longest straight edge."""

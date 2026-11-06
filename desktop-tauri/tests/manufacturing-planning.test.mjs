@@ -22,7 +22,7 @@ test('purchased and subcontracted interfaces never become automatic weld or tack
 });
 test('partial contact analysis cannot silently yield complete mounting and welding times',()=>{
  const a=automaticOperations(partsList({solids:[plate('a'),plate('b')]}),{complete:false,candidates:[joint('a','b')]});
- assert.equal(a.modules.assembly.fitup,null);assert.equal(a.modules.welding.weld,null);assert.equal(a.modules.postweld.grind,null);
+ assert.equal(a.modules.assembly.fitup,null);assert.equal(a.modules.welding.weld,null);assert.equal(a.modules.postweld.grind,null);assert.equal(a.modules.quality.visual,null);
 });
 test('one shared part on two welds is counted once; large and heavy groups increase handling',()=>{
  const p=partsList({solids:['a','b','c'].map(id=>plate(id))});const a=automaticOperations(p,contacts([joint('a','b'),joint('b','c')]));close(a.modules.assembly.fitup*60,7.5);
@@ -45,4 +45,8 @@ test('small welds do not automatically require straightening or fillet grinding'
 
 test('standard hardware is proposed as purchased; explicit routing always wins',()=>{
  const s={...plate('bolt'),name:'M6x16 - DIN912 v4:1'};assert.equal(partsList({solids:[s]})[0].route,'purchase');assert.equal(partsList({solids:[s]},{bolt:{route:'make'}})[0].route,'make');
+});
+
+test('unknown vendor extrusion corner radii do not invent press-brake operations',()=>{
+ const s={...plate('slot'),stockHint:{kind:'unknown'},bendHint:{count:4,bends:[]}};const p=partsList({solids:[s]})[0];assert.equal(bendEstimate(p).count,null);assert.equal(bendEstimate({...p,bendCount:2}).count,2);
 });

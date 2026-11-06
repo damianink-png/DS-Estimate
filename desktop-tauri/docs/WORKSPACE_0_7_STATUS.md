@@ -20,6 +20,15 @@ Całkowanie powierzchni B-Rep korzysta z adaptacyjnej tolerancji względnej 10�
 
 Test `tests/human_assembly_benchmark.py` pobiera plik prasy i sprawdza SHA-256, 220 brył i masę względem niezależnego importu STEPControl oraz całki z pełnej siatki (nie siatki podglądu). Tolerancja 0,1%. W Windows CI uruchamia spakowany silnik EXE; raport jest osobnym artefaktem. Samo dodanie testu nie oznacza jego zaliczenia. Szczegółowe wyniki są w raporcie z danego przebiegu.
 
+## Wyniki przeprowadzonych prób
+
+- Prasa: 220 brył, 36 grup, pełny odczyt nazw bez błędu importu. Masa przy 7850 kg/m³: 51,76776944 kg; niezależna całka 3 663 342 trójkątów: 51,76513722 kg. Różnica 0,005085%. Także spakowany Windows EXE uzyskał ten wynik w przebiegu 42288310933; kolejne poprawki krótkich profili są sprawdzane przez ten sam test.
+- Analitycznie: podstawa 412,75 × 336,55 × 6,35 mm daje 6,92436670 kg; dystans 76,2 × 76,2 × 4,7625 mm daje 0,21707739 kg; każda z dwóch prowadnic 12,7 × 76,2 × 4,7625 mm daje 0,03617956 kg. Wszystkie wyniki zgodne z programem. Wymiary po przeliczeniu z dokumentacji autorów; formuła V = L × W × T, m = V × 7850 / 10⁹.
+- Analiza styków prasy: 23 propozycje z 36 sprawdzonych par, dwa zgłoszone przenikania i limit 90 s. Wynik częściowy. Z tego powodu całkowite czasy montażu i spawania pozostają nieustalone — nie są przedstawiane jako kompletna wycena.
+- Stół Mekanika: lokalnie odczytano 487 brył, 23 grupy bez błędu importu. Masa przy jednej, umownie stalowej gęstości 234,01948 kg nie jest masą rzeczywistego stołu aluminiowego z MDF. Analiza trwała ok. 573 s, z czego 486 s przypadło na konserwatywne sprawdzanie podobnej geometrii. Wydajność tej części nadal wymaga dalszej pracy; limit między operacjami nie przerywa pojedynczej długiej operacji jądra CAD.
+- Większe modele ujawniły błędne naliczanie naroży nierozpoznanych profili jako gięć. Automatyczne gięcie wymaga teraz rozpoznania blachy giętej. Krótkie zamknięte przekroje calowe są rozpoznawane na podstawie pięciu przekrojów i objętości także bez pozycji katalogowej; cztery wsporniki z rury 25,4 mm nie powinny trafiać do gięcia prasy.
+- Kontrolne złożenie sześciu części: materiał 19,734943 kg zamiast wcześniejszych 19,657415 kg masy gotowych detali; montaż dotyczy dwóch połączonych blach zamiast wszystkich sześciu detali (27,366667 min zamiast 40,366667 min przy normach domyślnych). Dodano 20 min przygotowania i 0,14 min obróbki wycięcia SHS oraz 10 min przygotowania i 1,066667 min wykonania faz. Są to normy obróbki, nie zmierzone czasy produkcji.
+
 ## Granice
 
 Styki pozostają kandydatami spoin. STEP nie potwierdza zamiaru spawania, wszystkich materiałów, gwintów, wymagań obróbki, jakości powierzchni i WPS. Analiza z limitem czasu daje jawny wynik częściowy; brak pełnej analizy nie jest zerowym czasem spawania, montażu ani fazowania. Nie uzyskano referencyjnych czasów produkcji autorów modeli. Zgodność wzorów nie jest potwierdzeniem norm warsztatowych. Masa przy jednej gęstości jest porównaniem geometrycznym, nie zmierzoną masą całej maszyny z wyposażeniem.

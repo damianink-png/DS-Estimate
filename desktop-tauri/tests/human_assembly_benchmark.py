@@ -48,6 +48,9 @@ def main():
    exe=Path('src-tauri/cad-backend/ds-cad-engine.exe').resolve();r=subprocess.run([str(exe),str(a.step.resolve())],capture_output=True,text=True,timeout=1200);assert r.returncode==0,r.stderr;data=json.loads(r.stdout)
   else:data=inventory(a.step)
   (a.output/'inventory.json').write_text(json.dumps(data),encoding='utf8');assert data['count']==220;assert not data['importIssues'];assert len(data['solids'])==220;assert all(s['massKg']>0 for s in data['solids'])
+ if not a.reference_only:
+  supports=[s for s in data['solids'] if s['name']=='Lower Plate Support_PreviewCfg'];assert len(supports)==4
+  assert all(s['stockHint']['kind']=='square-hollow' for s in supports),'Short imperial tubing must not become sheet bends'
  reader=cad.STEPControl_Reader();assert reader.ReadFile(str(a.step))==cad.IFSelect_RetDone;assert reader.TransferRoots();solids=list(cad.shapes(reader.OneShape(),cad.TopAbs_SOLID));assert len(solids)==220
  volumes=[];triangles=0
  for i,shape in enumerate(solids):

@@ -30,7 +30,8 @@ export function partBends(p){
  if(p.bendCount!==null)return p.bendCount;
  const k=p.stockKind||p.solid.stockHint?.rawStockCandidate?.kind||p.solid.stockHint?.kind;
  if(['square-hollow','rectangular-hollow','round-tube','angle','channel','i-section','tee','flat-section','round-bar','square-bar','rectangular-bar'].includes(k))return 0;
- return p.solid.bendHint?.count??(['plate-candidate','plate'].includes(k)?0:null);
+ // Cylindrical pairs in an unknown extrusion are not proof of a formed sheet.
+ return k==='bent-plate'?p.solid.bendHint?.count??null:['plate-candidate','plate'].includes(k)?0:null;
 }
 export function automaticOperations(parts,contacts,jointEdits={},norms=NORMS){
  const n=Object.fromEntries(Object.keys(NORMS).map(k=>[k,{...NORMS[k],...norms[k]}]));
@@ -74,7 +75,7 @@ export function automaticOperations(parts,contacts,jointEdits={},norms=NORMS){
  }
  const areaM2=parts.reduce((s,p)=>s+(p.solid.areaMm2??0)/1e6,0);
  if(n.coating.enabled){good(n.coating.m2Hour,'Wydajność malowania',true);result.coating={prepare:operation('Przygotowanie',n.coating.setupMin),paint:areaM2*n.coating.layers/n.coating.m2Hour,handle:null};}
- if(n.quality.enabled)result.quality={dimensions:operation('Kontrola',n.quality.setupMin+parts.length*n.quality.minutesPerPart),visual:w?operation('VT',w.totalLengthMm/1000*n.quality.vtMinMeter):null,ndt:0};
+ if(n.quality.enabled)result.quality={dimensions:operation('Kontrola',n.quality.setupMin+parts.length*n.quality.minutesPerPart),visual:w&&graphComplete?operation('VT',w.totalLengthMm/1000*n.quality.vtMinMeter):null,ndt:0};
  const weldMeters=(w?.totalLengthMm??0)/1000,depositPerMeter=weldMeters?active.reduce((s,r)=>s+r.kg,0)/weldMeters:0;
  const straightenRisk=weldMeters>=n.postweld.straightenLengthMeter&&depositPerMeter>=n.postweld.straightenDepositKgMeter;
  if(n.postweld.enabled)result.postweld={straighten:graphComplete?operation('Rezerwa prostowania',straightenRisk?n.postweld.straightenMin+weldMeters*n.postweld.straightenMinMeter:0):null,
