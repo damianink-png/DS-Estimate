@@ -87,7 +87,9 @@ jobs:
       - name: Bundle offline CAD engine
         shell: pwsh
         run: |
-          conda run -n ds-cad python -m PyInstaller --onefile --collect-all OCC --add-data "src/lib/data/steel-sections.json;data" --add-data "licenses/steel-section-database-MIT.txt;licenses" --name ds-cad-engine --distpath src-tauri/cad-backend --workpath build/cad-pyinstaller --specpath build/cad-spec cad_backend/step_inventory.py
+          $catalogPath = (Resolve-Path 'src/lib/data/steel-sections.json').Path
+          $catalogLicensePath = (Resolve-Path 'licenses/steel-section-database-MIT.txt').Path
+          conda run -n ds-cad python -m PyInstaller --onefile --collect-all OCC --add-data "$catalogPath;data" --add-data "$catalogLicensePath;licenses" --name ds-cad-engine --distpath src-tauri/cad-backend --workpath build/cad-pyinstaller --specpath build/cad-spec cad_backend/step_inventory.py
           if ($LASTEXITCODE -ne 0) { throw 'CAD engine build failed' }
           if (!(Test-Path src-tauri/cad-backend/ds-cad-engine.exe)) { throw 'CAD engine missing' }
       - name: Smoke test bundled CAD engine
