@@ -29,12 +29,18 @@ def run_accessibility_test(pid,exe,step,out):
   except Exception:control.click_input()
  def enter(name,value):
   control=find(name)
+  try:control.set_focus()
+  except Exception:pass
   try:control.iface_value.SetValue(value)
   except Exception:control.iface_range_value.SetValue(float(value))
   time.sleep(.3)
   try:actual=str(control.iface_value.CurrentValue)
   except Exception:actual=str(control.iface_range_value.CurrentValue)
   assert actual==str(value) or (name.startswith('Przekrój') and float(actual.replace(',','.'))==float(value)),'Native input value was not set: '+actual
+  if name.startswith('Przekrój'):
+   try:find('Spawanie').set_focus()
+   except Exception:pass
+   time.sleep(.3)
  def value(name):
   control=find(name)
   try:return str(control.iface_value.CurrentValue)
