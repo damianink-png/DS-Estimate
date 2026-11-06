@@ -20,7 +20,7 @@ def extended_text(value):
     try:return text.encode('latin1').decode('utf-8')
     except (UnicodeEncodeError,UnicodeDecodeError):return text
 
-def assembly_names(path):
+def load_occurrences(path):
     try:
         from OCC.Core.STEPCAFControl import STEPCAFControl_Reader
         from OCC.Core.TDocStd import TDocStd_Document
@@ -52,8 +52,8 @@ def assembly_names(path):
             return extended_text(value.Get())
         return ''
     doc=TDocStd_Document(TCollection_ExtendedString('DS Estimate'));reader=STEPCAFControl_Reader();reader.SetNameMode(True)
-    if reader.ReadFile(str(path))!=cad.IFSelect_RetDone or not reader.Transfer(doc):return {}
-    tool=tool_fn(doc.Main());roots=TDF_LabelSequence();tool.GetFreeShapes(roots);result={}
+    if reader.ReadFile(str(path))!=cad.IFSelect_RetDone or not reader.Transfer(doc):raise ValueError('XCAF STEP transfer failed')
+    tool=tool_fn(doc.Main());roots=TDF_LabelSequence();tool.GetFreeShapes(roots);result=[]
     def walk(label,parent,trail,depth=0):
         if depth>64:return
         ref=TDF_Label();is_ref=call(tool,'IsReference',label)
@@ -68,9 +68,31 @@ def assembly_names(path):
         if call(tool,'GetComponents',target,components):
             for i in range(1,components.Length()+1):walk(components.Value(i),loc,trail+[name] if name else trail,depth+1)
         else:
-            shape=call(tool,'GetShape',target).Located(loc)
+            shape=call(tool,'GetShape',label).Moved(parent)
             solids=list(cad.shapes(shape,cad.TopAbs_SOLID))
-            for s in solids:
-                result.setdefault(signature(s),[]).append({'name':name,'assemblyPath':trail+[name]})
+            for index,s in enumerate(solids):
+                result.append({'shape':s,'name':name,'assemblyPath':trail+[name],
+                    'nameSource':'XCAF occurrence/product' if name else 'missing',
+                    'bodyIndex':index,'bodyCount':len(solids)})
     for i in range(1,roots.Length()+1):walk(roots.Value(i),TopLoc_Location(),[])
     return result
+
+def assembly_names(path):
+    # Compatibility adapter for callers needing a geometry-indexed name report.
+    result={}
+    for occurrence in load_occurrences(path):
+        result.setdefault(signature(occurrence['shape']),[]).append({k:v for k,v in occurrence.items() if k!='shape'})
+    return result
+
+def read_occurrences(path):
+    """One authoritative occurrence order shared by inventory, joints and preview."""
+    try:
+        items=load_occurrences(path)
+        if not items:raise ValueError('No solid occurrences in XCAF document')
+        return items,[]
+    except Exception as exc:
+        # Never silently pretend that a failed name import succeeded.
+        reader=cad.STEPControl_Reader()
+        if reader.ReadFile(str(path))!=cad.IFSelect_RetDone or not reader.TransferRoots():raise ValueError('STEP transfer failed')
+        items=[{'shape':s,'name':'','assemblyPath':[],'nameSource':'missing'} for s in cad.shapes(reader.OneShape(),cad.TopAbs_SOLID)]
+        return items,['XCAF import failed; unnamed STEPControl fallback: '+type(exc).__name__+': '+str(exc)]

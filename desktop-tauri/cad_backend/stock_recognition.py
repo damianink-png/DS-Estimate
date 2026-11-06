@@ -206,15 +206,15 @@ def _measured_solid_volume(solid):
     return volume
 
 
-def _recognize_axis_stock(solid, bounds, plate_hint=None):
+def _recognize_axis_stock(solid, bounds, plate_hint=None, axis_override=None):
     """Recognise prismatic shapes or a measured *candidate* plate; no catalogue proof."""
     dims = [bounds[i+3]-bounds[i] for i in range(3)]
     if any(not math.isfinite(x) or x<=0 for x in dims):
         return {'kind':'unknown','reason':'Invalid STEP dimensions'}
-    axis = max(range(3), key=lambda i:dims[i])
+    axis = max(range(3), key=lambda i:dims[i]) if axis_override is None else axis_override
     other = sorted(dims[i] for i in range(3) if i != axis)
     length = dims[axis]
-    if length/other[-1]<3.5:
+    if length/other[-1]<3.5 and axis_override is None:
         # Prefer geometrically evidenced planar sheet over a bare bbox ratio.
         # The planar-face contour can also be present on pocketed/finished
         # parts, so plate is a procurement CANDIDATE rather than a proof.
@@ -240,18 +240,20 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None):
         for fraction in (.10,.25,.50,.75,.90):
             edges = _section_edges(solid,bounds,axis,fraction)
             profile = _classify_section(edges,tol) if edges else None
-            if profile is None:
-                return {'kind':'unknown','reason':'Open, complex or unsupported cross-section'}
             profiles.append(profile)
     except Exception as exc:
         return {'kind':'unknown','reason':'Section calculation unavailable: '+type(exc).__name__}
-    first = profiles[0]
-    for other in profiles[1:]:
-        if first['kind'] != other['kind']:
-            return {'kind':'unknown','reason':'Section type changes along part'}
-        if any(abs(v-other[k])>max(tol*10,.02*max(abs(v),abs(other[k])))
-               for k,v in first.items() if k!='kind'):
-            return {'kind':'unknown','reason':'Section size changes along part'}
+    valid=[p for p in profiles if p]
+    if not valid:return {'kind':'unknown','reason':'Open, complex or unsupported cross-section'}
+    def alike(a,b):
+        return a['kind']==b['kind'] and all(abs(v-b.get(k,float('inf')))<=max(tol*10,.02*max(abs(v),abs(b.get(k,0)))) for k,v in a.items() if k!='kind')
+    first=max(valid,key=lambda p:sum(alike(p,q) for q in valid));support=sum(alike(first,p) for p in valid)
+    expected=first['sectionAreaMm2']*length
+    measured=_measured_solid_volume(solid) if solid is not None else expected
+    raw={**first,'lengthMm':length,'confidence':'raw-stock-candidate','supportingSections':support,
+         'sampledSections':5,'removedVolumeMm3':max(0,expected-measured),'source':'repeated B-Rep sections, finished part contains stock removal'} if support>=3 and 0<measured<expected*1.02 else None
+    if support<5:
+        return {'kind':'unknown','reason':'Section changes along finished part',**({'rawStockCandidate':raw} if raw else {})}
     # Cross-sections can all match while a pocket or notch exists between
     # sampling planes. Compare independent B-Rep volume against the prism
     # implied by the measured section and its full bounding length.
@@ -264,15 +266,29 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None):
         if not math.isfinite(expected_volume) or expected_volume <= 0:
             return {'kind':'unknown','reason':'Invalid predicted extrusion volume'}
         if abs(measured_volume-expected_volume) > max(1.0, expected_volume*.02):
-            return {'kind':'unknown','reason':'3-D volume inconsistent with constant stock section (possible pocket, notch or end machining)'}
+            return {'kind':'unknown','reason':'3-D volume inconsistent with constant stock section (possible pocket, notch or end machining)',**({'rawStockCandidate':raw} if raw else {})}
     return {**first,'lengthMm':length,'confidence':'cross-section-consistent',
             'source':'OCCT sections at 10/25/50/75/90% length',
             'limitations':'Cannot determine material grade, nominal standard, plate vs flat-bar procurement or end-cut stock length'}
 
 
+def _short_profile(shape,bounds,axis):
+    dims=[bounds[i+3]-bounds[i] for i in range(3)];cross=sorted((dims[i] for i in range(3) if i!=axis),reverse=True)
+    if dims[axis]/cross[0]>=3.5:return None
+    if not any(match_hint({'kind':kind,'widthMm':cross[0],'heightMm':cross[1]}) for kind in ('square-hollow','rectangular-hollow','round-tube','angle','channel','tee','i-section')):return None
+    candidate=_recognize_axis_stock(shape,bounds,axis_override=axis)
+    if candidate.get('kind') not in ('square-hollow','rectangular-hollow','round-tube','angle','channel','tee','i-section'):return None
+    if candidate.get('lengthMm',0)<max(2,2*candidate.get('wallMm',1)):return None
+    if not match_hint(candidate):return None
+    return {**candidate,'source':'five sections along a catalogue-matched short extrusion axis'}
+
 def recognize_stock(solid, bounds, plate_hint=None):
     """Try the existing world frame, then a frame aligned with the longest straight edge."""
     result=_recognize_axis_stock(solid,bounds,plate_hint)
+    if result.get('kind')=='unknown' and solid is not None:
+        for axis in range(3):
+            short=_short_profile(solid,bounds,axis)
+            if short:result=short;break
     if result.get('kind') in ('unknown','plate-candidate') and solid is not None:
         try:
             try:from . import cad_measure as api
@@ -308,12 +324,15 @@ def recognize_stock(solid, bounds, plate_hint=None):
                 local=BRepBuilderAPI_Transform(solid,tr,True).Shape();box=Bnd_Box();api.add_bounds(local,box)
                 local_hint=api.plate_hint(local)
                 candidate=_recognize_axis_stock(local,box.Get(),local_hint)
+                if candidate.get('kind')=='unknown':candidate=_short_profile(local,box.Get(),2) or candidate
                 local_dims=sorted((b-a for a,b in zip(box.Get()[:3],box.Get()[3:])),reverse=True)
                 if best_local is None or math.prod(local_dims)<math.prod(best_local):best_local=local_dims
                 if candidate.get('kind')!='unknown':
                     result={**candidate,'localFrame':'B-Rep edge/face axis','localDimsMm':local_dims}
                     if local_hint:result['localCuttingHint']=local_hint
                     break
+                if candidate.get('rawStockCandidate'):
+                    result={**result,'rawStockCandidate':{**candidate['rawStockCandidate'],'localDimsMm':local_dims}}
                 if local_hint:result={**result,'localCuttingHint':local_hint}
             if best_local and 'localDimsMm' not in result:result['localDimsMm']=best_local
         except Exception:
@@ -322,4 +341,7 @@ def recognize_stock(solid, bounds, plate_hint=None):
         candidates=match_hint(result)
         result={**result,'catalogCandidates':candidates,'catalogStatus':'unique-fit' if len(candidates)==1 else 'multiple-fits' if candidates else 'no-catalog-fit'}
         if len(candidates)==1:result['catalogDesignation']=candidates[0]['name']
+    if result.get('rawStockCandidate'):
+        raw=result['rawStockCandidate'];candidates=match_hint(raw);raw['catalogCandidates']=candidates
+        if len(candidates)==1:raw['catalogDesignation']=candidates[0]['name']
     return result

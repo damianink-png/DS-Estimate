@@ -4,10 +4,11 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).parents[1]/'cad_backend'))
 import cad_measure as cad
 from joint_detection import detect_contacts
+from weld_preparation import groove_between,t_groove_between
 from stock_recognition import recognize_stock
 from manufacturing_features import feature_hints,sheet_hints
 from part_preview import mesh_part
-from assembly_names import assembly_names,signature,extended_text
+from assembly_names import assembly_names,signature,extended_text,read_occurrences
 from section_catalog import catalog
 try:
  from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox,BRepPrimAPI_MakeCylinder,BRepPrimAPI_MakePrism
@@ -37,6 +38,48 @@ def rounded_box(w,h,length,r,origin=(0,0,0)):
 def rotated(shape):
  t=gp_Trsf();t.SetRotation(gp_Ax1(gp_Pnt(0,0,0),gp_Dir(1,1,1)),.41);return BRepBuilderAPI_Transform(shape,t,True).Shape()
 class Geometry(unittest.TestCase):
+ def test_prepared_t_joint_measures_foot_void_not_contact_perimeter(self):
+  def plate(points):
+   wire=BRepBuilderAPI_MakePolygon()
+   for x,z in points:wire.Add(gp_Pnt(x,0,z))
+   wire.Close();return BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(wire.Wire()).Face(),gp_Vec(0,100,0)).Shape()
+  base=box(100,100,10,(-50,0,-10));stem=plate([(-5,5),(0,0),(5,0),(5,50),(-5,50)])
+  for aa,bb in [(base,stem),(rotated(base),rotated(stem))]:
+   result=t_groove_between(aa,bb);self.assertIsNotNone(result);self.assertAlmostEqual(result['sectionMm2'],12.5,places=3)
+   joints=detect_contacts([aa,bb]);self.assertAlmostEqual(joints['candidates'][0]['measuredSectionMm2'],12.5,places=3);self.assertEqual(joints['candidates'][0]['preparation'],'T-half-V')
+ def test_nested_assembly_occurrences_and_complete_inventory(self):
+  from build_assembly_fixture import write_fixture
+  with tempfile.TemporaryDirectory() as td:
+   path=Path(td)/'nested.step';expected=write_fixture(path);items,issues=read_occurrences(path)
+   self.assertFalse(issues);self.assertEqual(len(items),6);self.assertEqual(set(i['name'] for i in items),set(expected['names']))
+   lookup={i['name']:i for i in items};a=lookup['Płyta P-015'];b=lookup['Płyta P-015 druga']
+   self.assertGreaterEqual(len(a['assemblyPath']),3);self.assertAlmostEqual(cad.bounds(b['shape'])[0]-cad.bounds(a['shape'])[0],500,places=4)
+   if '--compiled' in sys.argv:
+    exe=Path('src-tauri/cad-backend/ds-cad-engine.exe').resolve();p=subprocess.run([str(exe),str(path)],capture_output=True,text=True,timeout=180)
+    self.assertEqual(p.returncode,0,p.stderr);data=json.loads(p.stdout);self.assertEqual(data['engineVersion'],'0.6.0');self.assertEqual(data['count'],6)
+    lookup={s['name']:s for s in data['solids']};self.assertEqual(set(lookup),set(expected['names']))
+    for s in lookup.values():self.assertGreater(len(data['previews'][s['previewKey']]['triangles']),0)
+    self.assertAlmostEqual(lookup['Płyta P-015']['stockHint']['thicknessMm'],15,places=3)
+    self.assertAlmostEqual(lookup['Blacha gięta BG-003']['stockHint']['thicknessMm'],3,places=3)
+    self.assertEqual(lookup['Blacha gięta BG-003']['bendHint']['count'],1)
+    self.assertEqual(lookup['Profil SHS z wycięciem']['stockHint']['rawStockCandidate']['kind'],'square-hollow')
+    p=subprocess.run([str(exe),str(path),'--joints'],capture_output=True,text=True,timeout=180);self.assertEqual(p.returncode,0,p.stderr)
+    joints=json.loads(p.stdout)['candidates'];self.assertEqual(len(joints),1);self.assertEqual(joints[0]['preparation'],'V');self.assertAlmostEqual(joints[0]['measuredSectionMm2'],64,places=3)
+ def test_measured_v_x_and_root_gap_preparations(self):
+  def plate(points):
+   wire=BRepBuilderAPI_MakePolygon()
+   for x,z in points:wire.Add(gp_Pnt(x,0,z))
+   wire.Close();return BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(wire.Wire()).Face(),gp_Vec(0,100,0)).Shape()
+  for kind,left in [('V',[(-50,0),(0,0),(0,2),(-8,10),(-50,10)]),('X',[(-50,0),(-8,0),(0,4),(0,6),(-8,10),(-50,10)])]:
+   a=plate(left);b=plate([(-x,z) for x,z in reversed(left)])
+   for rotate in [False,True]:
+    aa,bb=(rotated(a),rotated(b)) if rotate else (a,b)
+    result=groove_between(aa,bb);self.assertIsNotNone(result)
+    self.assertEqual(result['kind'],kind);self.assertAlmostEqual(result['includedAngleDeg'],90 if kind=='V' else 2*math.degrees(math.atan(2)),places=3);self.assertAlmostEqual(result['sectionMm2'],64,places=3);self.assertAlmostEqual(result['lengthMm'],100,places=3)
+    contacts=detect_contacts([aa,bb]);self.assertEqual(len(contacts['candidates']),1)
+    self.assertAlmostEqual(contacts['candidates'][0]['measuredSectionMm2'],64,places=3)
+   tr=gp_Trsf();tr.SetTranslation(gp_Vec(2,0,0));b=BRepBuilderAPI_Transform(b,tr,True).Shape()
+   result=detect_contacts([a,b]);self.assertEqual(len(result['candidates']),1);self.assertAlmostEqual(result['candidates'][0]['measuredSectionMm2'],84,places=3)
  def test_catalog_has_pinned_real_dimensions(self):
   self.assertGreater(len(catalog()),1700);row=next(r for r in catalog() if r['name']=='IPE 200');self.assertEqual(row['dims']['h'],200)
  def test_rotated_bar_and_plate_have_local_geometry_and_measured_contour(self):
@@ -49,6 +92,10 @@ class Geometry(unittest.TestCase):
   hint=recognize_stock(shape,bounds,{'kind':'plate-outline','thicknessMm':wrong_thickness,'contourMm':300,'pierces':1})
   self.assertEqual(hint['kind'],'plate-candidate');self.assertAlmostEqual(hint['thicknessMm'],5,places=3)
   for actual,expected in zip(hint['localDimsMm'],[100,50,5]):self.assertAlmostEqual(actual,expected,places=3)
+ def test_short_hollow_profiles_do_not_require_the_extrusion_axis_to_be_longest(self):
+  shape=BRepAlgoAPI_Cut(box(40,40,20),box(36,36,20,(2,2,0))).Shape()
+  for s in [shape,rotated(shape)]:
+   hint=recognize_stock(s,cad.bounds(s));self.assertEqual(hint['kind'],'square-hollow');self.assertAlmostEqual(hint['lengthMm'],20,places=3);self.assertAlmostEqual(hint['wallMm'],2,places=3)
  def test_rounded_rhs_has_area_and_nominal_catalog_candidates(self):
   outer=rounded_box(40,40,1000,4);inner=rounded_box(36,36,1000,2,(2,2,0));shape=BRepAlgoAPI_Cut(outer,inner).Shape()
   hint=recognize_stock(shape,cad.bounds(shape));self.assertEqual(hint['kind'],'square-hollow');self.assertAlmostEqual(hint['wallMm'],2,places=3)

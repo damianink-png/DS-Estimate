@@ -15,9 +15,9 @@ export function weldPlan(contacts,edits={},norms=NORMS.welding){
  if(!contacts)return null;
  good(norms.deposition,'Wydajność stapiania',true);good(norms.arcFactor,'Wykorzystanie łuku',true);if(norms.arcFactor>1)throw new RangeError('Wykorzystanie łuku');
  const rows=contacts.candidates.map(j=>{
-  const e=edits[j.id]??{},enabled=e.enabled!==false,type=e.type??'fillet',a=e.a??j.throatSuggestion??norms.a;
+  const e=edits[j.id]??{},enabled=e.enabled!==false,type=e.type??j.suggestedType??'fillet',a=e.a??j.throatSuggestion??norms.a;
   const length=good(e.lengthMm??j.lengthMm,'Długość spoiny'),density=good(e.density??j.defaultDensity??norms.density,'Gęstość stopiwa',true);
-  const section=type==='fillet'?good(a,'Gardziel',true)**2:good(e.sectionMm2??(.5*(j.thicknessSuggestion??a*2)**2),'Pole rowka',true);
+  const section=type==='fillet'?good(a,'Gardziel',true)**2:good(e.sectionMm2??j.measuredSectionMm2??(.5*(j.thicknessSuggestion??a*2)**2),'Pole rowka',true);
   const kg=length*section*density/1e9,arcMinutes=kg/norms.deposition*60,minutes=arcMinutes/norms.arcFactor;
   good(minutes,'Czas spawania');return {...j,...e,enabled,type,a,lengthMm:length,sectionMm2:section,kg,arcMinutes,minutes:enabled?minutes:0};
  });
@@ -27,7 +27,7 @@ export function weldPlan(contacts,edits={},norms=NORMS.welding){
 }
 export function partBends(p){
  if(p.bendCount!==null)return p.bendCount;
- const k=p.stockKind||p.solid.stockHint?.kind;
+ const k=p.stockKind||p.solid.stockHint?.rawStockCandidate?.kind||p.solid.stockHint?.kind;
  if(['square-hollow','rectangular-hollow','round-tube','angle','channel','i-section','tee','flat-section','round-bar','square-bar','rectangular-bar'].includes(k))return 0;
  return p.solid.bendHint?.count??(['plate-candidate','plate'].includes(k)?0:null);
 }
@@ -35,7 +35,7 @@ export function automaticOperations(parts,contacts,jointEdits={},norms=NORMS){
  const n=Object.fromEntries(Object.keys(NORMS).map(k=>[k,{...NORMS[k],...norms[k]}]));
  const byId=new Map(parts.map(p=>[p.id,p]));
  const proposed=contacts?{...contacts,candidates:contacts.candidates.map(j=>{
-  const a=byId.get(j.partA),b=byId.get(j.partB),thickness=p=>p?.solid.stockHint?.wallMm??p?.solid.stockHint?.thicknessMm??p?.solid.bendHint?.bends?.[0]?.thicknessMm??p?.dims?.[2];
+  const a=byId.get(j.partA),b=byId.get(j.partB),thickness=p=>p?.solid.stockHint?.rawStockCandidate?.wallMm??p?.solid.stockHint?.wallMm??p?.solid.stockHint?.thicknessMm??p?.solid.bendHint?.bends?.[0]?.thicknessMm??p?.dims?.[2];
   const t=Math.min(thickness(a)??Infinity,thickness(b)??Infinity);
   return {...j,thicknessSuggestion:Number.isFinite(t)?t:n.welding.a*2,throatSuggestion:Number.isFinite(t)?Math.max(1,Math.min(n.welding.a,Math.round(.7*t*2)/2)):n.welding.a,defaultDensity:a&&b&&a.density===b.density?a.density:n.welding.density};
  })}:null;

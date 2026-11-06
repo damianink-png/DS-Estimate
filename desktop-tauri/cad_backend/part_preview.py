@@ -1,8 +1,9 @@
 """On-demand tessellation of one STEP occurrence, independent of quote analysis."""
+import math
 try:from . import cad_measure as cad
 except ImportError:import cad_measure as cad
 
-def mesh_part(shape):
+def mesh_part(shape,max_triangles=40000):
     try:
         from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
         from OCC.Core.BRep import BRep_Tool
@@ -29,8 +30,12 @@ def mesh_part(shape):
                 pt=tri.Node(idx).Transformed(loc.Transformation())
                 triangle.append([round((pt.Coord()[k]-center[k])/size,6) for k in range(3)])
             triangles.append(triangle)
-            if len(triangles)>=40000:return {'triangles':triangles,'partial':True}
-    return {'triangles':triangles,'partial':False}
+
+    total=len(triangles)
+    if total>max_triangles:
+        step=math.ceil(total/max_triangles);triangles=triangles[::step]
+    if not triangles:raise ValueError('OCCT returned no display triangles')
+    return {'triangles':triangles,'partial':total>max_triangles,'originalTriangleCount':total,'source':'OCCT B-Rep tessellation'}
 
 def preview(path,index):
     solids=cad.load_step(path)

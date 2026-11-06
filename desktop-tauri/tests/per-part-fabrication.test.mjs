@@ -71,3 +71,17 @@ test('weld type edits recalculate welding and postweld while assembly includes t
  assert.ok(b.modules.postweld.grind>a.modules.postweld.grind);assert.ok(a.modules.postweld.straighten>0);
  const quote=evaluateModules({inventory,partMaterials:{},automation:a});assert.equal(quote.modules.find(m=>m.id==='coating').omitted,true);
 });
+
+test('measured groove area drives deposition time and external raw-stock proposal drives saw routing',()=>{
+ const contacts={engineVersion:'0.6.0',complete:true,candidates:[{id:'a|b',partA:'a',partB:'b',lengthMm:100,suggestedType:'butt',measuredSectionMm2:64,preparation:'V'}]};
+ const parts=partsList(inventory,{},5);const auto=automaticOperations(parts,contacts);
+ assert.equal(auto.welds.rows[0].type,'butt');assert.equal(auto.welds.rows[0].sectionMm2,64);
+ const edited=automaticOperations(parts,contacts,{'a|b':{sectionMm2:80}});assert.ok(edited.welds.minutes>auto.welds.minutes);
+ const tube={...solid('raw'),stockHint:{kind:'unknown',rawStockCandidate:{kind:'square-hollow',widthMm:40,heightMm:40,wallMm:2,lengthMm:1000,sectionAreaMm2:304,confidence:'raw-stock-candidate',localDimsMm:[1000,40,40]}}};
+ const rows=partsList({solids:[tube]}, {},5);const plan=planAutomaticCutting(rows);assert.equal(plan.rows[0].method,'saw');assert.ok(plan.rows[0].minutes>0);assert.deepEqual(rows[0].dims,[1000,40,40]);
+});
+
+test('short profile length remains the first allowance dimension instead of the longest bounding span',()=>{
+ const s={...solid('stub'),volumeMm3:6080,bboxMm:[40,40,20],stockHint:{kind:'square-hollow',lengthMm:20,widthMm:40,heightMm:40,wallMm:2,sectionAreaMm2:304,localDimsMm:[40,40,20]}};
+ const p=partValues(s,{...partDefaults(),allowances:[2,0,0,0,0,0]},5);assert.deepEqual(p.dims,[20,40,40]);assert.deepEqual(p.stockDims,[22,40,40]);
+});

@@ -125,22 +125,12 @@ def inventory(path, density=7850.0):
                             message=r"Call to deprecated function (brepgprop|brepbndlib)")
     timings = {}
     t_start = time.perf_counter()
-    reader = STEPControl_Reader()
-    if reader.ReadFile(str(path)) != IFSelect_RetDone:
-        raise RuntimeError("STEP read failed")
-    timings["readStepSeconds"] = round(time.perf_counter()-t_start, 3)
-    if not reader.TransferRoots():
-        raise RuntimeError("STEP transfer failed")
-    timings["transferStepSeconds"] = round(time.perf_counter()-t_start-timings["readStepSeconds"], 3)
-    shape = reader.OneShape()
-    try:
-        try:from .assembly_names import assembly_names,signature as name_signature
-        except ImportError:from assembly_names import assembly_names,signature as name_signature
-        names=assembly_names(path)
-        name_warning=None
-    except Exception as exc:
-        names={};name_warning='Assembly names unavailable: '+type(exc).__name__
-    explorer = TopExp_Explorer(shape, TopAbs_SOLID)
+    try:from .assembly_names import read_occurrences
+    except ImportError:from assembly_names import read_occurrences
+    occurrences,import_issues=read_occurrences(path)
+    timings['readStepSeconds']=round(time.perf_counter()-t_start,3)
+    timings['transferStepSeconds']=0
+    previews={}
     solids = []
     originals = []
     original_centers = []
@@ -328,8 +318,8 @@ def inventory(path, density=7850.0):
     max_rigid_checks = max(0, int(os.environ.get("DS_CAD_MAX_RIGID_CHECKS", "120")))
     max_rigid_seconds = max(0.0, float(os.environ.get("DS_CAD_MAX_RIGID_SECONDS", "140")))
     compare_start = time.perf_counter()
-    while explorer.More():
-        solid = explorer.Current()
+    for occurrence in occurrences:
+        solid = occurrence['shape']
         property_started = time.perf_counter()
         vp, ap = GProp_GProps(), GProp_GProps()
         brepgprop_VolumeProperties(solid, vp)
@@ -430,7 +420,7 @@ def inventory(path, density=7850.0):
         # Independent evidence for future raw-stock selection; does not affect
         # grouping, cutting-time routing, mass or quote acceptance.
         stock_hint = recognize_stock(solid, (xmin,ymin,zmin,xmax,ymax,zmax), plate_hint=cut_hint)
-        if cut_hint is None:cut_hint=stock_hint.get('localCuttingHint')
+        if stock_hint.get('localCuttingHint'):cut_hint=stock_hint['localCuttingHint']
         cutting_hint_seconds += time.perf_counter() - stage_start
         try:
             from .manufacturing_features import feature_hints,sheet_hints
@@ -442,22 +432,23 @@ def inventory(path, density=7850.0):
             sheet=sheet_hints(solid,features) if stock_hint.get('kind') in ('unknown','plate-candidate') else None
             if sheet:
                 stock_hint={**stock_hint,**sheet}
+                if cut_hint is None:cut_hint=sheet.get('planarCuttingHint')
                 if cut_hint is None and sheet['kind']=='bent-plate':
                     cut_hint={'kind':'estimated-bent-outline','thicknessMm':sheet['thicknessMm'],
                               'contourMm':sheet['estimatedContourMm'],'pierces':1,
                               'source':sheet['source'],'estimated':True}
         except Exception:pass
-        try:
-            named=names.get(name_signature(solid),[])
-            occurrence=named.pop(0) if named else {}
-        except Exception:occurrence={}
-        try:
-            entity=reader.WS().TransferReader().EntityFromShapeResult(solid,1)
-            part_name=entity.Name().ToCString() if entity is not None and hasattr(entity,'Name') else ''
-        except Exception:
-            part_name=''
+        preview_key=f'shared-tshape-{existing}'
+        if preview_key not in previews:
+            try:
+                try:from .part_preview import mesh_part
+                except ImportError:from part_preview import mesh_part
+                previews[preview_key]=mesh_part(solid,max_triangles=6000)
+            except Exception as exc:previews[preview_key]={'triangles':[],'error':type(exc).__name__+': '+str(exc)}
         solids.append({
-            "name": occurrence.get("name") or part_name or f"Detal {len(solids)+1}",
+            "name": occurrence.get("name") or f"Bez nazwy STEP — {len(solids)+1}",
+            "nameSource":occurrence.get("nameSource","missing"),
+            "previewKey":preview_key,
             "assemblyPath":occurrence.get("assemblyPath",[]),
             **features,
             "id": f"solid-{len(solids)+1}",
@@ -471,7 +462,6 @@ def inventory(path, density=7850.0):
             "verifiedShapeKey": f"shared-tshape-{existing}",
             "verificationMethod": method,
         })
-        explorer.Next()
         if profile and len(solids) % progress_interval == 0:
             print('[DS-CAD-PROGRESS] ' + json.dumps({
                 'processedSolids': len(solids), 'uniqueGroups': len(originals),
@@ -557,7 +547,7 @@ def inventory(path, density=7850.0):
                    "uniqueGeometryGroups": len(groups), **timings}
     if os.environ.get("DS_CAD_PROFILE", "0") == "1":
         print("[DS-CAD-PROFILE] " + json.dumps(diagnostics), file=sys.stderr, flush=True)
-    limitations = ["STEPControl does not preserve complete XCAF BOM metadata",
+    limitations = import_issues + ["Geometry follows XCAF occurrence paths; unnamed solids are marked explicitly",
                    "Uniform density is an assumption; concrete, plastics and purchased parts need per-part material review",
                    "Cutting hints are proposals and require 2D drawing validation"]
     if skipped_translation or skipped_rigid or skipped_complex or skipped_degenerate:
@@ -565,7 +555,7 @@ def inventory(path, density=7850.0):
             f"Some duplicates may remain ungrouped: translation budget={skipped_translation}, "
             f"complex B-Rep={skipped_complex}, degenerate rigid orientation={skipped_degenerate}, "
             f"rigid budget={skipped_rigid}. These are NOT verified duplicates.")
-    return {"source": str(path), "solids": solids, "groups": groups, "count": len(solids),
+    return {"engineVersion":"0.6.0","source": str(path), "previews":previews,"importIssues":import_issues,"solids": solids, "groups": groups, "count": len(solids),
             "totalMassKg": sum(x["massKg"] for x in solids),
             "matchingDiagnostics": diagnostics,
             "limitations": limitations}
