@@ -110,6 +110,11 @@ jobs:
         run: |
           conda install -n ds-cad -c conda-forge -y pythonocc-core numpy pyinstaller
           if ($LASTEXITCODE -ne 0) { throw 'OCCT conda installation failed' }
+      - name: Verify native CAD bindings before packaging
+        shell: pwsh
+        run: |
+          conda run -n ds-cad python tests/manufacturing_geometry_test.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native CAD geometry or name binding tests failed' }
       - name: Bundle offline CAD engine
         shell: pwsh
         run: |
