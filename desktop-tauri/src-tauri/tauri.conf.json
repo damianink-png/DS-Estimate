@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "DS Estimate",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "identifier": "pl.dsestimate.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "DS Estimate 0.6.0",
+        "title": "DS Estimate 0.7.0",
         "width": 1280,
         "height": 820,
         "minWidth": 640,

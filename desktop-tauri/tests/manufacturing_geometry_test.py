@@ -56,7 +56,7 @@ class Geometry(unittest.TestCase):
    self.assertGreaterEqual(len(a['assemblyPath']),3);self.assertAlmostEqual(cad.bounds(b['shape'])[0]-cad.bounds(a['shape'])[0],500,places=4)
    if '--compiled' in sys.argv:
     exe=Path('src-tauri/cad-backend/ds-cad-engine.exe').resolve();p=subprocess.run([str(exe),str(path)],capture_output=True,text=True,timeout=180)
-    self.assertEqual(p.returncode,0,p.stderr);data=json.loads(p.stdout);self.assertEqual(data['engineVersion'],'0.6.0');self.assertEqual(data['count'],6)
+    self.assertEqual(p.returncode,0,p.stderr);data=json.loads(p.stdout);self.assertEqual(data['engineVersion'],'0.7.0');self.assertEqual(data['count'],6)
     lookup={s['name']:s for s in data['solids']};self.assertEqual(set(lookup),set(expected['names']))
     for s in lookup.values():self.assertGreater(len(data['previews'][s['previewKey']]['triangles']),0)
     self.assertAlmostEqual(lookup['Płyta P-015']['stockHint']['thicknessMm'],15,places=3)

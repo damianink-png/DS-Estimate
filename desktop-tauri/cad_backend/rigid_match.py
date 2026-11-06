@@ -9,8 +9,10 @@ import numpy as np
 
 
 def _properties(shape):
-    from OCC.Core.GProp import GProp_GProps
-    from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+    try:from .occt_inventory_api import GProp_GProps
+    except ImportError:from occt_inventory_api import GProp_GProps
+    try:from .occt_inventory_api import brepgprop_VolumeProperties
+    except ImportError:from occt_inventory_api import brepgprop_VolumeProperties
     props = GProp_GProps()
     brepgprop_VolumeProperties(shape, props)
     center = props.CentreOfMass()
@@ -77,10 +79,14 @@ def translation_signature(shape, center, max_vertices=128):
     boundaries. A B-Rep Common check is STILL REQUIRED before merging.
     Very complex shapes are excluded from this fast path to bound OCCT time.
     """
-    from OCC.Core.TopExp import TopExp_Explorer
-    from OCC.Core.TopAbs import TopAbs_VERTEX
-    from OCC.Core.TopoDS import topods
-    from OCC.Core.BRep import BRep_Tool
+    try:from .occt_inventory_api import TopExp_Explorer
+    except ImportError:from occt_inventory_api import TopExp_Explorer
+    try:from .occt_inventory_api import TopAbs_VERTEX
+    except ImportError:from occt_inventory_api import TopAbs_VERTEX
+    try:from .occt_inventory_api import topods
+    except ImportError:from occt_inventory_api import topods
+    try:from .occt_inventory_api import BRep_Tool
+    except ImportError:from occt_inventory_api import BRep_Tool
 
     xs, ys, zs = [], [], []
     explorer = TopExp_Explorer(shape, TopAbs_VERTEX)
@@ -114,8 +120,10 @@ def equivalent_translation(a, b, center_a, center_b, volume_a, volume_b,
     One Common is symmetric: intersection must equal BOTH input volumes.
     This function must only run after cheap signature/complexity screening.
     """
-    from OCC.Core.gp import gp_Trsf, gp_Vec
-    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+    try:from .occt_inventory_api import gp_Trsf, gp_Vec
+    except ImportError:from occt_inventory_api import gp_Trsf, gp_Vec
+    try:from .occt_inventory_api import BRepBuilderAPI_Transform
+    except ImportError:from occt_inventory_api import BRepBuilderAPI_Transform
 
     if not (volume_a > 0 and volume_b > 0):
         return False
@@ -145,9 +153,12 @@ def verify_two_way_cut(a, b, volume_a, volume_b, threshold):
     volumes to be below the tolerance before merging inventory occurrences.
     Boolean failure is an UNKNOWN result, never proof of equivalence.
     """
-    from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
-    from OCC.Core.GProp import GProp_GProps
-    from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+    try:from .occt_inventory_api import BRepAlgoAPI_Cut
+    except ImportError:from occt_inventory_api import BRepAlgoAPI_Cut
+    try:from .occt_inventory_api import GProp_GProps
+    except ImportError:from occt_inventory_api import GProp_GProps
+    try:from .occt_inventory_api import brepgprop_VolumeProperties
+    except ImportError:from occt_inventory_api import brepgprop_VolumeProperties
     for left, right in ((a, b), (b, a)):
         try:
             cut = BRepAlgoAPI_Cut(left, right)
@@ -174,10 +185,14 @@ def _face_area_signature(shape):
     sufficient: independently compare the area of every constituent face.
     Different face partitioning is treated as unverified, not identical.
     """
-    from OCC.Core.TopExp import TopExp_Explorer
-    from OCC.Core.TopAbs import TopAbs_FACE
-    from OCC.Core.GProp import GProp_GProps
-    from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
+    try:from .occt_inventory_api import TopExp_Explorer
+    except ImportError:from occt_inventory_api import TopExp_Explorer
+    try:from .occt_inventory_api import TopAbs_FACE
+    except ImportError:from occt_inventory_api import TopAbs_FACE
+    try:from .occt_inventory_api import GProp_GProps
+    except ImportError:from occt_inventory_api import GProp_GProps
+    try:from .occt_inventory_api import brepgprop_SurfaceProperties
+    except ImportError:from occt_inventory_api import brepgprop_SurfaceProperties
     areas = []
     explorer = TopExp_Explorer(shape, TopAbs_FACE)
     while explorer.More():
@@ -215,10 +230,14 @@ def _edge_length_signature(shape):
     Preserve edge multiplicity: differing B-Rep edge partitions are UNVERIFIED
     rather than silently merging under a near-zero Boolean residual.
     """
-    from OCC.Core.TopExp import TopExp_Explorer
-    from OCC.Core.TopAbs import TopAbs_EDGE
-    from OCC.Core.GProp import GProp_GProps
-    from OCC.Core.BRepGProp import brepgprop_LinearProperties
+    try:from .occt_inventory_api import TopExp_Explorer
+    except ImportError:from occt_inventory_api import TopExp_Explorer
+    try:from .occt_inventory_api import TopAbs_EDGE
+    except ImportError:from occt_inventory_api import TopAbs_EDGE
+    try:from .occt_inventory_api import GProp_GProps
+    except ImportError:from occt_inventory_api import GProp_GProps
+    try:from .occt_inventory_api import brepgprop_LinearProperties
+    except ImportError:from occt_inventory_api import brepgprop_LinearProperties
     lengths = []
     explorer = TopExp_Explorer(shape, TopAbs_EDGE)
     while explorer.More():
@@ -258,13 +277,20 @@ def equivalent_rigid(a, b, tolerance_mm=0.01, relative_volume_tol=1e-6, metrics=
     real OCCT Boolean difference checks. A failed or nonfinite result is
     NOT evidence of a match. The optional metrics dict tracks filter effects.
     """
-    from OCC.Core.gp import gp_Trsf
-    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
-    from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Common
-    from OCC.Core.GProp import GProp_GProps
-    from OCC.Core.BRepGProp import brepgprop_VolumeProperties
-    from OCC.Core.Bnd import Bnd_Box
-    from OCC.Core.BRepBndLib import brepbndlib_Add
+    try:from .occt_inventory_api import gp_Trsf
+    except ImportError:from occt_inventory_api import gp_Trsf
+    try:from .occt_inventory_api import BRepBuilderAPI_Transform
+    except ImportError:from occt_inventory_api import BRepBuilderAPI_Transform
+    try:from .occt_inventory_api import BRepAlgoAPI_Common
+    except ImportError:from occt_inventory_api import BRepAlgoAPI_Common
+    try:from .occt_inventory_api import GProp_GProps
+    except ImportError:from occt_inventory_api import GProp_GProps
+    try:from .occt_inventory_api import brepgprop_VolumeProperties
+    except ImportError:from occt_inventory_api import brepgprop_VolumeProperties
+    try:from .occt_inventory_api import Bnd_Box
+    except ImportError:from occt_inventory_api import Bnd_Box
+    try:from .occt_inventory_api import brepbndlib_Add
+    except ImportError:from occt_inventory_api import brepbndlib_Add
 
     def bounds(shape):
         # Failure to calculate a bounding box must never reject a match:

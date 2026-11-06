@@ -10,6 +10,8 @@ Arbitrarily rotated but independently imported copies require a future
 rigid B-Rep equivalence verifier from DS Compare.
 """
 import argparse
+import copy
+import re
 import json
 import math
 import os
@@ -54,13 +56,20 @@ def planar_plate_cutting_hint(solid, dimensions):
     if dims[0] <= 0 or dims[1] / dims[0] < plate_aspect_threshold - ratio_epsilon:
         return None
     try:
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core.TopoDS import topods
-        from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_WIRE
-        from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
-        from OCC.Core.GeomAbs import GeomAbs_Plane
-        from OCC.Core.GProp import GProp_GProps
-        from OCC.Core.BRepGProp import brepgprop_SurfaceProperties, brepgprop_LinearProperties
+        try:from .occt_inventory_api import TopExp_Explorer
+        except ImportError:from occt_inventory_api import TopExp_Explorer
+        try:from .occt_inventory_api import topods
+        except ImportError:from occt_inventory_api import topods
+        try:from .occt_inventory_api import TopAbs_FACE, TopAbs_WIRE
+        except ImportError:from occt_inventory_api import TopAbs_FACE, TopAbs_WIRE
+        try:from .occt_inventory_api import BRepAdaptor_Surface
+        except ImportError:from occt_inventory_api import BRepAdaptor_Surface
+        try:from .occt_inventory_api import GeomAbs_Plane
+        except ImportError:from occt_inventory_api import GeomAbs_Plane
+        try:from .occt_inventory_api import GProp_GProps
+        except ImportError:from occt_inventory_api import GProp_GProps
+        try:from .occt_inventory_api import brepgprop_SurfaceProperties, brepgprop_LinearProperties
+        except ImportError:from occt_inventory_api import brepgprop_SurfaceProperties, brepgprop_LinearProperties
 
         faces = []
         ex = TopExp_Explorer(solid, TopAbs_FACE)
@@ -108,14 +117,22 @@ def planar_plate_cutting_hint(solid, dimensions):
 
 
 def inventory(path, density=7850.0):
-    from OCC.Core.STEPControl import STEPControl_Reader
-    from OCC.Core.IFSelect import IFSelect_RetDone
-    from OCC.Core.TopAbs import TopAbs_SOLID
-    from OCC.Core.TopExp import TopExp_Explorer
-    from OCC.Core.GProp import GProp_GProps
-    from OCC.Core.BRepGProp import brepgprop_VolumeProperties, brepgprop_SurfaceProperties
-    from OCC.Core.Bnd import Bnd_Box
-    from OCC.Core.BRepBndLib import brepbndlib_Add
+    try:from .occt_inventory_api import STEPControl_Reader
+    except ImportError:from occt_inventory_api import STEPControl_Reader
+    try:from .occt_inventory_api import IFSelect_RetDone
+    except ImportError:from occt_inventory_api import IFSelect_RetDone
+    try:from .occt_inventory_api import TopAbs_SOLID
+    except ImportError:from occt_inventory_api import TopAbs_SOLID
+    try:from .occt_inventory_api import TopExp_Explorer
+    except ImportError:from occt_inventory_api import TopExp_Explorer
+    try:from .occt_inventory_api import GProp_GProps
+    except ImportError:from occt_inventory_api import GProp_GProps
+    try:from .occt_inventory_api import brepgprop_VolumeProperties, brepgprop_SurfaceProperties
+    except ImportError:from occt_inventory_api import brepgprop_VolumeProperties, brepgprop_SurfaceProperties
+    try:from .occt_inventory_api import Bnd_Box
+    except ImportError:from occt_inventory_api import Bnd_Box
+    try:from .occt_inventory_api import brepbndlib_Add
+    except ImportError:from occt_inventory_api import brepbndlib_Add
 
     if not math.isfinite(density) or density <= 0:
         raise ValueError("Density must be positive")
@@ -131,6 +148,7 @@ def inventory(path, density=7850.0):
     timings['readStepSeconds']=round(time.perf_counter()-t_start,3)
     timings['transferStepSeconds']=0
     previews={}
+    manufacturing_cache={}
     solids = []
     originals = []
     original_centers = []
@@ -415,29 +433,36 @@ def inventory(path, density=7850.0):
                                         dims, None)
         group_members.setdefault(existing, []).append((solid, center, volume))
         occurrence_count[existing] = occurrence_count.get(existing, 0) + 1
-        stage_start = time.perf_counter()
-        cut_hint = planar_plate_cutting_hint(solid, dims)
-        # Independent evidence for future raw-stock selection; does not affect
-        # grouping, cutting-time routing, mass or quote acceptance.
-        stock_hint = recognize_stock(solid, (xmin,ymin,zmin,xmax,ymax,zmax), plate_hint=cut_hint)
-        if stock_hint.get('localCuttingHint'):cut_hint=stock_hint['localCuttingHint']
-        cutting_hint_seconds += time.perf_counter() - stage_start
-        try:
-            from .manufacturing_features import feature_hints,sheet_hints
-        except ImportError:
-            from manufacturing_features import feature_hints,sheet_hints
-        try:features=feature_hints(solid)
-        except Exception as feature_error:features={'featureError':type(feature_error).__name__}
-        try:
-            sheet=sheet_hints(solid,features) if stock_hint.get('kind') in ('unknown','plate-candidate') else None
-            if sheet:
-                stock_hint={**stock_hint,**sheet}
-                if cut_hint is None:cut_hint=sheet.get('planarCuttingHint')
-                if cut_hint is None and sheet['kind']=='bent-plate':
-                    cut_hint={'kind':'estimated-bent-outline','thicknessMm':sheet['thicknessMm'],
-                              'contourMm':sheet['estimatedContourMm'],'pierces':1,
-                              'source':sheet['source'],'estimated':True}
-        except Exception:pass
+        stage_start=time.perf_counter()
+        if existing in manufacturing_cache:
+            cut_hint,stock_hint,features=copy.deepcopy(manufacturing_cache[existing])
+        elif re.search(r'\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack\b|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b',occurrence.get('name',''),re.I):
+            cut_hint=None;stock_hint={'kind':'purchased-component','source':'standard component name; routing can be overridden'};features={'bendHint':None}
+        else:
+            if profile:print('[DS-CAD-DETAIL] '+json.dumps({'solid':len(solids)+1,'name':occurrence.get('name',''),'stage':'manufacturing'}),file=sys.stderr,flush=True)
+            cut_hint = planar_plate_cutting_hint(solid, dims)
+            # Independent evidence for future raw-stock selection; does not affect
+            # grouping, cutting-time routing, mass or quote acceptance.
+            stock_hint = recognize_stock(solid, (xmin,ymin,zmin,xmax,ymax,zmax), plate_hint=cut_hint)
+            if stock_hint.get('localCuttingHint'):cut_hint=stock_hint['localCuttingHint']
+            try:
+                from .manufacturing_features import feature_hints,sheet_hints
+            except ImportError:
+                from manufacturing_features import feature_hints,sheet_hints
+            try:features=feature_hints(solid)
+            except Exception as feature_error:features={'featureError':type(feature_error).__name__}
+            try:
+                sheet=sheet_hints(solid,features) if stock_hint.get('kind') in ('unknown','plate-candidate') else None
+                if sheet:
+                    stock_hint={**stock_hint,**sheet}
+                    if cut_hint is None:cut_hint=sheet.get('planarCuttingHint')
+                    if cut_hint is None and sheet['kind']=='bent-plate':
+                        cut_hint={'kind':'estimated-bent-outline','thicknessMm':sheet['thicknessMm'],
+                                  'contourMm':sheet['estimatedContourMm'],'pierces':1,
+                                  'source':sheet['source'],'estimated':True}
+            except Exception:pass
+            manufacturing_cache[existing]=copy.deepcopy((cut_hint,stock_hint,features))
+        cutting_hint_seconds+=time.perf_counter()-stage_start
         preview_key=f'shared-tshape-{existing}'
         if preview_key not in previews:
             try:
@@ -555,7 +580,7 @@ def inventory(path, density=7850.0):
             f"Some duplicates may remain ungrouped: translation budget={skipped_translation}, "
             f"complex B-Rep={skipped_complex}, degenerate rigid orientation={skipped_degenerate}, "
             f"rigid budget={skipped_rigid}. These are NOT verified duplicates.")
-    return {"engineVersion":"0.6.0","source": str(path), "previews":previews,"importIssues":import_issues,"solids": solids, "groups": groups, "count": len(solids),
+    return {"engineVersion":"0.7.0","source": str(path), "previews":previews,"importIssues":import_issues,"solids": solids, "groups": groups, "count": len(solids),
             "totalMassKg": sum(x["massKg"] for x in solids),
             "matchingDiagnostics": diagnostics,
             "limitations": limitations}

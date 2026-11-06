@@ -1,4 +1,5 @@
 """Resolve STEP product/occurrence names through XCAF, including nested locations."""
+import re
 try:from . import cad_measure as cad
 except ImportError:import cad_measure as cad
 
@@ -62,7 +63,8 @@ def load_occurrences(path):
             call(tool,'GetReferredShape',label,ref);target=ref
         own=label_name(label);definition=label_name(target)
         # STEP translators often assign numeric occurrence labels; prefer the product then.
-        name=own if own and not own.replace('.','').isdigit() else definition or own
+        generic=not own or own.replace('.','').isdigit() or re.fullmatch(r'NAUO\d+|=>\[.*\]',own,re.I)
+        name=definition or own if generic else own
         loc=parent.Multiplied(call(tool,'GetLocation',label))
         components=TDF_LabelSequence()
         if call(tool,'GetComponents',target,components):

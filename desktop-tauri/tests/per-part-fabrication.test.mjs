@@ -68,12 +68,12 @@ test('weld type edits recalculate welding and postweld while assembly includes t
  const a=automaticOperations(parts,contacts),b=automaticOperations(parts,contacts,{'a|b':{type:'butt'}});
  assert.ok(a.modules.assembly.tacks>0);assert.ok(a.modules.assembly.turning>0);
  assert.notEqual(a.modules.welding.weld,b.modules.welding.weld);assert.ok(a.modules.welding.clean>0);
- assert.ok(b.modules.postweld.grind>a.modules.postweld.grind);assert.ok(a.modules.postweld.straighten>0);
+ assert.ok(b.modules.postweld.grind>a.modules.postweld.grind);assert.equal(a.modules.postweld.straighten,0);
  const quote=evaluateModules({inventory,partMaterials:{},automation:a});assert.equal(quote.modules.find(m=>m.id==='coating').omitted,true);
 });
 
 test('measured groove area drives deposition time and external raw-stock proposal drives saw routing',()=>{
- const contacts={engineVersion:'0.6.0',complete:true,candidates:[{id:'a|b',partA:'a',partB:'b',lengthMm:100,suggestedType:'butt',measuredSectionMm2:64,preparation:'V'}]};
+ const contacts={engineVersion:'0.7.0',complete:true,candidates:[{id:'a|b',partA:'a',partB:'b',lengthMm:100,suggestedType:'butt',measuredSectionMm2:64,preparation:'V'}]};
  const parts=partsList(inventory,{},5);const auto=automaticOperations(parts,contacts);
  assert.equal(auto.welds.rows[0].type,'butt');assert.equal(auto.welds.rows[0].sectionMm2,64);
  const edited=automaticOperations(parts,contacts,{'a|b':{sectionMm2:80}});assert.ok(edited.welds.minutes>auto.welds.minutes);
