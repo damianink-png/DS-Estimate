@@ -121,7 +121,7 @@ test('fully priced evidence retains the previous complete batch cost',()=>{
 
 
 test('cutting batch rejects monetary overflow rather than reporting Infinity PLN',()=>{
- assert.throws(()=>planCuttingBatches({groups:[group('sheet',10)],
+ assert.throws(()=>planCuttingBatches({material:'S355',groups:[group('sheet',10)],
   overrides:{sheet:{minutes:1e308}}}),RangeError);
 });
 

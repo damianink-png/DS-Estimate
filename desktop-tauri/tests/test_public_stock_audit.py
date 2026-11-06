@@ -18,7 +18,7 @@ class PublicStockAuditTests(unittest.TestCase):
                     'sectionAreaMm2':304}},
                 {'id':'b','verifiedShapeKey':'g2','stockHint':{
                     'kind':'plate-candidate','confidence':'candidate',
-                    'thicknessMm':10}},
+                    'thicknessMm':10,'widthMm':200,'lengthMm':500}},
                 {'id':'c','verifiedShapeKey':'g3','stockHint':{
                     'kind':'unknown','reason':'Cross-section changes along part'}},
                 {'id':'d','verifiedShapeKey':'g4'},
@@ -35,6 +35,12 @@ class PublicStockAuditTests(unittest.TestCase):
         self.assertEqual(result['geometryEvidencePct'],20)
         self.assertEqual(result['rows'][2]['reason'],'Cross-section changes along part')
         self.assertIn('NOT accuracy proof',result['purpose'])
+
+    def test_incomplete_plate_candidate_is_invalid_not_verified(self):
+        report=stock_audit({'count':1,'solids':[{'stockHint':{
+            'kind':'plate-candidate','confidence':'candidate','thicknessMm':10}}]})
+        self.assertEqual(report['statusCounts'],{'INVALID_HINT':1})
+        self.assertEqual(report['geometryEvidencePct'],0)
 
     def test_false_positive_profile_without_dimensions_rejected(self):
         result=stock_audit({'count':3,'solids':[

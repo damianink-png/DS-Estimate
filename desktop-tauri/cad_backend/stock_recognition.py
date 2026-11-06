@@ -6,19 +6,21 @@ does not change B-Rep grouping, mass, cutting routes or prices.
 """
 import math
 try:
+    from .section_catalog import match_hint,match_open_loop
+except ImportError:
+    from section_catalog import match_hint,match_open_loop
+try:
     from .stock_patterns import orthogonal_section_kind
 except ImportError:
     from stock_patterns import orthogonal_section_kind
 
 
 def _section_edges(shape, bounds, axis, fraction):
-    from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Section
-    from OCC.Core.gp import gp_Pln, gp_Pnt, gp_Dir
-    from OCC.Core.TopExp import TopExp_Explorer
-    from OCC.Core.TopAbs import TopAbs_EDGE
-    from OCC.Core.TopoDS import topods
-    from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
-    from OCC.Core.GeomAbs import GeomAbs_Line, GeomAbs_Circle
+    try:from . import cad_measure as api
+    except ImportError:import cad_measure as api
+    BRepAlgoAPI_Section=api.BRepAlgoAPI_Section;gp_Pln=api.gp_Pln;gp_Pnt=api.gp_Pnt;gp_Dir=api.gp_Dir
+    TopExp_Explorer=api.TopExp_Explorer;TopAbs_EDGE=api.TopAbs_EDGE
+    BRepAdaptor_Curve=api.BRepAdaptor_Curve;GeomAbs_Line=api.GeomAbs_Line;GeomAbs_Circle=api.GeomAbs_Circle
 
     pos = [(bounds[i] + bounds[i+3]) / 2 for i in range(3)]
     pos[axis] = bounds[axis] + (bounds[axis+3]-bounds[axis])*fraction
@@ -32,7 +34,7 @@ def _section_edges(shape, bounds, axis, fraction):
     ex = TopExp_Explorer(cut.Shape(), TopAbs_EDGE)
     edges = []
     while ex.More():
-        crv = BRepAdaptor_Curve(topods.Edge(ex.Current()))
+        crv = BRepAdaptor_Curve(api.edge_cast(ex.Current()))
         start, end = crv.FirstParameter(), crv.LastParameter()
         if not (math.isfinite(start) and math.isfinite(end)):
             return None
@@ -62,6 +64,7 @@ def _closed_loops(edges, tol):
         pts = pts[:]
         kinds = [circ]
         radii = [radius] if radius is not None else []
+        straight = [(pts[0],pts[-1])] if not circ else []
         while not near(pts[0], pts[-1]):
             matches = [(idx, rev) for idx, (p, _, _) in enumerate(pending)
                        for rev, endpoint in ((False, p[0]), (True, p[-1]))
@@ -73,6 +76,7 @@ def _closed_loops(edges, tol):
             segment = other[::-1] if rev else other
             pts.extend(segment[1:])
             kinds.append(iscircle)
+            if not iscircle:straight.append((segment[0],segment[-1]))
             if r is not None:
                 radii.append(r)
         if len(pts) < 4:
@@ -82,12 +86,12 @@ def _closed_loops(edges, tol):
                        for i in range(len(pts)-1))) / 2
         if area <= tol*tol:
             return None
-        loops.append((pts, kinds, radii, area))
+        loops.append((pts, kinds, radii, area, straight))
     return loops
 
 
 def _loop_metrics(loop, tol):
-    pts, kinds, radii, area = loop
+    pts, kinds, radii, area = loop[:4]
     xy = pts[:-1]
     xs, ys = [p[0] for p in xy], [p[1] for p in xy]
     # World-aligned bbox centres are not geometric centres of a rotated
@@ -100,8 +104,7 @@ def _loop_metrics(loop, tol):
                 'circle':True,'rectangle':False,'center':center}
     # Align local 2-D dimensions with one straight section edge. Supports
     # rotated square/rectangular bars without assuming a world XY orientation.
-    segments = [(math.dist(pts[i],pts[i+1]),pts[i],pts[i+1])
-                for i in range(len(pts)-1) if math.dist(pts[i],pts[i+1])>tol]
+    segments = [(math.dist(a,b),a,b) for a,b in loop[4] if math.dist(a,b)>tol] if len(loop)>4 else [(math.dist(pts[i],pts[i+1]),pts[i],pts[i+1]) for i in range(len(pts)-1) if math.dist(pts[i],pts[i+1])>tol]
     if not segments:
         return None
     _, a, b = max(segments)
@@ -131,8 +134,14 @@ def _loop_metrics(loop, tol):
     rectangular = (not any(kinds) and axis_aligned_edges
                    and area/(w*h)>.985 and
                    abs(perim-2*(w+h))<max(tol*10,.01*perim))
+    rounded = False
+    if any(kinds) and len(segments)>=4 and len(radii)>=4 and axis_aligned_edges:
+        radius=sum(radii)/len(radii)
+        expected=w*h-(4-math.pi)*radius*radius
+        rounded=(max(radii)-min(radii)<=tol*5 and radius<min(w,h)/2
+                 and abs(area-expected)<=max(.2,expected*.005))
     return {'w':w,'h':h,'area':area,'circle':False,
-            'rectangle':rectangular,'center':center,'edgeAngleRad':angle}
+            'rectangle':rectangular or rounded,'center':center,'edgeAngleRad':angle}
 
 
 def _classify_section(edges, tol):
@@ -183,23 +192,21 @@ def _classify_section(edges, tol):
     if inner is None and not any(loops[0][1]):
         # Unmodified one-loop orthogonal sections only. Rounded corners or
         # unexpected transitions stay unclassified, not catalogued by bbox.
-        return orthogonal_section_kind(loops[0][0], tol)
-    return None
+        return orthogonal_section_kind(loops[0][0], tol) or match_open_loop(loops[0][0],loops[0][3])
+    return match_open_loop(loops[0][0],loops[0][3]) if inner is None else None
 
 
 def _measured_solid_volume(solid):
     """Independent 3-D volume check; section sampling alone can miss a slot."""
-    from OCC.Core.BRepGProp import brepgprop
-    from OCC.Core.GProp import GProp_GProps
-    props = GProp_GProps()
-    brepgprop.VolumeProperties(solid, props)
-    volume = float(props.Mass())
+    try:from . import cad_measure as api
+    except ImportError:import cad_measure as api
+    volume=api.volume(solid)
     if not math.isfinite(volume) or volume <= 0:
         raise ValueError('Invalid OCCT solid volume')
     return volume
 
 
-def recognize_stock(solid, bounds, plate_hint=None):
+def _recognize_axis_stock(solid, bounds, plate_hint=None):
     """Recognise prismatic shapes or a measured *candidate* plate; no catalogue proof."""
     dims = [bounds[i+3]-bounds[i] for i in range(3)]
     if any(not math.isfinite(x) or x<=0 for x in dims):
@@ -261,3 +268,42 @@ def recognize_stock(solid, bounds, plate_hint=None):
     return {**first,'lengthMm':length,'confidence':'cross-section-consistent',
             'source':'OCCT sections at 10/25/50/75/90% length',
             'limitations':'Cannot determine material grade, nominal standard, plate vs flat-bar procurement or end-cut stock length'}
+
+
+def recognize_stock(solid, bounds, plate_hint=None):
+    """Try the existing world frame, then a frame aligned with the longest straight edge."""
+    result=_recognize_axis_stock(solid,bounds,plate_hint)
+    if result.get('kind')=='unknown' and solid is not None:
+        try:
+            try:from . import cad_measure as api
+            except ImportError:import cad_measure as api
+            TopExp_Explorer=api.TopExp_Explorer;TopAbs_EDGE=api.TopAbs_EDGE
+            BRepAdaptor_Curve=api.BRepAdaptor_Curve;GeomAbs_Line=api.GeomAbs_Line
+            gp_Trsf=api.gp_Trsf;gp_Ax3=api.gp_Ax3;gp_Pnt=api.gp_Pnt;gp_Dir=api.gp_Dir
+            BRepBuilderAPI_Transform=api.BRepBuilderAPI_Transform;Bnd_Box=api.Bnd_Box
+            edges=TopExp_Explorer(solid,TopAbs_EDGE);best=None;directions=[]
+            while edges.More():
+                curve=BRepAdaptor_Curve(api.edge_cast(edges.Current()))
+                if curve.GetType()==GeomAbs_Line:
+                    a=curve.Value(curve.FirstParameter());b=curve.Value(curve.LastParameter());length=a.Distance(b)
+                    if best is None or length>best[0]:best=(length,a,b)
+                    if length>1e-6:directions.append((length,gp_Dir(b.X()-a.X(),b.Y()-a.Y(),b.Z()-a.Z())))
+                edges.Next()
+            if best and best[0]>0:
+                _,a,b=best;direction=gp_Dir(b.X()-a.X(),b.Y()-a.Y(),b.Z()-a.Z())
+                cross=next((d for _,d in sorted(directions,key=lambda item:-item[0]) if abs(d.Dot(direction))<.001),None)
+                frame=gp_Ax3(gp_Pnt(0,0,0),direction,cross) if cross is not None else gp_Ax3(gp_Pnt(0,0,0),direction)
+                tr=gp_Trsf();tr.SetTransformation(frame)
+                local=BRepBuilderAPI_Transform(solid,tr,True).Shape();box=Bnd_Box();api.add_bounds(local,box)
+                local_hint=api.plate_hint(local)
+                candidate=_recognize_axis_stock(local,box.Get(),local_hint)
+                local_dims=sorted((b-a for a,b in zip(box.Get()[:3],box.Get()[3:])),reverse=True)
+                if candidate.get('kind')!='unknown':result={**candidate,'localFrame':'longest straight B-Rep edge','localDimsMm':local_dims}
+                if local_hint:result={**result,'localCuttingHint':local_hint}
+        except Exception:
+            pass # An unsupported orientation stays unknown; never a bbox-only match.
+    if result.get('kind')!='unknown':
+        candidates=match_hint(result)
+        result={**result,'catalogCandidates':candidates,'catalogStatus':'unique-fit' if len(candidates)==1 else 'multiple-fits' if candidates else 'no-catalog-fit'}
+        if len(candidates)==1:result['catalogDesignation']=candidates[0]['name']
+    return result

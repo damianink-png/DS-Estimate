@@ -423,8 +423,22 @@ def inventory(path, density=7850.0):
         # Independent evidence for future raw-stock selection; does not affect
         # grouping, cutting-time routing, mass or quote acceptance.
         stock_hint = recognize_stock(solid, (xmin,ymin,zmin,xmax,ymax,zmax), plate_hint=cut_hint)
+        if cut_hint is None:cut_hint=stock_hint.get('localCuttingHint')
         cutting_hint_seconds += time.perf_counter() - stage_start
+        try:
+            from .manufacturing_features import feature_hints
+        except ImportError:
+            from manufacturing_features import feature_hints
+        try:features=feature_hints(solid)
+        except Exception as feature_error:features={'featureError':type(feature_error).__name__}
+        try:
+            entity=reader.WS().TransferReader().EntityFromShapeResult(solid,1)
+            part_name=entity.Name().ToCString() if entity is not None and hasattr(entity,'Name') else ''
+        except Exception:
+            part_name=''
         solids.append({
+            "name": part_name or f"Detal {len(solids)+1}",
+            **features,
             "id": f"solid-{len(solids)+1}",
             "volumeMm3": volume,
             "areaMm2": area,
@@ -540,9 +554,16 @@ def main():
     p.add_argument("step", type=Path)
     p.add_argument("--density", type=float, default=7850.0)
     p.add_argument("--output", type=Path)
+    p.add_argument("--joints",action="store_true")
     args = p.parse_args()
-    data = inventory(args.step, args.density)
-    output = json.dumps(data, ensure_ascii=False, indent=2)
+    if args.joints:
+        try:from .joint_detection import analyze_joints
+        except ImportError:from joint_detection import analyze_joints
+        data=analyze_joints(args.step)
+    else:
+        data = inventory(args.step, args.density)
+    # Escaped Unicode keeps the JSON pipe portable across Windows code pages.
+    output = json.dumps(data, ensure_ascii=True, indent=2)
     if args.output:
         args.output.write_text(output, encoding="utf-8")
     else:
