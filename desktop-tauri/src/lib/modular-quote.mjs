@@ -13,9 +13,9 @@ function rowValue(entry,override){
  */
 export function evaluateModules({
  inventory=null, pdfText='',rates=DEFAULT_RATES,edits={},
- confirmed={},excluded={},custom={},grade='unknown',materialApproved=false,partMaterials=null,cuttingPlan=null,automation=null
+ confirmed={},excluded={},custom={},grade='unknown',materialApproved=false,partMaterials=null,materialPrices=null,cuttingPlan=null,automation=null
 }={}){
- const settings={rates,grade,materialApproved,pdfText,partMaterials,cuttingPlan,automation};
+ const settings={rates,grade,materialApproved,pdfText,partMaterials,materialPrices,cuttingPlan,automation};
  const modules=MODULES.map(mod=>{
   try{
    let own=mod.rows({inventory,settings});
@@ -30,7 +30,10 @@ export function evaluateModules({
    if(new Set(specs.map(x=>x.key)).size!==specs.length)
     throw new Error('Powtarzające się identyfikatory operacji w module: '+mod.id);
    const rows=specs.map(x=>{
-    const value=rowValue(x,edits[mod.id]?.[x.key]);
+    // Material is priced centrally in 0.5; obsolete hidden per-row amount edits
+    // must not override the material total displayed on the parts screen.
+    const override=mod.id==='material'&&materialPrices?undefined:edits[mod.id]?.[x.key];
+    const value=rowValue(x,override);
     if(value!==null&&value!==undefined&&!nonnegative(value))
      throw new RangeError('Niepoprawny czas lub koszt: '+mod.id+'/'+x.key);
     const known=value!==null&&value!==undefined;
@@ -38,12 +41,12 @@ export function evaluateModules({
     const validRate=x.kind!=='time'||(typeof rate==='number'&&Number.isFinite(rate)&&rate>0);
     return {...x,value:known?value:null,rate:validRate?rate:null,
      costPln:known&&validRate?(x.kind==='time'?value*rate:value):null,
-     manuallyEdited:Object.prototype.hasOwnProperty.call(edits[mod.id]?.[x.key]||{},'value')};
+     manuallyEdited:Object.prototype.hasOwnProperty.call(override||{},'value')};
    });
    if(rows.some(r=>r.costPln!==null&&!Number.isFinite(r.costPln)))throw new RangeError('Przekroczono zakres kosztu operacji');
    const missing=rows.filter(x=>x.costPln===null).length;
    const full=rows.length>0 && missing===0;
-   const omitted=excluded[mod.id]===true;
+   const omitted=excluded[mod.id]??(automation?.disabledModules?.includes(mod.id)??false);
    const status=omitted?'excluded':!inventory?'idle':!full?
      (missing===rows.length?'missing':'partial'):
      confirmed[mod.id]?'verified':'review';
