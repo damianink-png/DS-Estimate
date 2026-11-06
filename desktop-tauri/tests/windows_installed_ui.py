@@ -11,7 +11,7 @@ env=dict(os.environ)
 # Match a normal user launch: the installed app must not rely on conda DLLs.
 env['PATH']=';'.join(p for p in env.get('PATH','').split(';') if not any(word in p.lower() for word in ['miniconda','miniforge','\\envs\\ds-cad']))
 for key in ['CONDA_PREFIX','CONDA_DEFAULT_ENV','CONDA_PROMPT_MODIFIER','PYTHONPATH','PYTHONHOME','QT_PLUGIN_PATH']:env.pop(key,None)
-env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']='--remote-debugging-port=9223';env['WEBVIEW2_USER_DATA_FOLDER']=str(out.resolve()/'webview-profile')
+env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']='--remote-debugging-port=9223 --force-renderer-accessibility';env['WEBVIEW2_USER_DATA_FOLDER']=str(out.resolve()/'webview-profile')
 log=open(out/'app.log','w');app=subprocess.Popen([str(exe)],env=env,stdout=log,stderr=log)
 try:
  ready=False
