@@ -30,7 +30,10 @@ export function evaluateModules({
    if(new Set(specs.map(x=>x.key)).size!==specs.length)
     throw new Error('Powtarzające się identyfikatory operacji w module: '+mod.id);
    const rows=specs.map(x=>{
-    const value=rowValue(x,edits[mod.id]?.[x.key]);
+    // Material is priced centrally in 0.5; obsolete hidden per-row amount edits
+    // must not override the material total displayed on the parts screen.
+    const override=mod.id==='material'&&materialPrices?undefined:edits[mod.id]?.[x.key];
+    const value=rowValue(x,override);
     if(value!==null&&value!==undefined&&!nonnegative(value))
      throw new RangeError('Niepoprawny czas lub koszt: '+mod.id+'/'+x.key);
     const known=value!==null&&value!==undefined;
@@ -38,7 +41,7 @@ export function evaluateModules({
     const validRate=x.kind!=='time'||(typeof rate==='number'&&Number.isFinite(rate)&&rate>0);
     return {...x,value:known?value:null,rate:validRate?rate:null,
      costPln:known&&validRate?(x.kind==='time'?value*rate:value):null,
-     manuallyEdited:Object.prototype.hasOwnProperty.call(edits[mod.id]?.[x.key]||{},'value')};
+     manuallyEdited:Object.prototype.hasOwnProperty.call(override||{},'value')};
    });
    if(rows.some(r=>r.costPln!==null&&!Number.isFinite(r.costPln)))throw new RangeError('Przekroczono zakres kosztu operacji');
    const missing=rows.filter(x=>x.costPln===null).length;

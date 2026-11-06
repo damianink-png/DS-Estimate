@@ -46,6 +46,9 @@ def sheet_hints(solid,features):
                 candidates.append((min(a,b),t))
     bends=features.get('bendHint');bend_rows=bends['bends'] if bends else []
     if candidates:
+        # A flat sheet must have two dominant skin faces. Parallel side faces
+        # of a hollow/custom section do not establish constant sheet thickness.
+        if not bend_rows and max(candidates)[0]<total_area*.35:return None
         thickness=max(candidates)[1]
         if bend_rows and any(abs(b['thicknessMm']-thickness)>max(.05,thickness*.03) for b in bend_rows):return None
     elif bend_rows:

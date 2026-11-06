@@ -77,6 +77,13 @@ class Geometry(unittest.TestCase):
   shape=rotated(shape);features=feature_hints(shape);hint=sheet_hints(shape,features)
   self.assertEqual(features['bendHint']['count'],1);self.assertEqual(hint['kind'],'bent-plate');self.assertAlmostEqual(hint['thicknessMm'],3,places=3)
   self.assertAlmostEqual(hint['estimatedContourMm'],2*(50+40+8.5*math.pi/2+100),places=2)
+ def test_custom_hollow_and_notched_stock_are_not_flat_sheets(self):
+  inner=box(40,40,1000,(20,20,0));t=gp_Trsf();t.SetRotation(gp_Ax1(gp_Pnt(40,40,0),gp_Dir(0,0,1)),math.radians(20))
+  hollow=BRepAlgoAPI_Cut(box(80,80,1000),BRepBuilderAPI_Transform(inner,t,True).Shape()).Shape()
+  notch=BRepAlgoAPI_Cut(box(40,40,1000),box(20,40,100,(0,0,580))).Shape()
+  for shape in [hollow,notch]:
+   self.assertEqual(recognize_stock(shape,cad.bounds(shape))['kind'],'unknown')
+   self.assertIsNone(sheet_hints(shape,feature_hints(shape)))
  def test_actual_mesh_preview_not_bounding_box(self):
   shape=BRepAlgoAPI_Cut(box(40,40,100),box(36,36,100,(2,2,0))).Shape();mesh=mesh_part(shape)
   self.assertGreaterEqual(len(mesh['triangles']),32);self.assertFalse(mesh['partial'])

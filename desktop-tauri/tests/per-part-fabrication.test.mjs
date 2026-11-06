@@ -57,7 +57,8 @@ test('CNC from allowances, gross coating area and transport use explicit editabl
 test('material prices follow selected grade without per-detail approval or price entry',()=>{
  const prices={'':5,S235JR:7,'1.4301':20};const prefs={a:{...partDefaults(),grade:'S235JR'},b:{...partDefaults(),grade:'1.4301'}};
  const parts=partsList(inventory,prefs,prices);assert.equal(parts[0].price,7);assert.equal(parts[1].price,20);
- const quote=evaluateModules({inventory,partMaterials:prefs,materialPrices:prices,rates:{materialPriceKg:null}});
+ const quote=evaluateModules({inventory,partMaterials:prefs,materialPrices:prices,rates:{materialPriceKg:null},edits:{material:{a:{value:999}}}});
+ assert.equal(quote.modules.find(m=>m.id==='material').rows[0].value,parts[0].materialCost);
  assert.ok(quote.modules.find(m=>m.id==='material').knownCostPln>0);
  prices.S235JR=10;assert.equal(partsList(inventory,prefs,prices)[0].price,10);
  prices.S235JR=null;assert.equal(partsList(inventory,prefs,prices)[0].materialCost,null);
