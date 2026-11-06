@@ -273,6 +273,7 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None, axis_override=None):
 
 
 def _short_profile(shape,bounds,axis):
+    if shape is None or not hasattr(shape,'ShapeType'):return None
     dims=[bounds[i+3]-bounds[i] for i in range(3)];cross=sorted((dims[i] for i in range(3) if i!=axis),reverse=True)
     if dims[axis]/cross[0]>=3.5:return None
     catalog_fit=any(match_hint({'kind':kind,'widthMm':cross[0],'heightMm':cross[1]}) for kind in ('square-hollow','rectangular-hollow','round-tube','angle','channel','tee','i-section'))
