@@ -80,3 +80,8 @@ test('measured groove area drives deposition time and external raw-stock proposa
  const tube={...solid('raw'),stockHint:{kind:'unknown',rawStockCandidate:{kind:'square-hollow',widthMm:40,heightMm:40,wallMm:2,lengthMm:1000,sectionAreaMm2:304,confidence:'raw-stock-candidate',localDimsMm:[1000,40,40]}}};
  const rows=partsList({solids:[tube]}, {},5);const plan=planAutomaticCutting(rows);assert.equal(plan.rows[0].method,'saw');assert.ok(plan.rows[0].minutes>0);assert.deepEqual(rows[0].dims,[1000,40,40]);
 });
+
+test('short profile length remains the first allowance dimension instead of the longest bounding span',()=>{
+ const s={...solid('stub'),volumeMm3:6080,bboxMm:[40,40,20],stockHint:{kind:'square-hollow',lengthMm:20,widthMm:40,heightMm:40,wallMm:2,sectionAreaMm2:304,localDimsMm:[40,40,20]}};
+ const p=partValues(s,{...partDefaults(),allowances:[2,0,0,0,0,0]},5);assert.deepEqual(p.dims,[20,40,40]);assert.deepEqual(p.stockDims,[22,40,40]);
+});
