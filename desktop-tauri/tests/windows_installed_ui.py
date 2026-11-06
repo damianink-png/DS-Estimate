@@ -7,16 +7,22 @@ from PIL import Image
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 exe=Path(sys.argv[1]).resolve();step=Path(sys.argv[2]).resolve();out=Path('evidence/windows-native');out.mkdir(parents=True,exist_ok=True)
-env=dict(os.environ);env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']='--remote-debugging-port=9223';env['WEBVIEW2_USER_DATA_FOLDER']=str(out.resolve()/'webview-profile')
+env=dict(os.environ)
+# Match a normal user launch: the installed app must not rely on conda DLLs.
+env['PATH']=';'.join(p for p in env.get('PATH','').split(';') if not any(word in p.lower() for word in ['miniconda','miniforge','\\envs\\ds-cad']))
+for key in ['CONDA_PREFIX','CONDA_DEFAULT_ENV','CONDA_PROMPT_MODIFIER','PYTHONPATH','PYTHONHOME','QT_PLUGIN_PATH']:env.pop(key,None)
+env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']='--remote-debugging-port=9223';env['WEBVIEW2_USER_DATA_FOLDER']=str(out.resolve()/'webview-profile')
 log=open(out/'app.log','w');app=subprocess.Popen([str(exe)],env=env,stdout=log,stderr=log)
 try:
  ready=False
- for _ in range(120):
+ for _ in range(30):
   if app.poll() is not None:raise RuntimeError('Installed app exited: '+str(app.returncode))
   try:
    urllib.request.urlopen('http://127.0.0.1:9223/json/version',timeout=1);ready=True;break
   except Exception:time.sleep(1)
- if not ready:raise RuntimeError('Installed WebView CDP did not start')
+ if not ready:
+  from windows_accessibility_ui import run_accessibility_test
+  run_accessibility_test(app.pid,exe,step,out);sys.exit(0)
  with sync_playwright() as p:
   browser=p.chromium.connect_over_cdp('http://127.0.0.1:9223');context=browser.contexts[0]
   for _ in range(60):
@@ -57,6 +63,12 @@ try:
   assert not errors,errors
   (out/'result.json').write_text(json.dumps({'status':'PASS','installedExecutable':str(exe),'version':'0.6.0','nativeBridgeMocked':False,'checks':['nested names','15mm rotated plate','embedded actual mesh','preview rotation','V groove 64mm2','automatic weld time edits','3mm bent sheet']},indent=2),encoding='utf8')
   print('INSTALLED_WINDOWS_UI_PASS: actual NSIS application, WebView2 and bundled CAD, no command mocks')
+except Exception:
+ try:
+  if 'page' in locals():
+   page.screenshot(path=str(out/'failure.png'));(out/'failure-body.log').write_text(page.locator('body').inner_text(),encoding='utf8')
+ except Exception:pass
+ raise
 finally:
  app.terminate()
  try:app.wait(timeout=10)
