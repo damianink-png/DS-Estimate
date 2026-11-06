@@ -2,7 +2,7 @@
 import sys,json,math
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).parent))
-from manufacturing_geometry_test import box,rotated,BRepPrimAPI_MakeCylinder,BRepAlgoAPI_Cut,BRepAlgoAPI_Fuse,BRepBuilderAPI_MakePolygon,BRepBuilderAPI_MakeFace,BRepPrimAPI_MakePrism,gp_Pnt,gp_Vec,gp_Trsf
+from manufacturing_geometry_test import box,rotated,BRepPrimAPI_MakeCylinder,BRepAlgoAPI_Cut,BRepAlgoAPI_Fuse,BRepBuilderAPI_MakePolygon,BRepBuilderAPI_MakeFace,BRepPrimAPI_MakePrism,gp_Pnt,gp_Vec,gp_Trsf,gp_Ax1,gp_Dir
 try:
  from OCC.Core.TDocStd import TDocStd_Document
  from OCC.Core.TCollection import TCollection_ExtendedString as S
@@ -37,9 +37,11 @@ def write_fixture(path):
  part(root,prepared_plate(left),'Blacha lewa V')
  part(root,prepared_plate([(-x,z) for x,z in reversed(left)]),'Blacha prawa V')
  plate=BRepAlgoAPI_Cut(box(330,210,15),BRepPrimAPI_MakeCylinder(10,15).Shape()).Shape()
- part(sub,rotated(plate),'Płyta P-015')
- part(root,rotated(plate),'Płyta P-015 druga',location(1500,0,0))
- inst=tool.AddComponent(root,sub,location(1000,0,0));set_name(inst,S('Instancja podzespołu',True))
+ def pose(x):
+  tr=gp_Trsf();tr.SetRotation(gp_Ax1(gp_Pnt(0,0,0),gp_Dir(1,1,1)),.41);tr.SetTranslationPart(gp_Vec(x,0,0));return TopLoc_Location(tr)
+ part(sub,plate,'Płyta P-015')
+ part(root,plate,'Płyta P-015 druga',pose(1500))
+ inst=tool.AddComponent(root,sub,pose(1000));set_name(inst,S('Instancja podzespołu',True))
  tube=BRepAlgoAPI_Cut(box(40,40,1000),box(36,36,1000,(2,2,0))).Shape()
  notch=box(10,40,10,(0,0,495));tube=BRepAlgoAPI_Cut(tube,notch).Shape()
  part(root,rotated(tube),'Profil SHS z wycięciem',location(2500,0,0))
