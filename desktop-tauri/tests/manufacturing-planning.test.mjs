@@ -16,9 +16,9 @@ test('connected weld groups exclude isolated parts and charge setup once per gro
  assert.equal(auto.groups.length,2);close(auto.modules.assembly.fixtures*60,40);close(auto.modules.assembly.fitup*60,10);close(auto.modules.assembly.turning*60,1.2);
  const disabled=automaticOperations(p,contacts([joint('a','b')]),{'a|b':{enabled:false}});close(disabled.modules.assembly.fixtures,0);close(disabled.modules.welding.setup,0);
 });
-test('purchased and subcontracted interfaces never become automatic weld or tack work',()=>{
+test('purchase or cooperation does not erase joining work of a supplied plate',()=>{
  const p=partsList({solids:['a','b','c'].map(id=>plate(id))},{b:{route:'purchase'},c:{route:'cooperate'}});
- const a=automaticOperations(p,contacts([joint('a','b'),joint('a','c')]));assert.equal(a.jointCount,0);close(a.modules.assembly.tacks,0);
+ const a=automaticOperations(p,contacts([joint('a','b'),joint('a','c')]));assert.equal(a.jointCount,2);assert.ok(a.modules.assembly.tacks>0);assert.ok(a.modules.welding.weld>0);
 });
 test('partial contact analysis cannot silently yield complete mounting and welding times',()=>{
  const a=automaticOperations(partsList({solids:[plate('a'),plate('b')]}),{complete:false,candidates:[joint('a','b')]});

@@ -36,7 +36,7 @@ export function partBends(p){
 export function automaticOperations(parts,contacts,jointEdits={},norms=NORMS){
  const n=Object.fromEntries(Object.keys(NORMS).map(k=>[k,{...NORMS[k],...norms[k]}]));
  const byId=new Map(parts.map(p=>[p.id,p]));
- const proposed=contacts?{...contacts,candidates:contacts.candidates.filter(j=>byId.get(j.partA)?.route==='make'&&byId.get(j.partB)?.route==='make').map(j=>{
+ const proposed=contacts?{...contacts,candidates:contacts.candidates.filter(j=>byId.has(j.partA)&&byId.has(j.partB)).map(j=>{
   const a=byId.get(j.partA),b=byId.get(j.partB),thickness=p=>p?.solid.stockHint?.rawStockCandidate?.wallMm??p?.solid.stockHint?.wallMm??p?.solid.stockHint?.thicknessMm??p?.solid.bendHint?.bends?.[0]?.thicknessMm??p?.dims?.[2];
   const t=Math.min(thickness(a)??Infinity,thickness(b)??Infinity);
   return {...j,thicknessSuggestion:Number.isFinite(t)?t:n.welding.a*2,throatSuggestion:Number.isFinite(t)?Math.max(1,Math.min(n.welding.a,Math.round(.7*t*2)/2)):n.welding.a,defaultDensity:a&&b&&a.density===b.density?a.density:n.welding.density};
