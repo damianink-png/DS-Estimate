@@ -444,7 +444,7 @@ def inventory(path, density=7850.0):
         stage_start=time.perf_counter()
         if existing in manufacturing_cache:
             cut_hint,stock_hint,features=copy.deepcopy(manufacturing_cache[existing])
-        elif re.search(r'\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\b(?:bottle[ _-]jack|electrical[ _-]enclosure)\b|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b',occurrence.get('name',''),re.I):
+        elif re.search(r'\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack(?:[\s_-]|$)|^electrical[ _-]enclosure(?:[\s:_-]|$)|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b',occurrence.get('name',''),re.I):
             cut_hint=None;stock_hint={'kind':'purchased-component','source':'standard component name; routing can be overridden'};features={'bendHint':None}
         else:
             if profile:print('[DS-CAD-DETAIL] '+json.dumps({'solid':len(solids)+1,'name':occurrence.get('name',''),'stage':'manufacturing'}),file=sys.stderr,flush=True)

@@ -44,7 +44,7 @@ test('small welds do not automatically require straightening or fillet grinding'
 });
 
 test('standard hardware is proposed as purchased; explicit routing always wins',()=>{
- const s={...plate('bolt'),name:'M6x16 - DIN912 v4:1'};assert.equal(partsList({solids:[s]})[0].route,'purchase');assert.equal(partsList({solids:[s]},{bolt:{route:'make'}})[0].route,'make');
+ const s={...plate('bolt'),name:'M6x16 - DIN912 v4:1'};assert.equal(partsList({solids:[s]})[0].route,'purchase');assert.equal(partsList({solids:[s]},{bolt:{route:'make'}})[0].route,'make');assert.equal(partsList({solids:[{...s,name:'Bottle Jack_2912T12'}]})[0].route,'purchase');assert.equal(partsList({solids:[{...s,name:'Support Leg_Electrical Enclosure Support Leg'}]})[0].route,'make');
 });
 
 test('unknown vendor extrusion corner radii do not invent press-brake operations',()=>{
