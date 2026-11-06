@@ -68,8 +68,16 @@ def measured_section(a,b,lo,hi):
     if not bevel:kind='I'
     elif max(r[1] for r in fine)-min(r[1] for r in fine)<.2 or max(r[2] for r in fine)-min(r[2] for r in fine)<.2:kind='half-V'
     land=sum(high-low for low,high,r in rows if abs(r[0]-gap)<.05)
+    angles=[]
+    for low,high,_ in rows:
+        if high-low<.001:continue
+        delta=min(eps,(high-low)/4);start=width(low+delta);end=width(high-delta)
+        if start and end:
+            slopes=[abs(end[i]-start[i])/(high-low-2*delta) for i in (1,2)]
+            angle=sum(math.degrees(math.atan(v)) for v in slopes)
+            if angle>.1:angles.append(angle)
     return {'kind':kind,'sectionMm2':max(0,area),'rootGapMm':gap,'rootLandMm':land,'depthMm':hi-lo-land,
-            'bottomWidthMm':bottom,'topWidthMm':top,'maximumWidthMm':maximum,'hasBevel':bevel}
+            'includedAngleDeg':max(angles) if angles else 0,'bottomWidthMm':bottom,'topWidthMm':top,'maximumWidthMm':maximum,'hasBevel':bevel}
 
 def groove_between(a,b,max_gap=3):
     sa,sb=primary_skin(a),primary_skin(b)

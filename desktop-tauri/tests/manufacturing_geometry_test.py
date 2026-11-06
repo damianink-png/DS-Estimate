@@ -75,7 +75,7 @@ class Geometry(unittest.TestCase):
    for rotate in [False,True]:
     aa,bb=(rotated(a),rotated(b)) if rotate else (a,b)
     result=groove_between(aa,bb);self.assertIsNotNone(result)
-    self.assertEqual(result['kind'],kind);self.assertAlmostEqual(result['sectionMm2'],64,places=3);self.assertAlmostEqual(result['lengthMm'],100,places=3)
+    self.assertEqual(result['kind'],kind);self.assertAlmostEqual(result['includedAngleDeg'],90,places=3);self.assertAlmostEqual(result['sectionMm2'],64,places=3);self.assertAlmostEqual(result['lengthMm'],100,places=3)
     contacts=detect_contacts([aa,bb]);self.assertEqual(len(contacts['candidates']),1)
     self.assertAlmostEqual(contacts['candidates'][0]['measuredSectionMm2'],64,places=3)
    tr=gp_Trsf();tr.SetTranslation(gp_Vec(2,0,0));b=BRepBuilderAPI_Transform(b,tr,True).Shape()
