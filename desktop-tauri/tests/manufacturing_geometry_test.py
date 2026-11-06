@@ -7,7 +7,7 @@ from joint_detection import detect_contacts
 from stock_recognition import recognize_stock
 from manufacturing_features import feature_hints,sheet_hints
 from part_preview import mesh_part
-from assembly_names import assembly_names,signature
+from assembly_names import assembly_names,signature,extended_text
 from section_catalog import catalog
 try:
  from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox,BRepPrimAPI_MakeCylinder,BRepPrimAPI_MakePrism
@@ -88,6 +88,13 @@ class Geometry(unittest.TestCase):
   shape=BRepAlgoAPI_Cut(box(40,40,100),box(36,36,100,(2,2,0))).Shape();mesh=mesh_part(shape)
   self.assertGreaterEqual(len(mesh['triangles']),32);self.assertFalse(mesh['partial'])
   self.assertTrue(all(math.isfinite(v) for tri in mesh['triangles'] for point in tri for v in point))
+ def test_utf16_name_buffer_preserves_polish_and_surrogate_pairs(self):
+  import ctypes
+  text='Płyta 🔩';encoded=text.encode('utf-16-le');buffer=ctypes.create_string_buffer(encoded)
+  class Wrapped:
+   def ToExtString(self):return ctypes.addressof(buffer)
+   def Length(self):return len(encoded)//2
+  self.assertEqual(extended_text(Wrapped()),text)
  def test_xcaf_product_names_survive_step_roundtrip(self):
   try:
    from OCC.Core.TDocStd import TDocStd_Document
@@ -103,14 +110,14 @@ class Geometry(unittest.TestCase):
    from OCP.TDataStd import TDataStd_Name
    from OCP.STEPCAFControl import STEPCAFControl_Writer
    tool_fn=XCAFDoc_DocumentTool.ShapeTool_s;set_name=TDataStd_Name.Set_s
-  doc=TDocStd_Document(S('test'));tool=tool_fn(doc.Main());label=tool.AddShape(box(100,50,5));set_name(label,S('Plate P-101'))
+  doc=TDocStd_Document(S('test'));tool=tool_fn(doc.Main());label=tool.AddShape(box(100,50,5));set_name(label,S('Płyta P-101',True))
   writer=STEPCAFControl_Writer();writer.Transfer(doc)
   with tempfile.TemporaryDirectory() as td:
    path=Path(td)/'names.step';writer.Write(str(path));names=assembly_names(path)
-   self.assertEqual(next(iter(names.values()))[0]['name'],'Plate P-101')
+   self.assertEqual(next(iter(names.values()))[0]['name'],'Płyta P-101')
    if '--compiled' in sys.argv:
     exe=Path('src-tauri/cad-backend/ds-cad-engine.exe').resolve();p=subprocess.run([str(exe),str(path)],capture_output=True,text=True,timeout=120)
-    self.assertEqual(p.returncode,0,p.stderr);self.assertEqual(json.loads(p.stdout)['solids'][0]['name'],'Plate P-101')
+    self.assertEqual(p.returncode,0,p.stderr);self.assertEqual(json.loads(p.stdout)['solids'][0]['name'],'Płyta P-101')
  def test_packaged_joint_command_when_requested(self):
   if '--compiled' not in sys.argv:self.skipTest('Packaged Windows EXE checked in Windows CI')
   with tempfile.TemporaryDirectory() as td:

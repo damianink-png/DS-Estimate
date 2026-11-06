@@ -5,6 +5,21 @@ except ImportError:import cad_measure as cad
 def signature(shape):
     return tuple(round(v,3) for v in cad.bounds(shape))+(round(cad.volume(shape),2),)
 
+def extended_text(value):
+    raw=value.ToExtString()
+    if isinstance(raw,str):
+        text=raw
+    elif isinstance(raw,bytes):
+        text=raw.decode('utf-8')
+    else:
+        # pythonocc exposes Standard_ExtString as an opaque SWIG pointer.
+        # Its owned OCCT buffer consists of Length() UTF-16 code units, even
+        # on platforms where wchar_t is 32-bit. Keep value alive while reading.
+        import ctypes,sys
+        text=ctypes.string_at(int(raw),value.Length()*2).decode('utf-16-le' if sys.byteorder=='little' else 'utf-16-be')
+    try:return text.encode('latin1').decode('utf-8')
+    except (UnicodeEncodeError,UnicodeDecodeError):return text
+
 def assembly_names(path):
     try:
         from OCC.Core.STEPCAFControl import STEPCAFControl_Reader
@@ -28,9 +43,7 @@ def assembly_names(path):
     def label_name(label):
         value=TDataStd_Name()
         if label.FindAttribute(name_id(),value):
-            s=value.Get();text=s.ToExtString() if hasattr(s,'ToExtString') else str(s)
-            try:return text.encode('latin1').decode('utf-8')
-            except (UnicodeEncodeError,UnicodeDecodeError):return text
+            return extended_text(value.Get())
         return ''
     doc=TDocStd_Document(TCollection_ExtendedString('DS Estimate'));reader=STEPCAFControl_Reader();reader.SetNameMode(True)
     if reader.ReadFile(str(path))!=cad.IFSelect_RetDone or not reader.Transfer(doc):return {}
