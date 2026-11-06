@@ -3,11 +3,17 @@ use std::process::Command;
 
 #[tauri::command]
 async fn analyze_step(app: tauri::AppHandle, path: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || analyze_step_blocking(app, path))
+    tauri::async_runtime::spawn_blocking(move || analyze_step_blocking(app, path, false))
         .await.map_err(|e| format!("Błąd zadania CAD: {e}"))?
 }
 
-fn analyze_step_blocking(app: tauri::AppHandle, path: String) -> Result<String, String> {
+#[tauri::command]
+async fn analyze_joints(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || analyze_step_blocking(app, path, true))
+        .await.map_err(|e| format!("Błąd analizy styków: {e}"))?
+}
+
+fn analyze_step_blocking(app: tauri::AppHandle, path: String, joints: bool) -> Result<String, String> {
     use tauri::Manager;
     let input = PathBuf::from(&path);
     if !input.is_file() { return Err("Nie znaleziono pliku STEP".into()); }
@@ -19,6 +25,7 @@ fn analyze_step_blocking(app: tauri::AppHandle, path: String) -> Result<String, 
     }
     let mut command = Command::new(&backend);
     command.arg(&input);
+    if joints { command.arg("--joints"); }
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -116,7 +123,7 @@ fn write_report(path: String, content: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![analyze_step, step_fingerprint, extract_pdf_text, scan_project, write_report])
+        .invoke_handler(tauri::generate_handler![analyze_step, analyze_joints, step_fingerprint, extract_pdf_text, scan_project, write_report])
                 .setup(|app| {
             use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {

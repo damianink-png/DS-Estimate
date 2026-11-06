@@ -3,7 +3,7 @@ name: DS Estimate Tauri Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/unified-compare-style-ui-20261105']
+    branches: [main, 'codex/unified-compare-style-ui-20261105', 'codex/part-routing-automatic-fabrication-20261105']
     paths:
       - '.github/workflows/tauri-desktop-windows.yml'
       - 'desktop-tauri/src/**'
@@ -44,7 +44,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: DS-Estimate-0.3-UI-evidence
+          name: DS-Estimate-0.4-UI-evidence
           path: desktop-tauri/evidence/
   build-windows:
     needs: workspace-ui
@@ -87,7 +87,7 @@ jobs:
       - name: Bundle offline CAD engine
         shell: pwsh
         run: |
-          conda run -n ds-cad python -m PyInstaller --onefile --collect-all OCC --name ds-cad-engine --distpath src-tauri/cad-backend --workpath build/cad-pyinstaller --specpath build/cad-spec cad_backend/step_inventory.py
+          conda run -n ds-cad python -m PyInstaller --onefile --collect-all OCC --add-data "src/lib/data/steel-sections.json;data" --add-data "licenses/steel-section-database-MIT.txt;licenses" --name ds-cad-engine --distpath src-tauri/cad-backend --workpath build/cad-pyinstaller --specpath build/cad-spec cad_backend/step_inventory.py
           if ($LASTEXITCODE -ne 0) { throw 'CAD engine build failed' }
           if (!(Test-Path src-tauri/cad-backend/ds-cad-engine.exe)) { throw 'CAD engine missing' }
       - name: Smoke test bundled CAD engine
@@ -131,6 +131,11 @@ jobs:
         run: |
           conda run -n ds-cad python tests/compiled_step_suite.py
           if ($LASTEXITCODE -ne 0) { throw 'Compiled STEP regression suite failed' }
+      - name: Catalogue, rotated geometry, rounded sections and compiled joint detection
+        shell: pwsh
+        run: |
+          conda run -n ds-cad python tests/manufacturing_geometry_test.py --compiled
+          if ($LASTEXITCODE -ne 0) { throw 'Manufacturing geometry tests failed' }
       - name: Automatic CAD-to-quote integration gate
         shell: pwsh
         run: |
@@ -166,6 +171,6 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: DS-Estimate-0.3-Unified-Windows-Installer
+          name: DS-Estimate-0.4-Parts-Automation-Windows-Installer
           path: desktop-tauri/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error

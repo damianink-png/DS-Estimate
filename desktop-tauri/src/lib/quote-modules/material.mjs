@@ -1,23 +1,10 @@
-import {groupMaterial} from '../part-materials.mjs';
-/** Material is not automatically certified from uniform-density STEP geometry. */
-export default Object.freeze({
- id:'material',title:'Materiał',rateKey:null,
- detail:'Masa z B-Rep przy 7850 kg/m³ jest tylko stalowym ekwiwalentem; przypisz gęstość i cenę, sprawdź zakres. Gatunek może pozostać pusty.',
+import {partsList} from '../parts.mjs';
+export default Object.freeze({id:'material',title:'Detale / materiał',rateKey:null,
+ detail:'Materiał, masa, wymiary, przekrój, naddatki i sposób realizacji osobno dla każdego wystąpienia STEP.',
  rows:({inventory,settings})=>{
-  if(inventory && settings.partMaterials){return inventory.groups.map(group=>{
-   const m=groupMaterial(inventory,group,settings.partMaterials[group.geometryId],settings.rates.materialPriceKg);
-   return {key:group.geometryId,name:'Materiał · '+group.geometryId,
-    detail:group.quantity+' szt. · '+m.density+' kg/m³ · półfabrykat '+m.totalStockMassKg.toFixed(2)+' kg',
-    kind:'amount',autoAmount:settings.materialApproved?m.costPln:null,
-    evidence:settings.materialApproved?'manual-scope-approval':'material-unverified'};
-  });}
-  return [{
-  key:'stock',name:'Materiał konstrukcji',
-  detail:inventory?('Masa modelu ≈ '+inventory.totalMassKg.toFixed(2)+' kg (7850 kg/m³)'):'Brak modelu',
-  kind:'amount',
-  autoAmount:inventory && settings.materialApproved && settings.grade!=='unknown' &&
-    Number.isFinite(settings.rates.materialPriceKg) && settings.rates.materialPriceKg>0
-    ? inventory.totalMassKg*settings.rates.materialPriceKg : null,
-  evidence: settings.materialApproved?'manual-scope-approval':'material-unverified'
- }];}
+  if(inventory&&settings.partMaterials){return partsList(inventory,settings.partMaterials,settings.rates.materialPriceKg).map(p=>({
+   key:p.id,name:p.name,detail:p.route==='purchase'?'Materiał w cenie zakupu':p.route==='cooperate'&&p.includesMaterial?'Materiał w cenie kooperacji':p.stockMassKg.toFixed(3)+' kg × '+(p.price??'—')+' zł/kg',kind:'amount',
+   autoAmount:settings.materialApproved?p.materialCost:null,evidence:settings.materialApproved?'manual-scope-approval':'material-unverified'}));}
+  return [{key:'stock',name:'Materiał konstrukcji',detail:'Masa modelu przy 7850 kg/m³',kind:'amount',autoAmount:inventory&&settings.materialApproved&&settings.grade!=='unknown'&&Number.isFinite(settings.rates.materialPriceKg)&&settings.rates.materialPriceKg>0?inventory.totalMassKg*settings.rates.materialPriceKg:null,evidence:'material-unverified'}];
+ }
 });

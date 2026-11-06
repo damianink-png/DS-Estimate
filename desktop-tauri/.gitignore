@@ -8,3 +8,6 @@ src-tauri/target/
 src-tauri/cad-backend/
 src-tauri/icons/
 evidence/
+
+__pycache__/
+*.pyc

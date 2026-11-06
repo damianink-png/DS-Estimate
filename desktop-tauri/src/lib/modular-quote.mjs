@@ -13,12 +13,15 @@ function rowValue(entry,override){
  */
 export function evaluateModules({
  inventory=null, pdfText='',rates=DEFAULT_RATES,edits={},
- confirmed={},excluded={},custom={},grade='unknown',materialApproved=false,partMaterials=null
+ confirmed={},excluded={},custom={},grade='unknown',materialApproved=false,partMaterials=null,cuttingPlan=null,automation=null
 }={}){
- const settings={rates,grade,materialApproved,pdfText,partMaterials};
+ const settings={rates,grade,materialApproved,pdfText,partMaterials,cuttingPlan,automation};
  const modules=MODULES.map(mod=>{
   try{
-   const own=mod.rows({inventory,settings});
+   let own=mod.rows({inventory,settings});
+   const automatic=automation?.modules?.[mod.id];
+   if(automatic)own=own.map(row=>Object.hasOwn(automatic,row.key)?{...row,autoHours:automatic[row.key],detail:'Geometria STEP × edytowalne normy',evidence:'geometry-and-shop-assumptions'}:row);
+   if(automation?.extraRows?.[mod.id])own=[...own,...automation.extraRows[mod.id]];
    const extras=custom[mod.id]||[];
    const specs=[...own,...extras.map(x=>({
     key:x.key,name:x.name,detail:'Ręcznie dodana operacja',
@@ -31,7 +34,7 @@ export function evaluateModules({
     if(value!==null&&value!==undefined&&!nonnegative(value))
      throw new RangeError('Niepoprawny czas lub koszt: '+mod.id+'/'+x.key);
     const known=value!==null&&value!==undefined;
-    const rate=x.kind==='time'?rates[mod.rateKey]:null;
+    const rate=x.kind==='time'?(x.hourlyRate??rates[mod.rateKey]):null;
     const validRate=x.kind!=='time'||(typeof rate==='number'&&Number.isFinite(rate)&&rate>0);
     return {...x,value:known?value:null,rate:validRate?rate:null,
      costPln:known&&validRate?(x.kind==='time'?value*rate:value):null,

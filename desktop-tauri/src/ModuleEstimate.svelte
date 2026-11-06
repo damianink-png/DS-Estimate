@@ -3,7 +3,10 @@
  import {call as invoke,native,pickInputs,watchDrops,saveReport} from './lib/desktop-api';
  import {Layers3,FolderOpen,FilePlus2,Plus,Upload,Scale,Settings2,Sun,Moon,Download,Check,ChevronRight,X,Files,RotateCcw,ClipboardList,Search} from 'lucide-svelte';
  import {mergeProjectFiles,preferredStep,moduleReport,csvCell} from './lib/project-files.mjs';
- import {MATERIALS,defaultMaterial,groupMaterial} from './lib/part-materials.mjs';
+ import {MATERIALS,ROUTES,partDefaults,partsList,partValues,preferenceFor} from './lib/parts.mjs';
+ import sectionCatalog from './lib/data/steel-sections.json';
+ import {MACHINES,METHOD_LABELS,planAutomaticCutting} from './lib/automatic-cutting.mjs';
+ import {NORMS,automaticOperations} from './lib/fabrication.mjs';
  import {calculateWeld} from './lib/welding.mjs';
  import {estimateBending,estimateCnc} from './lib/estimate.mjs';
  import {createCadSession} from './lib/cad-session.mjs';
@@ -14,7 +17,7 @@
  import {kwantflowKnownCost} from './lib/modular-kwantflow.js';
 
  type StockHint={kind:string;confidence?:string;reason?:string;source?:string;limitations?:string;lengthMm?:number;widthMm?:number;heightMm?:number;diameterMm?:number;thicknessMm?:number;wallMm?:number;sectionAreaMm2?:number};
- type Inv={count:number;totalMassKg:number;solids:Array<{id:string;verifiedShapeKey:string;volumeMm3:number;massKg:number;bboxMm:number[];verificationMethod?:string;stockHint?:StockHint}>;groups:Array<{geometryId:string;quantity:number;massKg:number}>;limitations?:string[]};
+ type Inv={count:number;totalMassKg:number;solids:any[];groups:any[];limitations?:string[]};
  type Edit={value:number|null};
  type CustomRow={key:string;name:string;kind:'time'|'amount'};
  const money=(x:number)=>x.toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -75,6 +78,16 @@
  let showReport=$state(false);
  let materialQuery=$state('');
  let notice=$state('');
+ let machines=$state<any>(structuredClone(MACHINES)),norms=$state<any>(structuredClone(NORMS)),laserLimit=$state(10);
+ let contacts=$state<any>(null),jointEdits=$state<Record<string,any>>({}),jointBusy=$state(false);
+ let partDialog:HTMLDialogElement;let editingPart=$state(''),draft=$state<any>(null),catalogQuery=$state('');
+ let catalogOptions=$derived(sectionCatalog.sections.filter(c=>!catalogQuery||(c.name+' '+c.series).toLowerCase().includes(catalogQuery.toLowerCase())).slice(0,100));
+ let partsResult=$derived.by(()=>{try{return {parts:inventory?partsList(inventory,partMaterials,rates.materialPriceKg):[],error:''};}catch(e){return {parts:[],error:String(e)};}});
+ let detailRows=$derived(partsResult.parts);
+ let cutPlan=$derived.by(()=>{try{return planAutomaticCutting(detailRows,{machines,laserLimit,rate:rates.cutting,catalog:sectionCatalog.sections});}catch(e){return {rows:[],batches:[],missing:0,error:String(e)};}});
+ let automatic=$derived.by(()=>{try{return automaticOperations(detailRows,contacts,jointEdits,norms);}catch(e){return {modules:{},welds:null,areaM2:0,jointCount:0,error:String(e)};}});
+ let visibleParts=$derived(detailRows.filter(p=>(p.name+' '+p.id+' '+p.geometryKey+' '+(p.solid.stockHint?.catalogDesignation||'')).toLowerCase().includes(materialQuery.toLowerCase())));
+
  let showCalculator=$state(false);
  let weldLength=$state(0),weldA=$state(4),deposition=$state(2.5),arcPercent=$state(35),weldSetup=$state(20);
  let bendCount=$state(0),bendSeconds=$state(30),bendSetup=$state(20);
@@ -87,7 +100,7 @@
  let selectedSolid=$state(0);
  let projectKey=$state('');
  let added=$state(0);
- let report=$derived(evaluateModules({inventory,pdfText,rates,edits,confirmed,excluded,custom,grade,materialApproved,partMaterials}));
+ let report=$derived(evaluateModules({inventory,pdfText,rates,edits,confirmed,excluded,custom,grade,materialApproved,partMaterials,cuttingPlan:cutPlan,automation:automatic}));
  let selected=$derived(report.modules.find(m=>m.id===active)??report.modules[0]);
  let part=$derived(inventory?.solids[selectedSolid]??null);
  let weldNotes=$derived(pdfText?parseExplicitFilletNotes(pdfText):[]);
@@ -101,16 +114,16 @@
  }
  function saveProject(){
   if(!projectKey)return;
-  try{localStorage.setItem(projectStorage(),JSON.stringify({edits,confirmed,excluded,custom,grade,materialApproved,partMaterials}));}catch{}
+  try{localStorage.setItem(projectStorage(),JSON.stringify({edits,confirmed,excluded,custom,grade,materialApproved,partMaterials,contacts,jointEdits}));}catch{}
  }
  function restoreProject(){
-  edits={};confirmed={};excluded={};custom={};grade='unknown';materialApproved=false;partMaterials={};
+  edits={};confirmed={};excluded={};custom={};grade='unknown';materialApproved=false;partMaterials={};contacts=null;jointEdits={};
   try{
    const saved=JSON.parse(localStorage.getItem(projectStorage())||'null');
    if(saved && typeof saved==='object'){
     edits=saved.edits||{};confirmed=saved.confirmed||{};
     excluded=saved.excluded||{};custom=saved.custom||{};
-    grade=saved.grade||'unknown';materialApproved=saved.materialApproved===true;partMaterials=saved.partMaterials||{};
+    grade=saved.grade||'unknown';materialApproved=saved.materialApproved===true;partMaterials=saved.partMaterials||{};contacts=saved.contacts||null;jointEdits=saved.jointEdits||{};
    }
   }catch{}
  }
@@ -154,7 +167,9 @@
    inventory=data;
    if(projectKey!==key){projectKey=key;restoreProject();}
    selectedSolid=0;
-   partMaterials=Object.fromEntries(data.groups.map(g=>[g.geometryId,{...defaultMaterial(),...(partMaterials[g.geometryId]||{})}]));
+   const migrating=data.solids.some(s=>!Object.hasOwn(partMaterials,s.id)&&Object.hasOwn(partMaterials,s.verifiedShapeKey));
+   partMaterials=Object.fromEntries(data.solids.map(s=>[s.id,{...preferenceFor(s,partMaterials),catalogId:preferenceFor(s,partMaterials).catalogId||(s.stockHint?.catalogCandidates?.length===1?s.stockHint.catalogCandidates[0].id:'')} ]));
+   if(migrating){confirmed={};materialApproved=false;saveProject();notice='Przeniesiono ustawienia grup na detale. Sprawdź ceny i potwierdzenia.';}
    const documents=files.filter(isPdf);
    const texts:string[]=[];
    notes=[];
@@ -202,6 +217,10 @@
    }
   }catch{}
   try{theme=localStorage.getItem('ds-estimate-theme')==='light'?'light':'dark';}catch{}
+  try{const v=JSON.parse(localStorage.getItem('ds-estimate-automation-v1')||'null');if(v){
+   machines=Object.fromEntries(Object.entries(MACHINES).map(([k,m])=>[k,{...m,...v.machines?.[k]}]));
+   norms=Object.fromEntries(Object.entries(NORMS).map(([k,n])=>[k,{...n,...v.norms?.[k]}]));laserLimit=v.laserLimit??10;
+  }}catch{}
   let unlisten:(()=>void)|null=null,alive=true;
   watchDrops((paths,hover)=>{if(!alive)return;dragActive=hover;if(paths)void openInputs(paths);})
    .then(cb=>{if(alive)unlisten=cb;else cb();}).catch(e=>{error='Nie można uruchomić przeciągania: '+String(e);});
@@ -214,21 +233,16 @@
   partial:'Niepełne',missing:'Brak danych',idle:'Nieanalizowane',error:'Błąd modułu'
  } as Record<string,string>)[s]||'Weryfikacja';
 
- let materialRows=$derived.by(()=>!inventory?[]:inventory.groups.map(g=>{
-  try{return {group:g,material:groupMaterial(inventory,g,partMaterials[g.geometryId],rates.materialPriceKg),error:''};}
-  catch(e){return {group:g,material:null,error:String(e)};}
- }));
- let totalMass=$derived(materialRows.reduce((sum,r)=>sum+(r.material?.totalMassKg??0),0));
- let stockMass=$derived(materialRows.reduce((sum,r)=>sum+(r.material?.totalStockMassKg??0),0));
- let visibleMaterialRows=$derived(materialRows.filter(r=>r.group.geometryId.toLowerCase().includes(materialQuery.toLowerCase())));
+ let totalMass=$derived(detailRows.reduce((sum,p)=>sum+p.massKg,0));
+ let stockMass=$derived(detailRows.filter(p=>p.route!=='purchase'&&!(p.route==='cooperate'&&p.includesMaterial)).reduce((sum,p)=>sum+p.stockMassKg,0));
  async function chooseInputs(folder=false){try{const paths=await pickInputs(folder);if(paths.length)await openInputs(paths);}catch(e){error=String(e);}}
  function changeMaterial(key:string,field:string,value:any){
-  partMaterials={...partMaterials,[key]:{...defaultMaterial(),...partMaterials[key],[field]:value}};
-  confirmed={...confirmed,material:false,cutting:false};materialApproved=false;saveProject();
+  partMaterials={...partMaterials,[key]:{...partDefaults(),...partMaterials[key],[field]:value}};
+  confirmed={};materialApproved=false;saveProject();
  }
  function chooseGrade(key:string,value:string){const m=MATERIALS.find(x=>x.grade===value);if(!m)return;
-  partMaterials={...partMaterials,[key]:{...defaultMaterial(),...partMaterials[key],grade:m.grade,density:m.density}};
-  materialApproved=false;confirmed={...confirmed,material:false,cutting:false};saveProject();
+  partMaterials={...partMaterials,[key]:{...partDefaults(),...partMaterials[key],grade:m.grade,density:m.density}};
+  materialApproved=false;confirmed={};saveProject();
  }
  function resetValue(moduleId:string,key:string){const own={...edits[moduleId]};delete own[key];
   edits={...edits,[moduleId]:own};confirmed={...confirmed,[moduleId]:false};saveProject();}
@@ -238,18 +252,20 @@
  function toggleTheme(){theme=theme==='dark'?'light':'dark';try{localStorage.setItem('ds-estimate-theme',theme);}catch{}}
  function autoText(row:any){const value=row.kind==='time'?row.autoHours:row.autoAmount;return typeof value==='number'?number(value):'—';}
  async function exportStatus(format:'json'|'csv'){
-  try{const data=moduleReport(report,{step:selectedStep,files,solidCount:inventory?.count??0,totalMassKg:totalMass,stockMassKg:stockMass});
+  try{const data=moduleReport(report,{step:selectedStep,files,solidCount:inventory?.count??0,totalMassKg:totalMass,stockMassKg:stockMass,parts:detailRows.map(p=>({id:p.id,name:p.name,grade:p.grade,density:p.density,dims:p.dims,massKg:p.massKg,stockMassKg:p.stockMassKg,allowances:p.allowances,route:p.route,catalogId:p.catalogId,supplierPrice:p.supplierPrice,includesMaterial:p.includesMaterial})),weldCandidates:automatic.welds?.rows??[]});
    const text=format==='json'?JSON.stringify(data,null,2):'\uFEFF'+[
     ['Moduł','Stan','Brakujące pozycje','Znany koszt PLN'],
     ...data.modules.map(m=>[m.name,statusName(m.status),m.missing,m.costPln]),[],
     ['Moduł','Operacja','Rodzaj','Automat','Przyjęto','Koszt PLN','Korekta'],
-    ...data.modules.flatMap(m=>m.rows.map(r=>[m.name,r.name,r.kind,r.automatic,r.value,r.costPln,r.manuallyEdited?'tak':'nie']))
+    ...data.modules.flatMap(m=>m.rows.map(r=>[m.name,r.name,r.kind,r.automatic,r.value,r.costPln,r.manuallyEdited?'tak':'nie'])),[],
+    ['Detal','Realizacja','Gatunek','Gęstość kg/m³','Wymiary mm','Masa kg','Półfabrykat kg','Naddatki mm','Cena dostawcy PLN'],
+    ...detailRows.map(p=>[p.name,ROUTES[p.route],p.grade,p.density,p.dims.join(' x '),p.massKg,p.stockMassKg,p.allowances.join(' / '),p.supplierPrice])
    ].map(row=>row.map(csvCell).join(';')).join('\r\n');
    if(await saveReport(text,format))notice='Zapisano zestawienie '+format.toUpperCase()+'.';
   }catch(e){error=String(e);}
  }
  function revealPart(key:string){
-  selectedSolid=inventory?.solids.findIndex(s=>s.verifiedShapeKey===key)??0;
+  selectedSolid=inventory?.solids.findIndex(s=>s.id===key||s.verifiedShapeKey===key)??0;
   const panel=document.getElementById('geometry-details') as HTMLDetailsElement|null;
   if(panel){panel.open=true;panel.scrollIntoView({block:'nearest',behavior:'smooth'});}
  }
@@ -264,15 +280,68 @@
   }
   notice='Przyjęto oszacowanie do tabeli operacji. Możesz je dalej korygować.';
  }
+
+ function saveAutomation(){
+  try{localStorage.setItem('ds-estimate-automation-v1',JSON.stringify({machines,norms,laserLimit}));}catch{}
+  confirmed={};saveProject();
+ }
+ function changeMachine(key:string,field:string,value:number){if(!Number.isFinite(value)||value<0)return;machines={...machines,[key]:{...machines[key],[field]:value}};saveAutomation();}
+ function changeNorm(key:string,field:string,value:any){if(typeof value==='number'&&(!Number.isFinite(value)||value<0))return;norms={...norms,[key]:{...norms[key],[field]:value}};saveAutomation();}
+ function editPart(id:string){const p=detailRows.find(p=>p.id===id);if(!p)return;editingPart=id;draft=structuredClone($state.snapshot(partMaterials[id]??partDefaults()));catalogQuery='';partDialog.showModal();}
+ function savePart(){try{const solid=inventory?.solids.find(s=>s.id===editingPart);partValues(solid,draft,rates.materialPriceKg);
+  partMaterials={...partMaterials,[editingPart]:structuredClone($state.snapshot(draft))};confirmed={};materialApproved=false;saveProject();partDialog.close();
+ }catch(e){error=String(e);}}
+ function setDraftCatalog(id:string){draft.catalogId=id;const c=sectionCatalog.sections.find(c=>c.id===id);if(c){draft.stockKind=({SHS:'square-hollow',RHS:'rectangular-hollow',CHS:'round-tube',I:'i-section',I_TAPERED:'i-section',U:'channel',U_TAPERED:'channel',L:'angle',L_EQ:'angle',FLAT:'flat-section'} as any)[c.shape]||'';}}
+ async function detectJoints(){
+  if(!inventory||jointBusy||busy||contacts)return;jointBusy=true;busy=true;error='';status='Analiza styków B-Rep i kandydatów spoin…';
+  try{const source=selectedStep,expected=JSON.parse(projectKey)[1];
+   if(await invoke<string>('step_fingerprint',{path:source})!==expected)throw Error('Model zmienił się. Wczytaj ponownie STEP przed analizą spoin.');
+   const data=JSON.parse(await invoke<string>('analyze_joints',{path:source}));
+   if(source!==selectedStep||await invoke<string>('step_fingerprint',{path:source})!==expected)throw Error('Model zmienił się podczas analizy.');
+   if(data.solidCount!==inventory.count||!Array.isArray(data.candidates))throw Error('Niezgodny wynik analizy styków.');
+   contacts=data;confirmed={...confirmed,welding:false,assembly:false,quality:false};saveProject();status='Analiza styków zakończona — sprawdź propozycje spoin';
+  }catch(e){error=String(e);}finally{jointBusy=false;busy=false;}
+ }
+ function changeJoint(id:string,field:string,value:any){jointEdits={...jointEdits,[id]:{...jointEdits[id],[field]:value}};confirmed={...confirmed,welding:false,assembly:false,quality:false,postweld:false};saveProject();}
+ const jointName=(id:string)=>detailRows.find(p=>p.id===id)?.name||id;
 </script>
 <div class="app" data-theme={theme}>
+ <dialog bind:this={partDialog} class="part-dialog">
+  {#if draft}
+  <form onsubmit={e=>{e.preventDefault();savePart();}}>
+   <div class="panel-title"><div><h2>Parametry detalu · {editingPart}</h2><p>Ustawienia dotyczą tylko tego wystąpienia w złożeniu.</p></div><button type="button" class="icon-button" aria-label="Zamknij parametry" onclick={()=>partDialog.close()}><X size={18}/></button></div>
+   <div class="form-grid">
+    <label>Sposób realizacji<select bind:value={draft.route}>{#each Object.entries(ROUTES) as [id,label]}<option value={id}>{label}</option>{/each}</select></label>
+    <label>Cena materiału [zł/kg]<input type="number" min="0" step=".01" value={draft.price??''} onchange={e=>draft.price=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
+    <label>Cena dostawcy [zł / detal]<input type="number" min="0" step=".01" value={draft.supplierPrice??''} onchange={e=>draft.supplierPrice=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
+   </div>
+   {#if draft.route==='cooperate'}<label class="check"><input type="checkbox" bind:checked={draft.includesMaterial}/>Cena kooperacji obejmuje materiał</label>{/if}
+   <h3>Naddatki na sześciu stronach [mm]</h3><div class="form-grid">{#each ['Długość — początek','Długość — koniec','Szerokość — strona 1','Szerokość — strona 2','Grubość / wysokość — strona 1','Grubość / wysokość — strona 2'] as label,i}<label>{label}<input type="number" min="0" step=".1" bind:value={draft.allowances[i]} required/></label>{/each}</div>
+   <label class="stacked">Znana masa półfabrykatu [kg] — puste = szacunek z naddatków<input type="number" min="0" step=".001" value={draft.stockMassKg??''} onchange={e=>draft.stockMassKg=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
+   <h3>Biblioteka przekrojów · {sectionCatalog.sections.length} pozycji</h3>
+   <p>Dopasowanie wymiarów nie potwierdza gatunku ani normy dostawy. Wybierz oznaczenie, gdy kilka pozycji pasuje do geometrii.</p>
+   <div class="form-grid"><label>Szukaj przekroju<input bind:value={catalogQuery} placeholder="np. IPE 200, SHS 40x40x2"/></label><label>Pasujące pozycje<select aria-label="Przekrój katalogowy" value={draft.catalogId} onchange={e=>setDraftCatalog(e.currentTarget.value)}><option value="">Bez przypisania katalogowego</option>{#if draft.catalogId&&!catalogOptions.some(c=>c.id===draft.catalogId)}<option value={draft.catalogId}>{sectionCatalog.sections.find(c=>c.id===draft.catalogId)?.name||draft.catalogId}</option>{/if}{#each catalogOptions as c}<option value={c.id}>{c.name} · {c.series}</option>{/each}</select></label>
+    <label>Rodzaj wyrobu<select bind:value={draft.stockKind}><option value="">Z rozpoznania geometrii</option>{#each Object.entries(stockLabels) as [key,label]}<option value={key}>{label}</option>{/each}<option value="bent-plate">Blacha gięta</option></select></label></div>
+   <h3>Parametry cięcia i gięcia</h3><div class="form-grid">
+    <label>Technologia<select bind:value={draft.cutMethod}><option value="auto">Dobór automatyczny</option>{#each Object.entries(METHOD_LABELS) as [key,label]}<option value={key}>{label}</option>{/each}</select></label>
+    <label>Liczba cięć piłą<input type="number" min="0" step="1" bind:value={draft.cutCount} required/></label>
+    <label>Kąt cięcia piłą [°]<input type="number" min="0" max="75" step="1" bind:value={draft.sawAngle} required/></label>
+    <label>Ręczne pole cięcia [mm²]<input type="number" min=".001" step="any" value={draft.cutAreaMm2??''} onchange={e=>draft.cutAreaMm2=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
+    <label>Kontur / kontur rozwinięcia [mm]<input type="number" min="0" step="any" value={draft.contourMm??''} onchange={e=>draft.contourMm=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
+    <label>Liczba przebić<input type="number" min="0" step="1" value={draft.pierces??''} onchange={e=>draft.pierces=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
+    <label>Ręczna liczba gięć<input type="number" min="0" step="1" value={draft.bendCount??''} onchange={e=>draft.bendCount=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
+   </div>
+   <div class="panel-actions"><button type="button" onclick={()=>partDialog.close()}>Anuluj</button><button class="primary" type="submit">Zapisz detal</button></div>
+  </form>{/if}
+ </dialog>
+
  <aside class="rail">
   <div class="brand"><span class="brand-mark"><Layers3 size={23}/></span><strong>DS Estimate</strong></div>
   <nav aria-label="Moduły wyceny">
    <button class:active={!showSettings&&!showReport&&active==='project'} onclick={()=>{active='project';showSettings=false;showReport=false;}}><Files size={18}/><span>Pliki projektu</span><small class="nav-count">{files.length}</small></button>
    <div class="rail-caption">ETAPY WYCENY</div>
    {#each report.modules as mod}
-    <button class:active={!showSettings&&!showReport&&active===mod.id} title={mod.title+' — '+statusName(mod.status)} onclick={()=>{active=mod.id;showSettings=false;showReport=false;showCalculator=false;}}>
+    <button class:active={!showSettings&&!showReport&&active===mod.id} title={mod.title+' — '+statusName(mod.status)} onclick={()=>{active=mod.id;showSettings=false;showReport=false;showCalculator=false;if(mod.id==='welding')void detectJoints();}}>
      <span class={'stage-dot '+severity(mod.status)}>{mod.status==='verified'?'✓':mod.status==='excluded'?'–':''}</span>
      <span>{mod.title}</span>
     </button>
@@ -281,7 +350,7 @@
   <div class="rail-bottom">
    <button class:active={showReport} onclick={()=>{showReport=true;showSettings=false;}}><ClipboardList size={18}/><span>Stan modułów</span></button>
    <button class:active={showSettings} onclick={()=>{showSettings=true;showReport=false;}}><Settings2 size={18}/><span>Stawki i ustawienia</span></button>
-   <small>DS Estimate 0.3 · zapis lokalny</small>
+   <small>DS Estimate 0.4 · zapis lokalny</small>
   </div>
  </aside>
  <div class="workspace">
@@ -295,6 +364,7 @@
   </header>
   <main>
    {#if !native}<div class="banner info">Podgląd interfejsu. Dodawanie lokalnych plików i analiza CAD działają w programie Windows.</div>{/if}
+   {#if partsResult.error}<div class="banner danger">{partsResult.error}</div>{/if}
    {#if error}<div class="banner danger" role="alert"><div><strong>Nie udało się ukończyć operacji</strong><p>{error}</p></div><button aria-label="Zamknij błąd" onclick={()=>error=''}><X size={16}/></button></div>{/if}
    {#if notice}<div class="banner info" role="status"><span>{notice}</span><button aria-label="Zamknij informację" onclick={()=>notice=''}><X size={16}/></button></div>{/if}
    <div class="page-heading">
@@ -334,39 +404,74 @@
      </div></section>
      <section class="panel"><h2>Geometria i zapis</h2><p>STEP jest odczytywany przez lokalny silnik OCCT. Przeliczenie kosztów korzysta z zapisanego wyniku analizy.</p><dl><dt>Gęstość domyślna</dt><dd>7850 kg/m³</dd><dt>Gatunek bez danych</dt><dd>Puste pole</dd><dt>Ustawienia części i korekty</dt><dd>Zapis lokalny dla wybranego modelu i jego wersji</dd><dt>Dokumentacja</dt><dd>PDF: warstwa tekstowa; DXF, DWG, obrazy i Excel: lista załączników</dd></dl><button onclick={toggleTheme}>{theme==='dark'?'Włącz jasny motyw':'Włącz ciemny motyw'}</button><p class="hint">Zmiana pliku STEP unieważnia jego poprzedni przedmiar. Żaden moduł nie traktuje brakujących czasów jak potwierdzonych zer.</p></section>
     </div>
+
+    <section class="panel"><div class="panel-title"><div><h2>Maszyny i reguły cięcia</h2><p>Wartości startowe są przykładowe, wymagają kalibracji w Twoim zakładzie. Posuw zależy od grubości.</p></div></div>
+     <label class="stacked">Granica preferowanego lasera [mm]<input aria-label="Granica lasera" type="number" min=".1" max="50" value={laserLimit} onchange={e=>{if(e.currentTarget.reportValidity()){laserLimit=Number(e.currentTarget.value);saveAutomation();}}}/></label>
+     {#each Object.entries(machines) as [key,m]}<details class="machine-editor"><summary>{METHOD_LABELS[key]}</summary><div class="form-grid">
+      <label>Przezbrojenie [min]<input type="number" min="0" value={m.setupMin} onchange={e=>changeMachine(key,'setupMin',Number(e.currentTarget.value))}/></label><label>Obsługa cięcia / detalu [min]<input type="number" min="0" step=".1" value={m.handlingMin} onchange={e=>changeMachine(key,'handlingMin',Number(e.currentTarget.value))}/></label>
+      <label>Zakres grubości [mm]<input type="number" min=".1" value={m.maxThickness} onchange={e=>changeMachine(key,'maxThickness',Number(e.currentTarget.value))}/></label>
+      {#if key==='saw'}<label>Wydajność [mm²/min]<input type="number" min=".1" value={m.areaRate} onchange={e=>changeMachine(key,'areaRate',Number(e.currentTarget.value))}/></label>{:else}<label>Przebicie [s]<input type="number" min="0" value={m.pierceSec} onchange={e=>changeMachine(key,'pierceSec',Number(e.currentTarget.value))}/></label>{/if}
+     </div>{#if m.curve}<div class="feed-curve">{#each m.curve as pair,i}<label>{pair[0]} mm<input aria-label={METHOD_LABELS[key]+' posuw '+pair[0]+' mm'} type="number" min="1" value={pair[1]} onchange={e=>{if(e.currentTarget.reportValidity()){const curve=machines[key].curve.map((p,j)=>j===i?[p[0],Number(e.currentTarget.value)]:p);machines={...machines,[key]:{...machines[key],curve}};saveAutomation();}}}/><small>mm/min</small></label>{/each}</div>{/if}</details>{/each}
+    </section>
+    <section class="panel"><h2>Automatyczne normy operacji</h2><p>Geometria jest mierzona; poniższe normy czasu są założeniami do wyceny. Wyniki możesz nadpisać przy operacjach.</p>
+     {#each Object.entries(norms) as [key,n]}<details class="machine-editor"><summary>{MODULES.find(m=>m.id===key)?.title||key}</summary><label class="check"><input type="checkbox" checked={n.enabled} onchange={e=>changeNorm(key,'enabled',e.currentTarget.checked)}/>Używaj automatycznego oszacowania</label><div class="form-grid">{#each Object.entries(n).filter(([field])=>field!=='enabled') as [field,v]}<label>{({setupMin:'Przygotowanie [min]',minutesPerPart:'Czas na detal [min]',minutesPerJoint:'Czas na połączenie [min]',heavyKg:'Próg ciężkiego detalu [kg]',heavyFactor:'Mnożnik ciężkiego detalu',a:'Domyślne a spoiny [mm]',deposition:'Wydajność stapiania [kg/h]',arcFactor:'Wykorzystanie łuku [0–1]',density:'Gęstość stopiwa [kg/m³]',secondsPerBend:'Cykl gięcia [s]',handlingMin:'Manipulacja [min]',removalCm3Min:'Usuwanie materiału [cm³/min]',layers:'Liczba warstw',m2Hour:'Wydajność powłoki [m²/h]',grindMinMeter:'Szlifowanie [min/m]',straightenMin:'Prostowanie [min]',vtMinMeter:'Kontrola VT [min/m]',packingMinPart:'Pakowanie [min/detal]',distanceKm:'Dystans [km]',costKm:'Transport [zł/km]',minutes:'Przygotowanie technologii [min]'} as any)[field]||field}<input type="number" min="0" step="any" value={v} onchange={e=>{if(e.currentTarget.reportValidity())changeNorm(key,field,Number(e.currentTarget.value));}}/></label>{/each}</div></details>{/each}
+     <p class="hint">Powłoki wykorzystują sumę powierzchni detali z B-Rep (z powierzchniami stykowymi); zweryfikuj powierzchnię faktycznie malowaną. CNC z naddatków jest oszacowaniem objętości usuwanej, nie czasem CAM.</p>
+    </section>
    {:else if showReport}
     <section class="panel results-panel"><div class="panel-title"><h2>Gotowość wyceny</h2><span class="pill">{report.completedModules} / {report.totalModules} etapów</span></div>
      <div class="table-scroll"><table><thead><tr><th>Moduł</th><th>Stan</th><th>Brakujące pozycje</th><th>Znany koszt</th><th></th></tr></thead><tbody>{#each report.modules as mod}<tr><td><strong>{mod.title}</strong></td><td><span class={'pill '+severity(mod.status)}>{statusName(mod.status)}</span></td><td>{mod.missing}</td><td>{money(mod.knownCostPln)} zł</td><td><button class="tiny" onclick={()=>{showReport=false;active=mod.id;}}>Otwórz</button></td></tr>{/each}</tbody></table></div>
      <div class="panel-actions"><button disabled={!inventory} onclick={()=>exportStatus('json')}><Download size={15}/>Zapisz raport JSON</button><button disabled={!inventory} onclick={()=>exportStatus('csv')}><Download size={15}/>Zapisz raport CSV</button></div>
     </section><div class="banner info">Potwierdzenie etapu oznacza sprawdzenie danych przez operatora. Nie jest potwierdzeniem pełnej automatyzacji rozpoznawania technologii.</div>
    {:else if inventory&&active!=='project'}
-    <div class="metrics"><article><Scale size={17}/><div><small>Masa konstrukcji</small><strong>{number(totalMass)} <em>kg</em></strong></div></article><article><Layers3 size={17}/><div><small>Półfabrykaty z naddatkami</small><strong>{number(stockMass)} <em>kg</em></strong></div></article><article><Files size={17}/><div><small>Bryły / grupy geometrii</small><strong>{inventory.count} <em>/ {inventory.groups.length}</em></strong></div></article><article><Check size={17}/><div><small>Potwierdzone etapy</small><strong>{report.completedModules} <em>/ {report.totalModules}</em></strong></div></article></div>
+    <div class="metrics"><article><Scale size={17}/><div><small>Masa konstrukcji</small><strong>{number(totalMass)} <em>kg</em></strong></div></article><article><Layers3 size={17}/><div><small>Materiał do przygotowania</small><strong>{number(stockMass)} <em>kg</em></strong></div></article><article><Files size={17}/><div><small>Bryły / grupy geometrii</small><strong>{inventory.count} <em>/ {inventory.groups.length}</em></strong></div></article><article><Check size={17}/><div><small>Potwierdzone etapy</small><strong>{report.completedModules} <em>/ {report.totalModules}</em></strong></div></article></div>
 
     {#if active==='material'}
-     <section class="panel results-panel"><div class="panel-title"><div><h2>Części i materiały</h2><p>Wiersz obejmuje wszystkie wystąpienia identycznej geometrii.</p></div><label class="search"><Search size={15}/><input aria-label="Szukaj grupy części" bind:value={materialQuery} placeholder="Szukaj części…"/></label></div>
-      <div class="table-scroll"><table><thead><tr><th>Grupa części / wyrób</th><th>Szt.</th><th>Gatunek</th><th>Gęstość kg/m³</th><th>Masa / szt.</th><th>Cena zł/kg</th><th>Naddatek pocz. / kon. mm</th><th>Półfabrykat kg/szt.</th></tr></thead><tbody>
-       {#each visibleMaterialRows as item (item.group.geometryId)}
-        {@const g=item.group}{@const m=item.material}{@const solid=inventory.solids.find(s=>s.verifiedShapeKey===g.geometryId)}
-        <tr><td><strong>{g.geometryId}</strong><small class="cell-note">{stockLabels[solid?.stockHint?.kind||'unknown']||'Nierozpoznany'}{solid?.stockHint?.confidence?' · '+solid.stockHint.confidence:''}</small><button class="tiny text" onclick={()=>revealPart(g.geometryId)}>Szczegóły</button></td><td>{g.quantity}</td>
-         <td><select aria-label={'Gatunek '+g.geometryId} value={m?.grade??''} onchange={e=>chooseGrade(g.geometryId,e.currentTarget.value)}>{#each MATERIALS as mat}<option value={mat.grade}>{mat.label}</option>{/each}</select></td>
-         <td><input class="number-input" aria-label={'Gęstość '+g.geometryId} type="number" min="1" value={m?.density??7850} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'density',Number(e.currentTarget.value));}}/></td>
-         <td>{m?number(m.massKg):'—'}<small class="cell-note">kg</small></td>
-         <td><input class="number-input" aria-label={'Cena '+g.geometryId} type="number" min="0" step=".01" placeholder={rates.materialPriceKg===null?'—':String(rates.materialPriceKg)} value={partMaterials[g.geometryId]?.price??''} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'price',e.currentTarget.value===''?null:Number(e.currentTarget.value));}}/></td>
-         <td><div class="paired"><input aria-label={'Naddatek początek '+g.geometryId} type="number" min="0" step=".1" value={m?.allowStart??0} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'allowStart',Number(e.currentTarget.value));}}/><span>/</span><input aria-label={'Naddatek koniec '+g.geometryId} type="number" min="0" step=".1" value={m?.allowEnd??0} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'allowEnd',Number(e.currentTarget.value));}}/></div></td>
-         <td><input class="number-input" aria-label={'Znana masa półfabrykatu '+g.geometryId} title="Puste = szacunek z naddatków. Wpisz znaną masę, aby ją przyjąć." type="number" min="0" step=".001" placeholder={m?number(m.stockMassKg):'—'} value={partMaterials[g.geometryId]?.stockMassKg??''} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(g.geometryId,'stockMassKg',e.currentTarget.value===''?null:Number(e.currentTarget.value));}}/>{#if item.error}<small class="cell-note bad">{item.error}</small>{/if}</td>
+     <section class="panel results-panel"><div class="panel-title"><div><h2>Części i materiały</h2><p>Każde wystąpienie ma własny materiał, wymiary, naddatki i realizację. Dopasowanie katalogowe sprawdź z dokumentacją.</p></div><label class="search"><Search size={15}/><input aria-label="Szukaj grupy części" bind:value={materialQuery} placeholder="Szukaj części…"/></label></div>
+      <div class="table-scroll"><table><thead><tr><th>Detal / przekrój</th><th>Wymiary [mm]</th><th>Realizacja</th><th>Gatunek</th><th>Gęstość kg/m³</th><th>Masa [kg]</th><th>Cena</th><th>Naddatki / półfabrykat</th></tr></thead><tbody>
+       {#each visibleParts as p (p.id)}
+        <tr><td><strong>{p.name}</strong><small class="cell-note">{p.id} · grupa {p.geometryKey}</small><small class="cell-note">{sectionCatalog.sections.find(c=>c.id===p.catalogId)?.name||p.solid.stockHint?.catalogDesignation||stockLabels[p.stockKind||p.solid.stockHint?.kind||'unknown']||'Nierozpoznany'}</small><button class="tiny text" onclick={()=>editPart(p.id)}>Parametry / biblioteka</button></td>
+         <td>{p.dims.map(number).join(' × ')}<small class="cell-note">{p.solid.stockHint?.catalogStatus==='multiple-fits'?'Kilka pasujących przekrojów — wybierz':p.solid.bendHint?.count?'Gięcia: '+p.solid.bendHint.count+' (kandydat)':''}</small></td>
+         <td><select aria-label={'Realizacja '+p.id} value={p.route} onchange={e=>changeMaterial(p.id,'route',e.currentTarget.value)}>{#each Object.entries(ROUTES) as [id,label]}<option value={id}>{label}</option>{/each}</select></td>
+         <td><select aria-label={'Gatunek '+p.id} value={p.grade} onchange={e=>chooseGrade(p.id,e.currentTarget.value)}>{#each MATERIALS as mat}<option value={mat.grade}>{mat.label}</option>{/each}</select></td>
+         <td><input class="number-input" aria-label={'Gęstość '+p.id} type="number" min="1" value={p.density} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(p.id,'density',Number(e.currentTarget.value));}}/></td>
+         <td>{number(p.massKg)}</td>
+         <td>{#if p.route==='make'}<input class="number-input" aria-label={'Cena materiału '+p.id} type="number" min="0" step=".01" placeholder={rates.materialPriceKg===null?'—':String(rates.materialPriceKg)} value={partMaterials[p.id]?.price??''} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(p.id,'price',e.currentTarget.value===''?null:Number(e.currentTarget.value));}}/><small class="cell-note">zł/kg</small>{:else}<input class="number-input" aria-label={'Cena dostawcy '+p.id} type="number" min="0" step=".01" placeholder="—" value={p.supplierPrice??''} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(p.id,'supplierPrice',e.currentTarget.value===''?null:Number(e.currentTarget.value));}}/><small class="cell-note">zł / detal</small>{/if}</td>
+         <td><button class="tiny" aria-label={'Naddatki '+p.id} onclick={()=>editPart(p.id)}>{p.allowances.some(v=>v>0)?'Ustawione':'+ Dodaj'}</button><small class="cell-note">{number(p.stockMassKg)} kg</small></td>
         </tr>
        {/each}
       </tbody></table></div>
       <div class="panel-actions"><label class="check"><input type="checkbox" bind:checked={materialApproved} onchange={()=>{confirmed={...confirmed,material:false};saveProject();}}/>Potwierdzam gęstości, ceny i zakres materiału</label><span class="muted">Gatunek może pozostać pusty.</span></div>
      </section>
-     <p class="hint">Naddatki są liczone na długości półfabrykatu według wymiaru rozpoznanego przekroju lub najdłuższego boku bbox. To szacunek; dla nietypowej części wpisz znaną masę półfabrykatu. Naddatek nie zmienia masy gotowej konstrukcji.</p>
+     <p class="hint">Naddatki ustawiasz na sześciu stronach każdego detalu. Masa półfabrykatu z powiększonych gabarytów jest szacunkiem; dla profili preferuj naddatek długości, dla nietypowych części podaj znaną masę. Zakup i kooperacja są rozliczane osobno.</p>
     {/if}
 
+
+    {#if active==='cutting'}
+     <section class="panel results-panel"><div class="panel-title"><div><h2>Plan cięcia detali</h2><p>Blacha ≤ {laserLimit} mm: laser. Profile: piła. Przezbrojenie raz na partię.</p></div><span class="pill">{cutPlan.batches.length} partii</span></div>
+      {#if cutPlan.error}<div class="banner danger">{cutPlan.error}</div>{/if}
+      <div class="table-scroll"><table><thead><tr><th>Detal / partia</th><th>Technologia</th><th>Podstawa geometryczna</th><th>Praca [min]</th><th>Przezbrojenie [min]</th><th>Razem [min]</th><th></th></tr></thead><tbody>
+       {#each cutPlan.rows as row}<tr><td><strong>{row.name}</strong><small class="cell-note">{row.batchKey}</small></td><td>{METHOD_LABELS[row.method]||'Do ustalenia'}</td><td>{row.method==='saw'?(row.sectionArea===null?'Brak pola przekroju':number(row.sectionArea)+' mm²'):(row.contour===null?'Brak konturu':number(row.contour)+' mm · '+row.pierces+' przebić')}<small class="cell-note">{row.notes.join(' ')}</small></td><td>{row.runMin===null?'—':number(row.runMin)}</td><td>{number(row.setupMin)}</td><td>{row.minutes===null?'—':number(row.minutes)}</td><td><button class="tiny" onclick={()=>editPart(row.id)}>Parametry</button></td></tr>{/each}
+      </tbody></table></div>
+      <div class="panel-actions"><span class="muted">Posortowano według maszyny, materiału i przekroju / grubości. Zakup i kooperacja pominięte.</span></div>
+     </section>
+    {/if}
+    {#if active==='welding'}
+     <section class="panel results-panel"><div class="panel-title"><div><h2>Styki i proponowane spoiny</h2><p>Geometria wyznacza styk i długość. Potwierdź zamiar spawania, przekrój i dostęp.</p></div><button disabled={busy||jointBusy||!!contacts} onclick={detectJoints}>{jointBusy?'Analiza…':contacts?'Przeanalizowano STEP':'Wykryj styki STEP'}</button></div>
+      {#if contacts&&automatic.welds}
+       <div class="table-scroll"><table><thead><tr><th>Detale</th><th>Uwzględnij</th><th>Typ</th><th>Długość [mm]</th><th>a [mm] / pole [mm²]</th><th>Stopiwo kg/m³</th><th>Czas [min]</th></tr></thead><tbody>{#each automatic.welds.rows as row}<tr><td><strong>{jointName(row.partA)} / {jointName(row.partB)}</strong><small class="cell-note">Kandydat · {row.contactAreaMm2} mm² styku · faza nieustalona</small></td><td><input aria-label={'Uwzględnij '+row.id} type="checkbox" checked={row.enabled} onchange={e=>changeJoint(row.id,'enabled',e.currentTarget.checked)}/></td><td><select aria-label={'Typ spoiny '+row.id} value={row.type} onchange={e=>changeJoint(row.id,'type',e.currentTarget.value)}><option value="fillet">Pachwinowa</option><option value="butt">Czołowa / rowek</option></select></td><td><input class="number-input" aria-label={'Długość spoiny '+row.id} type="number" min="0" step="any" value={row.lengthMm} onchange={e=>{if(e.currentTarget.reportValidity())changeJoint(row.id,'lengthMm',Number(e.currentTarget.value));}}/></td><td><input class="number-input" aria-label={'Przekrój spoiny '+row.id} type="number" min=".1" step=".1" value={row.type==='fillet'?row.a:row.sectionMm2} onchange={e=>{if(e.currentTarget.reportValidity())changeJoint(row.id,row.type==='fillet'?'a':'sectionMm2',Number(e.currentTarget.value));}}/></td><td><input class="number-input" aria-label={'Gęstość stopiwa '+row.id} type="number" min="1" value={row.density??row.defaultDensity??norms.welding.density} onchange={e=>{if(e.currentTarget.reportValidity())changeJoint(row.id,'density',Number(e.currentTarget.value));}}/></td><td>{number(row.minutes)}</td></tr>{/each}</tbody></table></div>
+       <div class="panel-actions"><strong>{number(automatic.welds.totalLengthMm/1000)} m proponowanych spoin · {number(automatic.welds.minutes)} min</strong><span class="pill">{contacts.complete?'Analiza styków zakończona':'Wynik częściowy'}</span></div>
+       {#if automatic.welds.groups.length}<div class="weld-groups">{#each automatic.welds.groups as g}<span class="pill">{g.type==='fillet'?'Pachwinowa a'+g.a:'Czołowa '+g.sectionMm2+' mm²'} · {number(g.lengthMm/1000)} m · {number(g.minutes)} min</span>{/each}</div>{/if}
+       {#each contacts.issues??[] as issue}<p class="hint padded">{issue}</p>{/each}
+       <p class="hint padded">Obwód ścian styku jest propozycją spawania dookoła. Początkowe a pochodzi z 0,7 × mniejsza grubość (do limitu z norm); to założenie kosztowe, nie dobór wytrzymałości spoiny. Ściany podzielone, mocowania, śruby i połączenia niespawane wymagają wyłączenia lub korekty. Wykrywanie faz nie jest jeszcze automatyczne.</p>
+      {:else}<div class="padded"><p>Silnik analizuje rzeczywiste ściany B-Rep. Brak wyniku nie oznacza zerowej długości spoin.</p></div>{/if}
+     </section>
+    {/if}
+    {#if automatic.error}<div class="banner danger">{automatic.error}</div>{/if}
     <section class="panel results-panel">
      <div class="panel-title"><div><h2>{active==='material'?'Koszt materiału':'Operacje — '+selected.title}</h2><p>Automat i wartość przyjęta są rozdzielone. Korekta pozostaje po zmianie stawek.</p></div><span class={'pill '+severity(selected.status)}>{statusName(selected.status)}</span></div>
      {#if selected.status==='error'}<div class="banner danger" role="alert">{selected.error}</div>{/if}
-     <div class="table-scroll"><table><thead><tr><th>Operacja</th><th>Podstawa</th><th>Automat {active==='material'||active==='purchased'?'[zł]':'[h]'}</th><th>Przyjęto {active==='material'||active==='purchased'?'[zł]':'[h]'}</th><th>Koszt [zł]</th><th></th></tr></thead><tbody>
-      {#each selected.rows as row (row.key)}<tr><td>{#if row.key.startsWith('custom-')}<input class="edit-label" aria-label="Nazwa operacji" value={row.name} onchange={e=>renameOperation(row.key,e.currentTarget.value)}/>{:else}<strong>{row.name}</strong>{/if}{#if row.manuallyEdited}<small class="cell-note accent">Korekta ręczna</small>{/if}</td><td class="basis">{row.detail}</td><td>{autoText(row)}</td><td><input class:overridden={row.manuallyEdited} class="number-input" type="number" min="0" step=".01" aria-label={'Przyjęto '+row.name} placeholder="—" value={row.value??''} disabled={selected.omitted} onchange={e=>editValue(active,row.key,e.currentTarget.value)}/></td><td class="cost">{row.costPln===null?'—':money(row.costPln)}</td><td>{#if row.manuallyEdited}<button class="icon-button" aria-label={'Przywróć automat '+row.name} title="Przywróć obliczenie automatyczne" onclick={()=>resetValue(active,row.key)}><RotateCcw size={14}/></button>{/if}</td></tr>{/each}
+     <div class="table-scroll"><table><thead><tr><th>Operacja</th><th>Podstawa</th><th>Automat</th><th>Przyjęto</th><th>Koszt [zł]</th><th></th></tr></thead><tbody>
+      {#each selected.rows as row (row.key)}<tr><td>{#if row.key.startsWith('custom-')}<input class="edit-label" aria-label="Nazwa operacji" value={row.name} onchange={e=>renameOperation(row.key,e.currentTarget.value)}/>{:else}<strong>{row.name}</strong>{/if}<small class="cell-note">{row.kind==='time'?'godziny [h]':'kwota [zł]'}</small>{#if row.manuallyEdited}<small class="cell-note accent">Korekta ręczna</small>{/if}</td><td class="basis">{row.detail}</td><td>{autoText(row)}</td><td><input class:overridden={row.manuallyEdited} class="number-input" type="number" min="0" step=".01" aria-label={'Przyjęto '+row.name} placeholder="—" value={row.value??''} disabled={selected.omitted} onchange={e=>editValue(active,row.key,e.currentTarget.value)}/></td><td class="cost">{row.costPln===null?'—':money(row.costPln)}</td><td>{#if row.manuallyEdited}<button class="icon-button" aria-label={'Przywróć automat '+row.name} title="Przywróć obliczenie automatyczne" onclick={()=>resetValue(active,row.key)}><RotateCcw size={14}/></button>{/if}</td></tr>{/each}
      </tbody></table></div>
      <div class="panel-actions"><button class="subtle" onclick={addOperation} disabled={selected.omitted}><Plus size={15}/>Dodaj operację</button><div class="checks"><label class="check"><input type="checkbox" checked={selected.omitted} onchange={e=>toggleExcluded(e.currentTarget.checked)}/>Nie dotyczy</label><label class="check"><input type="checkbox" checked={confirmed[active]===true} disabled={selected.missing>0||selected.omitted||selected.status==='error'} onchange={e=>toggleConfirmed(e.currentTarget.checked)}/>Potwierdź etap</label></div></div>
     </section>
