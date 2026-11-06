@@ -57,6 +57,12 @@ def main():
  (a.output/'reference.json').write_text(json.dumps(ref,indent=2),encoding='utf8')
  if not a.reference_only:
   error=abs(data['totalMassKg']-ref['massKgAt7850'])/ref['massKgAt7850'];assert error<.001,('Mass mismatch',error)
-  result={**ref,'programMassKgAt7850':data['totalMassKg'],'relativeMassError':error,'engineVersion':data['engineVersion'],'mode':'compiled Windows engine' if a.compiled else 'source OCCT engine','elapsedSeconds':time.monotonic()-start,'status':'PASS','limitations':['Uniform steel density is a comparison assumption, not a verified finished machine weight.','Contact candidates are not a reference weld schedule.','Human assembly includes purchased hardware and multi-body components; solid count is not BOM quantity.']}
+  analytic={}
+  for name,volume in [('Assembly Base Plate',412.75*336.55*6.35),('Spacer_Jack Spacer',76.2*76.2*4.7625),('Spacer_Jack Locating Guide',12.7*76.2*4.7625)]:
+   found=[x for x in data['solids'] if x['name']==name];assert found,name
+   expected=volume*7850/1e9
+   for row in found:assert abs(row['massKg']-expected)<1e-5,(name,row['massKg'],expected)
+   analytic[name]={'count':len(found),'formulaMassKg':expected,'programMassKgEach':[x['massKg'] for x in found]}
+  result={**ref,'analyticChecks':analytic,'programMassKgAt7850':data['totalMassKg'],'relativeMassError':error,'engineVersion':data['engineVersion'],'mode':'compiled Windows engine' if a.compiled else 'source OCCT engine','elapsedSeconds':time.monotonic()-start,'status':'PASS','limitations':['Uniform steel density is a comparison assumption, not a verified finished machine weight.','Contact candidates are not a reference weld schedule.','Human assembly includes purchased hardware and multi-body components; solid count is not BOM quantity.']}
   (a.output/'comparison.json').write_text(json.dumps(result,indent=2),encoding='utf8');print(json.dumps(result),flush=True)
 if __name__=='__main__':main()

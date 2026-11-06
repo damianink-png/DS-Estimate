@@ -7,9 +7,11 @@
 - Montaż/sczepianie oparto na grafie aktywnych połączeń części produkowanych. Części bez połączenia nie zwiększają czasu montażu spawanego. Każdy podzespół ma przygotowanie; wspólny detal liczony jest raz. Typ części wpływa na dopasowanie. Manipulacja zależy od masy podzespołu, gabarytu i grup normalnych kontaktu; nie jest zoptymalizowaną kolejnością obrotów.
 - Gięcie uwzględnia długość linii, grubość i masę. Przygotowanie liczone jest na grupę materiał / gęstość / grubość / promień. Brak promienia przy ręcznym dodaniu gięcia jest jawny. Rzeczywisty dobór narzędzi i kolejność wymagają sprawdzenia.
 - Prostowanie jest rezerwą po przekroczeniu edytowalnych progów długości i ilości stopiwa na metr. Nie jest symulacją odkształceń. Szlifowanie pachwin domyślnie wyłączono; spoiny czołowe nadal mają normę szlifowania.
-- Nazwane standardowe śruby, podkładki, nakrętki oraz bottle jack są proponowane jako zakup. Ręczny wybór realizacji ma pierwszeństwo. Pomijane są w automatycznej analizie spoin. Nie rozpoznaje to wszystkich połączeń skręcanych i elementów kupowanych.
+- Nazwane standardowe śruby, podkładki, nakrętki oraz bottle jack i electrical enclosure są proponowane jako zakup. Ręczny wybór realizacji ma pierwszeństwo. Pomijane są w automatycznej analizie spoin. Nie rozpoznaje to wszystkich połączeń skręcanych i elementów kupowanych.
 - Generyczne nazwy NAUO i referencje etykiet XCAF ustępują opisowej nazwie produktu. Pomiary i rozpoznanie geometrii są współdzielone wyłącznie w grupach, których zgodność została sprawdzona.
 - Pythonocc i OCP korzystają ze wspólnego adaptera wywołań przedmiaru. Lokalny test używa teraz rzeczywistego kodu aplikacji, bez modyfikowania kopii algorytmu.
+
+Całkowanie powierzchni B-Rep korzysta z adaptacyjnej tolerancji względnej 10⁻⁷. Usuwa to bardzo długie obliczenia objętości niektórych powierzchni splajnowych modeli dostawców; nie zastępuje pomiaru siatką podglądu.
 
 ## Modele zaprojektowane przez ludzi
 

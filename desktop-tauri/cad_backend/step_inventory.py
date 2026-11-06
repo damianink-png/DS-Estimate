@@ -156,6 +156,7 @@ def inventory(path, density=7850.0):
     original_signatures = []
     original_rigid_eligible = []
     original_mass = []
+    original_area = []
     index = ShapeCandidateIndex()
     occurrence_count = {}
     # Representatives alone are insufficient: tolerant Boolean equivalence is not transitive.
@@ -338,11 +339,19 @@ def inventory(path, density=7850.0):
     compare_start = time.perf_counter()
     for occurrence in occurrences:
         solid = occurrence['shape']
+        if profile:print('[DS-CAD-DETAIL] '+json.dumps({'solid':len(solids)+1,'name':occurrence.get('name',''),'stage':'properties'}),file=sys.stderr,flush=True)
         property_started = time.perf_counter()
-        vp, ap = GProp_GProps(), GProp_GProps()
-        brepgprop_VolumeProperties(solid, vp)
-        brepgprop_SurfaceProperties(solid, ap)
-        volume = float(vp.Mass())
+        # IsPartner verifies identical underlying topology. Reuse scalar
+        # properties only under proper rigid locations and equal orientation.
+        partner=next((i for i,o in enumerate(originals) if solid.IsPartner(o) and solid.Orientation()==o.Orientation() and abs(solid.Location().Transformation().ScaleFactor()-1)<1e-12 and abs(o.Location().Transformation().ScaleFactor()-1)<1e-12),None)
+        vp,ap=GProp_GProps(),GProp_GProps()
+        if partner is None:
+            brepgprop_VolumeProperties(solid,vp);brepgprop_SurfaceProperties(solid,ap)
+            volume=float(vp.Mass());area=float(ap.Mass());center=vp.CentreOfMass()
+        else:
+            volume=original_mass[partner];area=original_area[partner]
+            transform=solid.Location().Transformation().Multiplied(originals[partner].Location().Transformation().Inverted())
+            center=original_centers[partner].Transformed(transform)
         if not math.isfinite(volume) or volume <= 0:
             raise ValueError(f"Invalid volume for solid {len(solids)+1}")
         bounds = Bnd_Box()
@@ -350,7 +359,6 @@ def inventory(path, density=7850.0):
         xmin,ymin,zmin,xmax,ymax,zmax = bounds.Get()
         dims = [xmax-xmin,ymax-ymin,zmax-zmin]
         # Volume/area only generate candidates. Never merge by fingerprints.
-        area = float(ap.Mass())
         property_seconds += time.perf_counter() - property_started
         candidates = index.candidates(volume, area)
         candidate_pairs += len(candidates)
@@ -362,7 +370,6 @@ def inventory(path, density=7850.0):
                 method = "OCCT_IsPartner"
                 partner_hits += 1
                 break
-        center = vp.CentreOfMass()
         signature = None
         rigid_eligible = None
         if existing is None:
@@ -426,6 +433,7 @@ def inventory(path, density=7850.0):
             original_signatures.append(signature)
             original_rigid_eligible.append(rigid_eligible if rigid_eligible is not None else has_unique_inertia_axes(vp))
             original_mass.append(volume)
+            original_area.append(area)
             index.insert(existing, volume, area)
         # Face-area multisets are expensive and unnecessary for partner/translation
         # matches. Materialize them only if rigid validation actually needs them.
@@ -436,7 +444,7 @@ def inventory(path, density=7850.0):
         stage_start=time.perf_counter()
         if existing in manufacturing_cache:
             cut_hint,stock_hint,features=copy.deepcopy(manufacturing_cache[existing])
-        elif re.search(r'\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack\b|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b',occurrence.get('name',''),re.I):
+        elif re.search(r'\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\b(?:bottle[ _-]jack|electrical[ _-]enclosure)\b|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b',occurrence.get('name',''),re.I):
             cut_hint=None;stock_hint={'kind':'purchased-component','source':'standard component name; routing can be overridden'};features={'bendHint':None}
         else:
             if profile:print('[DS-CAD-DETAIL] '+json.dumps({'solid':len(solids)+1,'name':occurrence.get('name',''),'stage':'manufacturing'}),file=sys.stderr,flush=True)
@@ -580,7 +588,7 @@ def inventory(path, density=7850.0):
             f"Some duplicates may remain ungrouped: translation budget={skipped_translation}, "
             f"complex B-Rep={skipped_complex}, degenerate rigid orientation={skipped_degenerate}, "
             f"rigid budget={skipped_rigid}. These are NOT verified duplicates.")
-    return {"engineVersion":"0.7.0","source": str(path), "previews":previews,"importIssues":import_issues,"solids": solids, "groups": groups, "count": len(solids),
+    return {"engineVersion":"0.7.0","integrationToleranceRelative":1e-7,"source": str(path), "previews":previews,"importIssues":import_issues,"solids": solids, "groups": groups, "count": len(solids),
             "totalMassKg": sum(x["massKg"] for x in solids),
             "matchingDiagnostics": diagnostics,
             "limitations": limitations}

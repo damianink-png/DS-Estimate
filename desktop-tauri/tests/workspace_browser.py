@@ -77,6 +77,10 @@ try:
   assert page.evaluate("window.__calls.filter(x=>x.cmd==='analyze_step').length")==1
   page.get_by_role('button',name='Spawanie',exact=True).click()
   page.get_by_role('button',name='Przeanalizowano STEP',exact=True).wait_for()
+  assert page.get_by_label('Typ spoiny solid-1|solid-2',exact=True).count()==0
+  page.get_by_role('button',name='Detale / materiał',exact=True).click()
+  page.get_by_label('Realizacja solid-1',exact=True).select_option('make')
+  page.get_by_role('button',name='Spawanie',exact=True).click()
   before=page.get_by_label('Przyjęto Wykonanie spoin',exact=True).input_value()
   page.get_by_label('Typ spoiny solid-1|solid-2',exact=True).select_option('butt')
   assert page.get_by_label('Przyjęto Wykonanie spoin',exact=True).input_value()!=before

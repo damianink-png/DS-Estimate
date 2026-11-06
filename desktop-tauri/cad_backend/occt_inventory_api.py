@@ -38,3 +38,12 @@ except ImportError:
  brepbndlib_Add=BRepBndLib.Add_s
  topods=SimpleNamespace(Face=TopoDS.Face_s,Wire=TopoDS.Wire_s,Vertex=TopoDS.Vertex_s)
  BRep_Tool=SimpleNamespace(Pnt=Tool.Pnt_s)
+
+# Adaptive B-Rep integration bounds cost on vendor spline surfaces. This is
+# still surface integration, not a display mesh approximation. Requested
+# relative integration tolerance is 1e-7; exact analytic solids are unchanged.
+_is_ocp=GProp_GProps.__module__.startswith("OCP")
+_native_volume=brepgprop_VolumeProperties
+_native_surface=brepgprop_SurfaceProperties
+def brepgprop_VolumeProperties(shape,props):return _native_volume(shape,props,Eps=1e-7) if _is_ocp else _native_volume(shape,props,1e-7)
+def brepgprop_SurfaceProperties(shape,props):return _native_surface(shape,props,Eps=1e-7) if _is_ocp else _native_surface(shape,props,1e-7)

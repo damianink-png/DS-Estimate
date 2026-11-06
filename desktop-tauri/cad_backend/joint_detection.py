@@ -84,7 +84,7 @@ def analyze_joints(path):
     try:from .assembly_names import read_occurrences
     except ImportError:from assembly_names import read_occurrences
     items,issues=read_occurrences(path)
-    excluded=[i for i,p in enumerate(items) if re.search(r'\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack\b|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b',p.get('name',''),re.I)]
+    excluded=[i for i,p in enumerate(items) if re.search(r'\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\b(?:bottle[ _-]jack|electrical[ _-]enclosure)\b|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b',p.get('name',''),re.I)]
     result=detect_contacts([p['shape'] for p in items],excluded=excluded)
     if issues:result['issues']+=issues;result['complete']=False
     return result
