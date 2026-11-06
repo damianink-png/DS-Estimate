@@ -14,10 +14,17 @@ def run_accessibility_test(pid,exe,step,out):
   raise AssertionError('Native control missing: '+name)
  def press(name):
   control=find(name)
+  assert control.is_enabled(),'Native button disabled: '+name
   try:control.invoke()
   except Exception:control.click_input()
  def enter(name,value):
-  control=find(name);control.set_focus();control.type_keys('^a'+value+'{TAB}',with_spaces=True,pause=.02)
+  control=find(name)
+  try:control.iface_value.SetValue(value)
+  except Exception:control.iface_range_value.SetValue(float(value))
+  time.sleep(.3)
+  try:actual=str(control.iface_value.CurrentValue)
+  except Exception:actual=str(control.iface_range_value.CurrentValue)
+  assert actual==str(value) or (name.startswith('Przekrój') and float(actual.replace(',','.'))==float(value)),'Native input value was not set: '+actual
  def value(name):
   control=find(name)
   try:return str(control.iface_value.CurrentValue)
@@ -40,10 +47,7 @@ def run_accessibility_test(pid,exe,step,out):
   image=find('Podgląd 3D: Płyta P-015');r=image.rectangle();assert r.height()>=240
   before=ImageGrab.grab(bbox=(r.left,r.top,r.right,r.bottom)).convert('RGB')
   assert sum(1 for red,green,blue in before.getdata() if red>45 and green>65 and blue>65)>500,'Native preview has no visible faces'
-  cx,cy=(r.left+r.right)//2,(r.top+r.bottom)//2
-  mouse.press(coords=(cx,cy))
-  for i in range(1,7):mouse.move(coords=(cx+i*10,cy+round(i*20/6)));time.sleep(.05)
-  mouse.release(coords=(cx+60,cy+20));mouse.move(coords=(r.right+10,r.bottom+10));time.sleep(.4)
+  press('Obróć podgląd w prawo');time.sleep(.4)
   after=ImageGrab.grab(bbox=(r.left,r.top,r.right,r.bottom)).convert('RGB');diff=ImageChops.difference(before,after)
   assert sum(1 for pixel in diff.getdata() if max(pixel)>10)>1000,'Native preview did not rotate'
   screenshot('installed-part-preview.png');press('Zamknij parametry');press('Spawanie')

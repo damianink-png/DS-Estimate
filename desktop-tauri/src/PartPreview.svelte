@@ -25,6 +25,6 @@
  onpointermove={e=>{if(dragging){yaw+=(e.clientX-lastX)*.01;pitch+=(e.clientY-lastY)*.01;lastX=e.clientX;lastY=e.clientY;}}}>
  <title>{name}</title>{#each projected as tri}<polygon points={tri.points} fill={'hsl(200 25% '+tri.shade+'%)'} stroke="rgba(20,40,55,.14)" stroke-width=".3"/>{/each}
  </svg>
- <div class="panel-actions"><small>Przeciągnij, aby obrócić{partial?' · podgląd uproszczony':''}</small><button type="button" onclick={()=>zoom=Math.max(.3,zoom-.2)}>−</button><button type="button" onclick={()=>zoom=Math.min(3,zoom+.2)}>+</button><button type="button" onclick={()=>{yaw=.6;pitch=-.45;zoom=1;}}>Reset</button></div>
+ <div class="panel-actions"><small>Przeciągnij, aby obrócić{partial?' · podgląd uproszczony':''}</small><button type="button" aria-label="Obróć podgląd w lewo" onclick={()=>yaw-=.3}>↶</button><button type="button" aria-label="Obróć podgląd w prawo" onclick={()=>yaw+=.3}>↷</button><button type="button" onclick={()=>zoom=Math.max(.3,zoom-.2)}>−</button><button type="button" onclick={()=>zoom=Math.min(3,zoom+.2)}>+</button><button type="button" onclick={()=>{yaw=.6;pitch=-.45;zoom=1;}}>Reset</button></div>
  {/if}
 </div>
