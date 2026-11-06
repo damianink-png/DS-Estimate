@@ -13,9 +13,9 @@ function rowValue(entry,override){
  */
 export function evaluateModules({
  inventory=null, pdfText='',rates=DEFAULT_RATES,edits={},
- confirmed={},excluded={},custom={},grade='unknown',materialApproved=false,partMaterials=null,cuttingPlan=null,automation=null
+ confirmed={},excluded={},custom={},grade='unknown',materialApproved=false,partMaterials=null,materialPrices=null,cuttingPlan=null,automation=null
 }={}){
- const settings={rates,grade,materialApproved,pdfText,partMaterials,cuttingPlan,automation};
+ const settings={rates,grade,materialApproved,pdfText,partMaterials,materialPrices,cuttingPlan,automation};
  const modules=MODULES.map(mod=>{
   try{
    let own=mod.rows({inventory,settings});
@@ -43,7 +43,7 @@ export function evaluateModules({
    if(rows.some(r=>r.costPln!==null&&!Number.isFinite(r.costPln)))throw new RangeError('Przekroczono zakres kosztu operacji');
    const missing=rows.filter(x=>x.costPln===null).length;
    const full=rows.length>0 && missing===0;
-   const omitted=excluded[mod.id]===true;
+   const omitted=excluded[mod.id]??(automation?.disabledModules?.includes(mod.id)??false);
    const status=omitted?'excluded':!inventory?'idle':!full?
      (missing===rows.length?'missing':'partial'):
      confirmed[mod.id]?'verified':'review';

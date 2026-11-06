@@ -289,8 +289,19 @@ def recognize_stock(solid, bounds, plate_hint=None):
                     if best is None or length>best[0]:best=(length,a,b)
                     if length>1e-6:directions.append((length,gp_Dir(b.X()-a.X(),b.Y()-a.Y(),b.Z()-a.Z())))
                 edges.Next()
-            if best and best[0]>0:
-                _,a,b=best;direction=gp_Dir(b.X()-a.X(),b.Y()-a.Y(),b.Z()-a.Z())
+            # Try independent edge axes and cylindrical axes. The longest edge
+            # can belong to a bevel or flange rather than the extrusion axis.
+            for raw in api.shapes(solid,api.TopAbs_FACE):
+                surface=api.BRepAdaptor_Surface(api.face_cast(raw))
+                if surface.GetType()==api.GeomAbs_Cylinder:
+                    directions.append((max((v[0] for v in directions),default=1),surface.Cylinder().Axis().Direction()))
+                elif surface.GetType()==api.GeomAbs_Plane:
+                    directions.append((0,surface.Plane().Axis().Direction()))
+            axes=[]
+            for length,d in sorted(directions,key=lambda item:-item[0]):
+                if not any(abs(d.Dot(old))>.99999 for old in axes):axes.append(d)
+            best_local=None
+            for direction in axes[:8]:
                 cross=next((d for _,d in sorted(directions,key=lambda item:-item[0]) if abs(d.Dot(direction))<.001),None)
                 frame=gp_Ax3(gp_Pnt(0,0,0),direction,cross) if cross is not None else gp_Ax3(gp_Pnt(0,0,0),direction)
                 tr=gp_Trsf();tr.SetTransformation(frame)
@@ -298,8 +309,13 @@ def recognize_stock(solid, bounds, plate_hint=None):
                 local_hint=api.plate_hint(local)
                 candidate=_recognize_axis_stock(local,box.Get(),local_hint)
                 local_dims=sorted((b-a for a,b in zip(box.Get()[:3],box.Get()[3:])),reverse=True)
-                if candidate.get('kind')!='unknown':result={**candidate,'localFrame':'longest straight B-Rep edge','localDimsMm':local_dims}
+                if best_local is None or math.prod(local_dims)<math.prod(best_local):best_local=local_dims
+                if candidate.get('kind')!='unknown':
+                    result={**candidate,'localFrame':'B-Rep edge/face axis','localDimsMm':local_dims}
+                    if local_hint:result['localCuttingHint']=local_hint
+                    break
                 if local_hint:result={**result,'localCuttingHint':local_hint}
+            if best_local and 'localDimsMm' not in result:result['localDimsMm']=best_local
         except Exception:
             pass # An unsupported orientation stays unknown; never a bbox-only match.
     if result.get('kind')!='unknown':

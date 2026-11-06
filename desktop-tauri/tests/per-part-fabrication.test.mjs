@@ -44,7 +44,7 @@ test('contact estimates preserve operator corrections and disabled non-welded in
 });
 test('rounded stock corners never cause a press-brake operation without an explicit override',()=>{
  const s={...solid('tube'),stockHint:{kind:'square-hollow'},bendHint:{count:4}};
- let parts=partsList({solids:[s]}, {},5);assert.equal(automaticOperations(parts,null).modules.bending,undefined);
+ let parts=partsList({solids:[s]}, {},5);assert.deepEqual(automaticOperations(parts,null).modules.bending,{setup:0,bends:0});
  parts[0].bendCount=1;assert.ok(automaticOperations(parts,null).modules.bending.bends>0);
 });
 test('CNC from allowances, gross coating area and transport use explicit editable assumptions',()=>{
@@ -52,4 +52,20 @@ test('CNC from allowances, gross coating area and transport use explicit editabl
  const n={...NORMS,coating:{...NORMS.coating,enabled:true},logistics:{...NORMS.logistics,enabled:true,distanceKm:100,costKm:4}};
  const auto=automaticOperations(p,null,{},n);assert.ok(auto.modules.cnc.milling>0);assert.equal(auto.areaM2,.02);assert.ok(auto.modules.coating.paint>0);assert.equal(auto.extraRows.logistics[0].autoAmount,400);
  assert.ok(Math.abs(bendAllowance({angleDeg:90,radiusMm:3,thicknessMm:2,kFactor:.4})-Math.PI/2*3.8)<1e-10);
+});
+
+test('material prices follow selected grade without per-detail approval or price entry',()=>{
+ const prices={'':5,S235JR:7,'1.4301':20};const prefs={a:{...partDefaults(),grade:'S235JR'},b:{...partDefaults(),grade:'1.4301'}};
+ const parts=partsList(inventory,prefs,prices);assert.equal(parts[0].price,7);assert.equal(parts[1].price,20);
+ const quote=evaluateModules({inventory,partMaterials:prefs,materialPrices:prices,rates:{materialPriceKg:null}});
+ assert.ok(quote.modules.find(m=>m.id==='material').knownCostPln>0);
+ prices.S235JR=10;assert.equal(partsList(inventory,prefs,prices)[0].price,10);
+});
+test('weld type edits recalculate welding and postweld while assembly includes tacks and turns',()=>{
+ const parts=partsList(inventory,{},5),contacts={complete:true,candidates:[{id:'a|b',partA:'a',partB:'b',lengthMm:1000}]};
+ const a=automaticOperations(parts,contacts),b=automaticOperations(parts,contacts,{'a|b':{type:'butt'}});
+ assert.ok(a.modules.assembly.tacks>0);assert.ok(a.modules.assembly.turning>0);
+ assert.notEqual(a.modules.welding.weld,b.modules.welding.weld);assert.ok(a.modules.welding.clean>0);
+ assert.ok(b.modules.postweld.grind>a.modules.postweld.grind);assert.ok(a.modules.postweld.straighten>0);
+ const quote=evaluateModules({inventory,partMaterials:{},automation:a});assert.equal(quote.modules.find(m=>m.id==='coating').omitted,true);
 });

@@ -133,6 +133,13 @@ def inventory(path, density=7850.0):
         raise RuntimeError("STEP transfer failed")
     timings["transferStepSeconds"] = round(time.perf_counter()-t_start-timings["readStepSeconds"], 3)
     shape = reader.OneShape()
+    try:
+        try:from .assembly_names import assembly_names,signature as name_signature
+        except ImportError:from assembly_names import assembly_names,signature as name_signature
+        names=assembly_names(path)
+        name_warning=None
+    except Exception as exc:
+        names={};name_warning='Assembly names unavailable: '+type(exc).__name__
     explorer = TopExp_Explorer(shape, TopAbs_SOLID)
     solids = []
     originals = []
@@ -426,18 +433,32 @@ def inventory(path, density=7850.0):
         if cut_hint is None:cut_hint=stock_hint.get('localCuttingHint')
         cutting_hint_seconds += time.perf_counter() - stage_start
         try:
-            from .manufacturing_features import feature_hints
+            from .manufacturing_features import feature_hints,sheet_hints
         except ImportError:
-            from manufacturing_features import feature_hints
+            from manufacturing_features import feature_hints,sheet_hints
         try:features=feature_hints(solid)
         except Exception as feature_error:features={'featureError':type(feature_error).__name__}
+        try:
+            sheet=sheet_hints(solid,features) if stock_hint.get('kind') in ('unknown','plate-candidate') else None
+            if sheet:
+                stock_hint={**stock_hint,**sheet}
+                if cut_hint is None and sheet['kind']=='bent-plate':
+                    cut_hint={'kind':'estimated-bent-outline','thicknessMm':sheet['thicknessMm'],
+                              'contourMm':sheet['estimatedContourMm'],'pierces':1,
+                              'source':sheet['source'],'estimated':True}
+        except Exception:pass
+        try:
+            named=names.get(name_signature(solid),[])
+            occurrence=named.pop(0) if named else {}
+        except Exception:occurrence={}
         try:
             entity=reader.WS().TransferReader().EntityFromShapeResult(solid,1)
             part_name=entity.Name().ToCString() if entity is not None and hasattr(entity,'Name') else ''
         except Exception:
             part_name=''
         solids.append({
-            "name": part_name or f"Detal {len(solids)+1}",
+            "name": occurrence.get("name") or part_name or f"Detal {len(solids)+1}",
+            "assemblyPath":occurrence.get("assemblyPath",[]),
             **features,
             "id": f"solid-{len(solids)+1}",
             "volumeMm3": volume,
@@ -555,8 +576,13 @@ def main():
     p.add_argument("--density", type=float, default=7850.0)
     p.add_argument("--output", type=Path)
     p.add_argument("--joints",action="store_true")
+    p.add_argument("--preview",type=int)
     args = p.parse_args()
-    if args.joints:
+    if args.preview is not None:
+        try:from .part_preview import preview
+        except ImportError:from part_preview import preview
+        data=preview(args.step,args.preview)
+    elif args.joints:
         try:from .joint_detection import analyze_joints
         except ImportError:from joint_detection import analyze_joints
         data=analyze_joints(args.step)

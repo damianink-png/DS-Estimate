@@ -25,3 +25,35 @@ def feature_hints(solid):
             if abs(la-lb)>max(.1,la*.02):continue
             used.update((i,j));bends.append({'angleDeg':round(a['angle']*180/math.pi,3),'radiusMm':min(a['radius'],b['radius']),'thicknessMm':thickness,'lengthMm':(la+lb)/2});break
     return {'bendHint':{'count':len(bends),'bends':bends,'status':'candidate','source':'paired coaxial cylindrical bend faces'} if bends else None}
+
+def sheet_hints(solid,features):
+    """Rotation-independent paired plane thickness; cylindrical pairs validate bends.
+
+    A - 2 V/t isolates edge area of a constant-thickness sheet. Its division by t
+    estimates the developed cut perimeter, using the mid-surface (K=0.5).
+    It is a costing estimate, not an exportable unfolded contour.
+    """
+    planes=[];total_area=cad.area(solid);volume=cad.volume(solid)
+    for raw in cad.shapes(solid,cad.TopAbs_FACE):
+        f=cad.face_cast(raw);s=cad.BRepAdaptor_Surface(f);a=cad.area(f)
+        if s.GetType()==cad.GeomAbs_Plane and a>total_area*.025:planes.append((a,s.Plane()))
+    candidates=[]
+    for i,(a,p) in enumerate(planes):
+        for b,q in planes[i+1:]:
+            if abs(p.Axis().Direction().Dot(q.Axis().Direction()))<.99999:continue
+            t=abs(p.Distance(q.Location()))
+            if .2<=t<=min(80,math.sqrt(min(a,b))*.25) and abs(a-b)<max(a,b)*.15:
+                candidates.append((min(a,b),t))
+    bends=features.get('bendHint');bend_rows=bends['bends'] if bends else []
+    if candidates:
+        thickness=max(candidates)[1]
+        if bend_rows and any(abs(b['thicknessMm']-thickness)>max(.05,thickness*.03) for b in bend_rows):return None
+    elif bend_rows:
+        thickness=bend_rows[0]['thicknessMm']
+        if any(abs(b['thicknessMm']-thickness)>.05 for b in bend_rows):return None
+    else:return None
+    perimeter=(total_area-2*volume/thickness)/thickness
+    if perimeter<=0 or volume/thickness<4*thickness**2:return None
+    return {'kind':'bent-plate' if bend_rows else 'plate-candidate','thicknessMm':round(thickness,5),
+            'estimatedContourMm':perimeter,'midSurfaceAreaMm2':volume/thickness,
+            'source':'paired planar/cylindrical faces, constant-thickness mid-surface estimate'}
