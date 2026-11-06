@@ -4,12 +4,22 @@ from PIL import ImageGrab,ImageChops
 from pywinauto import Application,mouse
 
 def run_accessibility_test(pid,exe,step,out):
+ part_names=['Blacha lewa V','Blacha prawa V','Płyta P-015','Płyta P-015 druga','Profil SHS z wycięciem','Blacha gięta BG-003']
  app=Application(backend='uia').connect(process=pid,timeout=30);win=app.window(title='DS Estimate 0.6.0');win.wait('exists visible',timeout=60);win.set_focus()
  def find(name,timeout=30):
   deadline=time.monotonic()+timeout
   while time.monotonic()<deadline:
-   candidates=[c for c in win.descendants() if c.element_info.name==name]
+   controls=win.descendants();candidates=[c for c in controls if c.element_info.name==name]
    if candidates:return candidates[0]
+   # WebView2 combines text within table cells into a single DataItem name.
+   cells=[c for c in controls if c.element_info.control_type=='DataItem']
+   if name in part_names:
+    for cell in cells:
+     matched=next((n for n in sorted(part_names,key=len,reverse=True) if cell.element_info.name.startswith(n+' ')),None)
+     if matched==name:return cell
+   elif name in ['Płyta 15 mm','Blacha gięta 3 mm']:
+    matches=[c for c in cells if name in c.element_info.name]
+    if matches:return matches[0]
    time.sleep(.3)
   raise AssertionError('Native control missing: '+name)
  def press(name):
@@ -34,13 +44,13 @@ def run_accessibility_test(pid,exe,step,out):
  try:
   press('Otwórz plik przez ścieżkę');enter('Ścieżka modelu STEP',str(step));press('Analizuj ścieżkę')
   find('Części i materiały',timeout=300)
-  names=['Blacha lewa V','Blacha prawa V','Płyta P-015','Płyta P-015 druga','Profil SHS z wycięciem','Blacha gięta BG-003']
-  for name in names:find(name)
+  for name in part_names:find(name)
   find('Płyta 15 mm')
   part=find('Płyta P-015');parent=part
   for _ in range(6):
-   parent=parent.parent();buttons=[c for c in parent.descendants() if c.element_info.name=='Parametry / biblioteka']
+   buttons=[c for c in parent.descendants() if c.element_info.name=='Parametry / biblioteka']
    if len(buttons)==1:break
+   parent=parent.parent()
   else:raise AssertionError('Cannot locate parameters for the named native part')
   try:buttons[0].invoke()
   except Exception:buttons[0].click_input()

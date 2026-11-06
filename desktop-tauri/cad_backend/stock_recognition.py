@@ -206,15 +206,15 @@ def _measured_solid_volume(solid):
     return volume
 
 
-def _recognize_axis_stock(solid, bounds, plate_hint=None):
+def _recognize_axis_stock(solid, bounds, plate_hint=None, axis_override=None):
     """Recognise prismatic shapes or a measured *candidate* plate; no catalogue proof."""
     dims = [bounds[i+3]-bounds[i] for i in range(3)]
     if any(not math.isfinite(x) or x<=0 for x in dims):
         return {'kind':'unknown','reason':'Invalid STEP dimensions'}
-    axis = max(range(3), key=lambda i:dims[i])
+    axis = max(range(3), key=lambda i:dims[i]) if axis_override is None else axis_override
     other = sorted(dims[i] for i in range(3) if i != axis)
     length = dims[axis]
-    if length/other[-1]<3.5:
+    if length/other[-1]<3.5 and axis_override is None:
         # Prefer geometrically evidenced planar sheet over a bare bbox ratio.
         # The planar-face contour can also be present on pocketed/finished
         # parts, so plate is a procurement CANDIDATE rather than a proof.
@@ -272,9 +272,23 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None):
             'limitations':'Cannot determine material grade, nominal standard, plate vs flat-bar procurement or end-cut stock length'}
 
 
+def _short_profile(shape,bounds,axis):
+    dims=[bounds[i+3]-bounds[i] for i in range(3)];cross=sorted((dims[i] for i in range(3) if i!=axis),reverse=True)
+    if dims[axis]/cross[0]>=3.5:return None
+    if not any(match_hint({'kind':kind,'widthMm':cross[0],'heightMm':cross[1]}) for kind in ('square-hollow','rectangular-hollow','round-tube','angle','channel','tee','i-section')):return None
+    candidate=_recognize_axis_stock(shape,bounds,axis_override=axis)
+    if candidate.get('kind') not in ('square-hollow','rectangular-hollow','round-tube','angle','channel','tee','i-section'):return None
+    if candidate.get('lengthMm',0)<max(2,2*candidate.get('wallMm',1)):return None
+    if not match_hint(candidate):return None
+    return {**candidate,'source':'five sections along a catalogue-matched short extrusion axis'}
+
 def recognize_stock(solid, bounds, plate_hint=None):
     """Try the existing world frame, then a frame aligned with the longest straight edge."""
     result=_recognize_axis_stock(solid,bounds,plate_hint)
+    if result.get('kind')=='unknown' and solid is not None:
+        for axis in range(3):
+            short=_short_profile(solid,bounds,axis)
+            if short:result=short;break
     if result.get('kind') in ('unknown','plate-candidate') and solid is not None:
         try:
             try:from . import cad_measure as api
@@ -310,6 +324,7 @@ def recognize_stock(solid, bounds, plate_hint=None):
                 local=BRepBuilderAPI_Transform(solid,tr,True).Shape();box=Bnd_Box();api.add_bounds(local,box)
                 local_hint=api.plate_hint(local)
                 candidate=_recognize_axis_stock(local,box.Get(),local_hint)
+                if candidate.get('kind')=='unknown':candidate=_short_profile(local,box.Get(),2) or candidate
                 local_dims=sorted((b-a for a,b in zip(box.Get()[:3],box.Get()[3:])),reverse=True)
                 if best_local is None or math.prod(local_dims)<math.prod(best_local):best_local=local_dims
                 if candidate.get('kind')!='unknown':

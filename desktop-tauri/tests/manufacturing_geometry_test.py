@@ -92,6 +92,10 @@ class Geometry(unittest.TestCase):
   hint=recognize_stock(shape,bounds,{'kind':'plate-outline','thicknessMm':wrong_thickness,'contourMm':300,'pierces':1})
   self.assertEqual(hint['kind'],'plate-candidate');self.assertAlmostEqual(hint['thicknessMm'],5,places=3)
   for actual,expected in zip(hint['localDimsMm'],[100,50,5]):self.assertAlmostEqual(actual,expected,places=3)
+ def test_short_hollow_profiles_do_not_require_the_extrusion_axis_to_be_longest(self):
+  shape=BRepAlgoAPI_Cut(box(40,40,20),box(36,36,20,(2,2,0))).Shape()
+  for s in [shape,rotated(shape)]:
+   hint=recognize_stock(s,cad.bounds(s));self.assertEqual(hint['kind'],'square-hollow');self.assertAlmostEqual(hint['lengthMm'],20,places=3);self.assertAlmostEqual(hint['wallMm'],2,places=3)
  def test_rounded_rhs_has_area_and_nominal_catalog_candidates(self):
   outer=rounded_box(40,40,1000,4);inner=rounded_box(36,36,1000,2,(2,2,0));shape=BRepAlgoAPI_Cut(outer,inner).Shape()
   hint=recognize_stock(shape,cad.bounds(shape));self.assertEqual(hint['kind'],'square-hollow');self.assertAlmostEqual(hint['wallMm'],2,places=3)
