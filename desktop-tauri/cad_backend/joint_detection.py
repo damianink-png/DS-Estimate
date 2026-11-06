@@ -6,12 +6,12 @@ try:from . import cad_measure as cad
 except ImportError:import cad_measure as cad
 
 def overlaps(a,b,tol=.05):return all(a[k]<=b[k+3]+tol and b[k]<=a[k+3]+tol for k in range(3))
-def broad_pairs(boxes):
+def broad_pairs(boxes,gap=.05):
     active=[]
     for i in sorted(range(len(boxes)),key=lambda j:boxes[j][0]):
-        box=boxes[i];active=[j for j in active if boxes[j][3]>=box[0]-.05]
+        box=boxes[i];active=[j for j in active if boxes[j][3]>=box[0]-gap]
         for j in active:
-            if overlaps(box,boxes[j]):yield min(i,j),max(i,j)
+            if overlaps(box,boxes[j],gap):yield min(i,j),max(i,j)
         active.append(i)
 
 def planar_faces(solid):
@@ -25,13 +25,17 @@ def planar_faces(solid):
 
 def detect_contacts(solids,max_pairs=2000,max_seconds=90):
     start=time.monotonic();boxes=[cad.bounds(s) for s in solids];face_cache={};rows=[];issues=[];processed=0;complete=True
-    for i,j in broad_pairs(boxes):
+    for i,j in broad_pairs(boxes,3):
         if processed>=max_pairs or time.monotonic()-start>max_seconds:
             complete=False;issues.append('Limit czasu lub liczby par; wynik częściowy.');break
         processed+=1
         try:
             distance=cad.BRepExtrema_DistShapeShape(solids[i],solids[j]);distance.Perform()
-            if not distance.IsDone() or distance.Value()>.05:continue
+            if not distance.IsDone() or distance.Value()>3:continue
+            try:from .weld_preparation import groove_between,t_groove_between
+            except ImportError:from weld_preparation import groove_between,t_groove_between
+            groove=groove_between(solids[i],solids[j]) or t_groove_between(solids[i],solids[j])
+            if distance.Value()>.05 and groove is None:continue
             # True interpenetration is a collision, not a measured weld groove.
             common=cad.BRepAlgoAPI_Common(solids[i],solids[j]);common.Build()
             if common.IsDone() and cad.volume(common.Shape())>1e-3:
@@ -57,16 +61,20 @@ def detect_contacts(solids,max_pairs=2000,max_seconds=90):
                 section=cad.BRepAlgoAPI_Section(solids[i],solids[j]);section.Build()
                 if section.IsDone():perimeter=cad.length(section.Shape())
                 source='B-Rep section edge contact'
+            if groove is not None:perimeter=groove['lengthMm'];source=groove['source']
             if perimeter>0.1 and math.isfinite(perimeter):
                 rows.append({'id':f'solid-{i+1}|solid-{j+1}','partA':f'solid-{i+1}','partB':f'solid-{j+1}',
                  'lengthMm':round(perimeter,4),'contactAreaMm2':round(contact_area,4),
-                 'facePairs':face_pairs,'source':source,'status':'candidate','preparation':'not-inferred'})
+                 'facePairs':face_pairs,'source':source,'status':'candidate',
+                 'preparation':groove['kind'] if groove else 'not-inferred','groove':groove,
+                 'suggestedType':'butt' if groove else 'fillet',
+                 'measuredSectionMm2':groove['sectionMm2'] if groove else None})
             if not complete:issues.append('Przekroczono czas podczas analizy ścian; wynik częściowy.');break
         except Exception as exc:complete=False;issues.append(f'solid-{i+1} / solid-{j+1}: {type(exc).__name__}')
-    return {'schema':'ds-contact-candidates-v1','solidCount':len(solids),'candidates':rows,'testedPairs':processed,
+    return {'engineVersion':'0.6.0','schema':'ds-contact-candidates-v2','solidCount':len(solids),'candidates':rows,'testedPairs':processed,
      'complete':complete,'issues':issues,'seconds':round(time.monotonic()-start,2),
      'limitations':['Obwód styku jest propozycją długości spoin, nie dowodem zamiaru spawania.',
-      'Fazy, dostęp palnika, spoiny przerywane i niewymodelowane szczeliny wymagają korekty.',
+      'Zmierzony rowek nie obejmuje nadlewu i nie potwierdza zamiaru spawania. Dostęp i spoiny przerywane wymagają korekty.',
       'Podzielone ściany mogą zawyżać obwód; sprawdź długości.']}
 
 def analyze_joints(path):return detect_contacts(cad.load_step(path))

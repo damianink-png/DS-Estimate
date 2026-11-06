@@ -9,7 +9,7 @@ export function preferenceFor(s,prefs={}){
  return {...partDefaults(),...old,allowances:old.allowances??[old.allowStart??0,old.allowEnd??0,0,0,0,0]};
 }
 export function detailDimensions(s){
- const h=s.stockHint??{};if(Array.isArray(h.localDimsMm)&&h.localDimsMm.length===3)return [...h.localDimsMm].sort((a,b)=>b-a);const dims=[...(s.bboxMm??[])].sort((a,b)=>b-a);
+ const h=s.stockHint?.kind==='unknown'&&s.stockHint?.rawStockCandidate?s.stockHint.rawStockCandidate:(s.stockHint??{});if(Array.isArray(h.localDimsMm)&&h.localDimsMm.length===3)return [...h.localDimsMm].sort((a,b)=>b-a);const dims=[...(s.bboxMm??[])].sort((a,b)=>b-a);
  return [h.lengthMm??dims[0],h.widthMm??h.diameterMm??dims[1],h.thicknessMm??h.heightMm??h.diameterMm??dims[2]];
 }
 export function partValues(s,pref={},fallbackPrice=null){

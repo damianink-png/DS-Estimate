@@ -49,9 +49,11 @@ def area(shape):return property_value(shape,surface_props)
 def volume(shape):return property_value(shape,volume_props)
 def length(shape):return property_value(shape,linear_props)
 def load_step(path):
-    reader=STEPControl_Reader()
-    if reader.ReadFile(str(path))!=IFSelect_RetDone or not reader.TransferRoots():raise ValueError('STEP read failed')
-    return list(shapes(reader.OneShape(),TopAbs_SOLID))
+    try:from .assembly_names import read_occurrences
+    except ImportError:from assembly_names import read_occurrences
+    items,_=read_occurrences(path)
+    return [item['shape'] for item in items]
+
 
 
 def plate_hint(shape):

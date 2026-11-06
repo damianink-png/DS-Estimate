@@ -16,7 +16,7 @@
  import {kwantflowKnownCost} from './lib/modular-kwantflow.js';
 
  type StockHint={kind:string;confidence?:string;reason?:string;source?:string;limitations?:string;lengthMm?:number;widthMm?:number;heightMm?:number;diameterMm?:number;thicknessMm?:number;wallMm?:number;sectionAreaMm2?:number};
- type Inv={count:number;totalMassKg:number;solids:any[];groups:any[];limitations?:string[]};
+ type Inv={engineVersion?:string;previews?:Record<string,any>;importIssues?:string[];count:number;totalMassKg:number;solids:any[];groups:any[];limitations?:string[]};
  type Edit={value:number|null};
  type CustomRow={key:string;name:string;kind:'time'|'amount'};
  const money=(x:number)=>x.toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -50,7 +50,7 @@
  const modelScore=(p:string)=>/assembly|assembl|z[lł]o[żz]en|monta[żz]|komplet|main/i.test(filename(p))?0:1;
  const storageSettings='ds-estimate-modules-rates-v1';
  const cad=createCadSession(
-  async(path:string)=>validateStepBom(JSON.parse(await invoke<string>('analyze_step',{path}))) as Inv,
+  async(path:string)=>{const data=JSON.parse(await invoke<string>('analyze_step',{path}));if(data.engineVersion!=='0.6.0')throw Error('Niezgodny silnik CAD. Uruchom instalator DS Estimate 0.6.0 i sprawdź wersję w tytule okna.');return validateStepBom(data) as Inv;},
   (path:string)=>invoke<string>('step_fingerprint',{path})
  );
  let inputPath=$state('');
@@ -101,7 +101,7 @@
   .reduce((sum,r)=>sum+(r.kind==='time'?(r.value??0):0),0));
  let knownCost=$derived(kwantflowKnownCost(report));
 
- const projectStorage=()=>projectKey?'ds-estimate-project-v1:'+projectKey:'';
+ const projectStorage=()=>projectKey?'ds-estimate-project-xcaf-v2:'+projectKey:'';
  function saveSettings(){
   try{localStorage.setItem(storageSettings,JSON.stringify(rates));}catch{}
  }
@@ -116,7 +116,7 @@
    if(saved && typeof saved==='object'){
     edits=saved.edits||{};confirmed=saved.confirmed||{};
     excluded=saved.excluded||{};custom=saved.custom||{};
-    grade=saved.grade||'unknown';materialApproved=saved.materialApproved===true;partMaterials=saved.partMaterials||{};contacts=saved.contacts||null;jointEdits=saved.jointEdits||{};
+    grade=saved.grade||'unknown';materialApproved=saved.materialApproved===true;partMaterials=saved.partMaterials||{};contacts=saved.contacts?.engineVersion==='0.6.0'?saved.contacts:null;jointEdits=saved.jointEdits||{};
    }
   }catch{}
  }
@@ -282,7 +282,7 @@
  }
  function changeJoint(id:string,field:string,value:any){jointEdits={...jointEdits,[id]:{...jointEdits[id],[field]:value}};confirmed={...confirmed,welding:false,assembly:false,quality:false,postweld:false};saveProject();}
  function materialPrice(grade:string,raw:string){const value=raw===''?null:Number(raw);if(value!==null&&(!Number.isFinite(value)||value<0))return;materialPrices={...materialPrices,[grade]:value};try{localStorage.setItem('ds-estimate-material-prices-v1',JSON.stringify(materialPrices));}catch{}confirmed={};saveProject();}
- function partDescription(p:any){const h=p.solid.stockHint??{},kind=p.stockKind||h.kind;const label=sectionCatalog.sections.find(c=>c.id===p.catalogId)?.name||h.catalogDesignation;
+ function partDescription(p:any){const h=p.solid.stockHint?.kind==='unknown'&&p.solid.stockHint?.rawStockCandidate?p.solid.stockHint.rawStockCandidate:(p.solid.stockHint??{}),kind=p.stockKind||h.kind;const label=sectionCatalog.sections.find(c=>c.id===p.catalogId)?.name||h.catalogDesignation;
   if(label)return label;
   if(['plate-candidate','plate','bent-plate'].includes(kind))return (kind==='bent-plate'?'Blacha gięta ':'Płyta ')+number(h.thicknessMm??p.solid.cuttingHint?.thicknessMm??p.dims[2])+' mm';
   return (stockLabels[kind]||'Detal')+' '+[h.widthMm,h.heightMm,h.wallMm].filter(v=>v!==undefined).map(number).join(' × ');
@@ -294,7 +294,7 @@
   {#if draft}
   <form onsubmit={e=>{e.preventDefault();savePart();}}>
    <div class="panel-title"><div><h2>Parametry detalu · {detailRows.find(p=>p.id===editingPart)?.name||editingPart}</h2><p>Ustawienia dotyczą tylko tego wystąpienia w złożeniu.</p></div><button type="button" class="icon-button" aria-label="Zamknij parametry" onclick={()=>partDialog.close()}><X size={18}/></button></div>
-   {#key editingPart}<PartPreview path={selectedStep} index={inventory?.solids.findIndex(s=>s.id===editingPart)??0} name={detailRows.find(p=>p.id===editingPart)?.name||editingPart}/>{/key}
+   {#key editingPart}<PartPreview mesh={inventory?.previews?.[inventory?.solids.find(s=>s.id===editingPart)?.previewKey]} path={selectedStep} index={inventory?.solids.findIndex(s=>s.id===editingPart)??0} name={detailRows.find(p=>p.id===editingPart)?.name||editingPart}/>{/key}
    <div class="form-grid">
     <label>Sposób realizacji<select bind:value={draft.route}>{#each Object.entries(ROUTES) as [id,label]}<option value={id}>{label}</option>{/each}</select></label>
     <label>Cena dostawcy [zł / detal]<input type="number" min="0" step=".01" value={draft.supplierPrice??''} onchange={e=>draft.supplierPrice=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
@@ -334,7 +334,7 @@
   <div class="rail-bottom">
    <button class:active={showReport} onclick={()=>{showReport=true;showSettings=false;}}><ClipboardList size={18}/><span>Stan modułów</span></button>
    <button class:active={showSettings} onclick={()=>{showSettings=true;showReport=false;}}><Settings2 size={18}/><span>Stawki i ustawienia</span></button>
-   <small>DS Estimate 0.5 · zapis lokalny</small>
+   <small>DS Estimate 0.6.0 · zapis lokalny</small>
   </div>
  </aside>
  <div class="workspace">
@@ -348,6 +348,7 @@
   </header>
   <main>
    {#if !native}<div class="banner info">Podgląd interfejsu. Dodawanie lokalnych plików i analiza CAD działają w programie Windows.</div>{/if}
+   {#each inventory?.importIssues??[] as issue}<div class="banner warning">{issue}</div>{/each}
    {#if partsResult.error}<div class="banner danger">{partsResult.error}</div>{/if}
    {#if error}<div class="banner danger" role="alert"><div><strong>Nie udało się ukończyć operacji</strong><p>{error}</p></div><button aria-label="Zamknij błąd" onclick={()=>error=''}><X size={16}/></button></div>{/if}
    {#if notice}<div class="banner info" role="status"><span>{notice}</span><button aria-label="Zamknij informację" onclick={()=>notice=''}><X size={16}/></button></div>{/if}
@@ -363,6 +364,7 @@
      <Upload size={inventory?22:32}/><div><strong>{dragActive?'Upuść pliki tutaj':busy?status:'Przeciągnij pliki lub folder do programu'}</strong><p>STEP / STP · PDF · DXF / DWG · obrazy · Excel</p></div>
      <button class="subtle" onclick={()=>showFiles=!showFiles} aria-expanded={showFiles}>{files.length} plików <ChevronRight size={15}/></button>
     </div>
+    {#if !busy}<details class="manual-path"><summary>Otwórz plik przez ścieżkę</summary><div class="input-action"><input aria-label="Ścieżka modelu STEP" bind:value={inputPath} placeholder="C:\modele\zlozenie.step"/><button disabled={!inputPath.trim()} onclick={()=>openInputs([inputPath.trim()])}>Analizuj ścieżkę</button></div></details>{/if}
     {#if busy}<div class="analysis-progress" role="status"><span class="spinner"></span>{status}<span>Nie zamykaj programu.</span></div>{/if}
     {#if files.length&&showFiles}
      <section class="panel files-panel" aria-label="Pliki projektu">
@@ -416,7 +418,7 @@
      <section class="panel results-panel"><div class="panel-title"><div><h2>Części i materiały</h2><p>Każde wystąpienie ma własny materiał, wymiary, naddatki i realizację. Dopasowanie katalogowe sprawdź z dokumentacją.</p></div><label class="search"><Search size={15}/><input aria-label="Szukaj grupy części" bind:value={materialQuery} placeholder="Szukaj części…"/></label></div>
       <div class="table-scroll"><table><thead><tr><th>Detal / przekrój</th><th>Wymiary [mm]</th><th>Realizacja</th><th>Gatunek</th><th>Gęstość kg/m³</th><th>Masa [kg]</th><th>Materiał [zł]</th><th>Naddatki / półfabrykat</th></tr></thead><tbody>
        {#each visibleParts as p (p.id)}
-        <tr><td><strong>{p.name}</strong><small class="cell-note">{partDescription(p)}</small><button class="tiny text" onclick={()=>editPart(p.id)}>Parametry / biblioteka</button></td>
+        <tr><td><strong>{p.name}</strong><small class="cell-note">{partDescription(p)}</small>{#if p.solid.nameSource==='missing'}<small class="cell-note">STEP nie udostępnił nazwy</small>{/if}<button class="tiny text" onclick={()=>editPart(p.id)}>Parametry / biblioteka</button></td>
          <td>{p.dims.map(number).join(' × ')}<small class="cell-note">{p.solid.stockHint?.catalogStatus==='multiple-fits'?'Kilka pasujących przekrojów — wybierz':p.solid.bendHint?.count?'Gięcia: '+p.solid.bendHint.count+' (kandydat)':''}</small></td>
          <td><select aria-label={'Realizacja '+p.id} value={p.route} onchange={e=>changeMaterial(p.id,'route',e.currentTarget.value)}>{#each Object.entries(ROUTES) as [id,label]}<option value={id}>{label}</option>{/each}</select></td>
          <td><select aria-label={'Gatunek '+p.id} value={p.grade} onchange={e=>chooseGrade(p.id,e.currentTarget.value)}>{#each MATERIALS as mat}<option value={mat.grade}>{mat.label}</option>{/each}</select></td>
@@ -448,11 +450,11 @@
     {#if active==='welding'}
      <section class="panel results-panel"><div class="panel-title"><div><h2>Styki i proponowane spoiny</h2><p>Geometria wyznacza styk i długość. Potwierdź zamiar spawania, przekrój i dostęp.</p></div><button disabled={busy||jointBusy||!!contacts} onclick={()=>void detectJoints()}>{jointBusy?'Analiza…':contacts?'Przeanalizowano STEP':'Wykryj styki STEP'}</button></div>
       {#if contacts&&automatic.welds}
-       <div class="table-scroll"><table><thead><tr><th>Detale</th><th>Uwzględnij</th><th>Typ</th><th>Długość [mm]</th><th>a [mm] / pole [mm²]</th><th>Stopiwo kg/m³</th><th>Czas [min]</th></tr></thead><tbody>{#each automatic.welds.rows as row}<tr><td><strong>{jointName(row.partA)} / {jointName(row.partB)}</strong><small class="cell-note">Kandydat · {row.contactAreaMm2} mm² styku · faza nieustalona</small></td><td><input aria-label={'Uwzględnij '+row.id} type="checkbox" checked={row.enabled} onchange={e=>changeJoint(row.id,'enabled',e.currentTarget.checked)}/></td><td><select aria-label={'Typ spoiny '+row.id} value={row.type} onchange={e=>changeJoint(row.id,'type',e.currentTarget.value)}><option value="fillet">Pachwinowa</option><option value="butt">Czołowa / rowek</option></select></td><td><input class="number-input" aria-label={'Długość spoiny '+row.id} type="number" min="0" step="any" value={row.lengthMm} onchange={e=>{if(e.currentTarget.reportValidity())changeJoint(row.id,'lengthMm',Number(e.currentTarget.value));}}/></td><td><input class="number-input" aria-label={'Przekrój spoiny '+row.id} type="number" min=".1" step=".1" value={row.type==='fillet'?row.a:row.sectionMm2} onchange={e=>{if(e.currentTarget.reportValidity())changeJoint(row.id,row.type==='fillet'?'a':'sectionMm2',Number(e.currentTarget.value));}}/></td><td><input class="number-input" aria-label={'Gęstość stopiwa '+row.id} type="number" min="1" value={row.density??row.defaultDensity??norms.welding.density} onchange={e=>{if(e.currentTarget.reportValidity())changeJoint(row.id,'density',Number(e.currentTarget.value));}}/></td><td>{number(row.minutes)}</td></tr>{/each}</tbody></table></div>
+       <div class="table-scroll"><table><thead><tr><th>Detale</th><th>Uwzględnij</th><th>Typ</th><th>Długość [mm]</th><th>a [mm] / pole [mm²]</th><th>Stopiwo kg/m³</th><th>Czas [min]</th></tr></thead><tbody>{#each automatic.welds.rows as row}<tr><td><strong>{jointName(row.partA)} / {jointName(row.partB)}</strong><small class="cell-note">{row.groove?'Przygotowanie '+row.preparation+' · '+number(row.groove.sectionMm2??0)+' mm² rowka':'Brak potwierdzonego rowka · założenie spoiny pachwinowej'}</small></td><td><input aria-label={'Uwzględnij '+row.id} type="checkbox" checked={row.enabled} onchange={e=>changeJoint(row.id,'enabled',e.currentTarget.checked)}/></td><td><select aria-label={'Typ spoiny '+row.id} value={row.type} onchange={e=>changeJoint(row.id,'type',e.currentTarget.value)}><option value="fillet">Pachwinowa</option><option value="butt">Czołowa / rowek</option></select></td><td><input class="number-input" aria-label={'Długość spoiny '+row.id} type="number" min="0" step="any" value={row.lengthMm} onchange={e=>{if(e.currentTarget.reportValidity())changeJoint(row.id,'lengthMm',Number(e.currentTarget.value));}}/></td><td><input class="number-input" aria-label={'Przekrój spoiny '+row.id} type="number" min=".1" step=".1" value={row.type==='fillet'?row.a:row.sectionMm2} onchange={e=>{if(e.currentTarget.reportValidity())changeJoint(row.id,row.type==='fillet'?'a':'sectionMm2',Number(e.currentTarget.value));}}/></td><td><input class="number-input" aria-label={'Gęstość stopiwa '+row.id} type="number" min="1" value={row.density??row.defaultDensity??norms.welding.density} onchange={e=>{if(e.currentTarget.reportValidity())changeJoint(row.id,'density',Number(e.currentTarget.value));}}/></td><td>{number(row.minutes)}</td></tr>{/each}</tbody></table></div>
        <div class="panel-actions"><strong>{number(automatic.welds.totalLengthMm/1000)} m proponowanych spoin · {number(automatic.welds.minutes)} min</strong><span class="pill">{contacts.complete?'Analiza styków zakończona':'Wynik częściowy'}</span></div>
        {#if automatic.welds.groups.length}<div class="weld-groups">{#each automatic.welds.groups as g}<span class="pill">{g.type==='fillet'?'Pachwinowa a'+g.a:'Czołowa '+g.sectionMm2+' mm²'} · {number(g.lengthMm/1000)} m · {number(g.minutes)} min</span>{/each}</div>{/if}
        {#each contacts.issues??[] as issue}<p class="hint padded">{issue}</p>{/each}
-       <p class="hint padded">Obwód ścian styku jest propozycją spawania dookoła. Początkowe a pochodzi z 0,7 × mniejsza grubość (do limitu z norm); to założenie kosztowe, nie dobór wytrzymałości spoiny. Ściany podzielone, mocowania, śruby i połączenia niespawane wymagają wyłączenia lub korekty. Wykrywanie faz nie jest jeszcze automatyczne.</p>
+       <p class="hint padded">Obwód ścian styku jest propozycją spawania dookoła. Początkowe a pochodzi z 0,7 × mniejsza grubość (do limitu z norm); to założenie kosztowe, nie dobór wytrzymałości spoiny. Ściany podzielone, mocowania, śruby i połączenia niespawane wymagają wyłączenia lub korekty. Rowki I/V/X i przygotowanie stopy połączeń T/K są mierzone z przekrojów geometrii. Wynik nie obejmuje nadlewu i wymaga sprawdzenia zamiaru spawania.</p>
       {:else}<div class="padded"><p>Silnik analizuje rzeczywiste ściany B-Rep. Brak wyniku nie oznacza zerowej długości spoin.</p></div>{/if}
      </section>
     {/if}

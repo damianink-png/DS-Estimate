@@ -3,7 +3,9 @@ import json, subprocess, time, urllib.request
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 root=Path(__file__).resolve().parents[1]
-fixture={"count":2,"totalMassKg":15.7,"solids":[{"id":"solid-1","name":"Plate P-101","verifiedShapeKey":"A","volumeMm3":1000000,"massKg":7.85,"bboxMm":[1000,100,10],"verificationMethod":"native-brep","stockHint":{"kind":"rectangular-bar","lengthMm":1000}},{"id":"solid-2","name":"Plate P-102","verifiedShapeKey":"A","volumeMm3":1000000,"massKg":7.85,"bboxMm":[1000,100,10]}],"groups":[{"geometryId":"A","quantity":2,"massKg":7.85}]}
+fixture={"engineVersion":"0.6.0","count":2,"totalMassKg":15.7,"solids":[{"id":"solid-1","name":"Plate P-101","verifiedShapeKey":"A","volumeMm3":1000000,"massKg":7.85,"bboxMm":[1000,100,10],"verificationMethod":"native-brep","stockHint":{"kind":"rectangular-bar","lengthMm":1000}},{"id":"solid-2","name":"Plate P-102","verifiedShapeKey":"A","volumeMm3":1000000,"massKg":7.85,"bboxMm":[1000,100,10]}],"groups":[{"geometryId":"A","quantity":2,"massKg":7.85}]}
+fixture['previews']={'A':{'triangles':[[[0,0,0],[.5,0,0],[0,.5,0]]],'partial':False}}
+for solid in fixture['solids']:solid['previewKey']='A'
 shim=r"""
 window.isTauri=true;window.__mockFiles=['C:\\job\\main.step'];window.__calls=[];window.__callbacks={};window.__listeners={};let next=0;
 window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},
@@ -18,7 +20,7 @@ window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebvie
  if(cmd==='scan_project')return [args.path];
  if(cmd==='step_fingerprint')return 'unchanged-v1';
  if(cmd==='preview_part')return JSON.stringify({triangles:[[[0,0,0],[.5,0,0],[0,.5,0]]],partial:false});
- if(cmd==='analyze_joints'){await new Promise(r=>setTimeout(r,500));return JSON.stringify({solidCount:2,complete:true,issues:[],candidates:[{id:'solid-1|solid-2',partA:'solid-1',partB:'solid-2',lengthMm:90,contactAreaMm2:200}]});}
+ if(cmd==='analyze_joints'){await new Promise(r=>setTimeout(r,500));return JSON.stringify({engineVersion:'0.6.0',solidCount:2,complete:true,issues:[],candidates:[{id:'solid-1|solid-2',partA:'solid-1',partB:'solid-2',lengthMm:90,contactAreaMm2:200}]});}
  if(cmd==='analyze_step')return JSON.stringify(FIXTURE);
  if(cmd==='extract_pdf_text')return 'a4 100 x2';
  throw Error('Unmocked command: '+cmd);
@@ -56,6 +58,7 @@ try:
   page.get_by_label('Realizacja solid-1',exact=True).select_option('purchase')
   page.get_by_role('button',name='Naddatki solid-2',exact=True).click()
   page.get_by_role('img',name='Podgląd 3D: Plate P-102').wait_for()
+  assert page.evaluate("window.__calls.filter(x=>x.cmd==='preview_part').length")==0
   page.get_by_label('Długość — początek',exact=True).fill('3');page.get_by_role('button',name='Zapisz detal',exact=True).click()
   assert page.get_by_role('dialog').is_visible() is False
   page.evaluate("window.__mockFiles=['C:\\\\job\\\\drawing.pdf']")

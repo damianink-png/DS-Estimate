@@ -14,7 +14,7 @@ export function curveFeed(curve,t){valid(t,'Grubość',true);if(!Array.isArray(c
 const profiles=new Set(['square-hollow','rectangular-hollow','round-tube','round-bar','square-bar','rectangular-bar','flat-section','angle','channel','tee','i-section']);
 export function planAutomaticCutting(parts,{machines=MACHINES,laserLimit=10,rate=null,catalog=[]}={}){
  const rows=[];for(const p of parts){if(p.route!=='make')continue;
-  const s=p.solid,h=s.stockHint??{},kind=p.stockKind||h.kind,selected=catalog.find(x=>x.id===p.catalogId);const notes=[];if(s.cuttingHint?.estimated)notes.push('Szacunek konturu blachy giętej z powierzchni środkowej; przyjęto 1 przebicie.');
+  const s=p.solid,h=s.stockHint?.kind==='unknown'&&s.stockHint?.rawStockCandidate?s.stockHint.rawStockCandidate:(s.stockHint??{}),kind=p.stockKind||h.kind,selected=catalog.find(x=>x.id===p.catalogId);const notes=[];if(h.confidence==='raw-stock-candidate')notes.push('Półfabrykat z powtarzalnych przekrojów; gotowy detal ma otwory lub obróbkę.');if(s.cuttingHint?.estimated)notes.push(s.cuttingHint.kind==='estimated-bent-outline'?'Szacunek rozwinięcia z powierzchni środkowej; przyjęto 1 przebicie.':'Kontur półfabrykatu z większej ściany blachy; sprawdź naddatek fazowania.');
   const family=metalFamily(p);if(family==='assumed-steel')notes.push('Przyjęto stal do doboru cięcia; gatunek pozostaje pusty.');
   const thickness=h.thicknessMm??s.bendHint?.bends?.[0]?.thicknessMm??s.cuttingHint?.thicknessMm??Math.min(...p.dims);
   const isProfile=profiles.has(kind)||(selected&&selected.shape!=='FLAT');
