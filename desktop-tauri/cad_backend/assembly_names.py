@@ -41,6 +41,12 @@ def assembly_names(path):
         tool_fn=XCAFDoc_DocumentTool.ShapeTool_s;name_id=TDataStd_Name.GetID_s
     def call(obj,name,*args):return getattr(obj,name,getattr(obj,name+'_s',None))(*args)
     def label_name(label):
+        # pythonocc provides this native UTF-8 accessor specifically to avoid
+        # SWIG output-handle replacement in FindAttribute. OCP fills the supplied
+        # attribute in place and uses the fallback below.
+        if hasattr(label,'GetLabelName'):
+            text=label.GetLabelName()
+            return text.decode('utf-8') if isinstance(text,bytes) else text
         value=TDataStd_Name()
         if label.FindAttribute(name_id(),value):
             return extended_text(value.Get())
