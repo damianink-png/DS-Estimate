@@ -22,7 +22,7 @@ export function partValues(s,pref={},fallbackPrice=null){
  const stockDims=dims.map((v,i)=>v+p.allowances[2*i]+p.allowances[2*i+1]);
  const massKg=s.volumeMm3/1e9*p.density;
  const stockMassKg=p.stockMassKg===null?massKg*stockDims.reduce((ratio,v,i)=>ratio*v/dims[i],1):finite(p.stockMassKg,'Masa półfabrykatu');
- const price=typeof fallbackPrice==='object'&&fallbackPrice!==null?(fallbackPrice[p.grade]??fallbackPrice['']??null):(p.price??fallbackPrice);
+ const price=typeof fallbackPrice==='object'&&fallbackPrice!==null?(Object.hasOwn(fallbackPrice,p.grade)?fallbackPrice[p.grade]:(fallbackPrice['']??null)):(p.price??fallbackPrice);
  if(price!==null)finite(price,'Cena materiału');
  if(p.supplierPrice!==null)finite(p.supplierPrice,'Cena zakupu lub kooperacji');
  const materialIncluded=p.route==='purchase'||(p.route==='cooperate'&&p.includesMaterial);

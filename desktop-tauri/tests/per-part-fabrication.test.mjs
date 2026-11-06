@@ -60,6 +60,7 @@ test('material prices follow selected grade without per-detail approval or price
  const quote=evaluateModules({inventory,partMaterials:prefs,materialPrices:prices,rates:{materialPriceKg:null}});
  assert.ok(quote.modules.find(m=>m.id==='material').knownCostPln>0);
  prices.S235JR=10;assert.equal(partsList(inventory,prefs,prices)[0].price,10);
+ prices.S235JR=null;assert.equal(partsList(inventory,prefs,prices)[0].materialCost,null);
 });
 test('weld type edits recalculate welding and postweld while assembly includes tacks and turns',()=>{
  const parts=partsList(inventory,{},5),contacts={complete:true,candidates:[{id:'a|b',partA:'a',partB:'b',lengthMm:1000}]};

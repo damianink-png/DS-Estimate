@@ -42,6 +42,13 @@ class Geometry(unittest.TestCase):
  def test_rotated_bar_and_plate_have_local_geometry_and_measured_contour(self):
   bar=rotated(box(40,40,1000));hint=recognize_stock(bar,cad.bounds(bar));self.assertEqual(hint['kind'],'square-bar');self.assertAlmostEqual(hint['lengthMm'],1000,places=3)
   plate=rotated(box(100,50,5));hint=recognize_stock(plate,cad.bounds(plate));self.assertEqual(hint['kind'],'plate-candidate');self.assertAlmostEqual(hint['localCuttingHint']['contourMm'],300,places=3)
+ def test_small_plate_rotation_does_not_use_world_bbox_thickness(self):
+  t=gp_Trsf();t.SetRotation(gp_Ax1(gp_Pnt(0,0,0),gp_Dir(1,0,0)),.03)
+  shape=BRepBuilderAPI_Transform(box(100,50,5),t,True).Shape()
+  bounds=cad.bounds(shape);wrong_thickness=min(bounds[i+3]-bounds[i] for i in range(3))
+  hint=recognize_stock(shape,bounds,{'kind':'plate-outline','thicknessMm':wrong_thickness,'contourMm':300,'pierces':1})
+  self.assertEqual(hint['kind'],'plate-candidate');self.assertAlmostEqual(hint['thicknessMm'],5,places=3)
+  for actual,expected in zip(hint['localDimsMm'],[100,50,5]):self.assertAlmostEqual(actual,expected,places=3)
  def test_rounded_rhs_has_area_and_nominal_catalog_candidates(self):
   outer=rounded_box(40,40,1000,4);inner=rounded_box(36,36,1000,2,(2,2,0));shape=BRepAlgoAPI_Cut(outer,inner).Shape()
   hint=recognize_stock(shape,cad.bounds(shape));self.assertEqual(hint['kind'],'square-hollow');self.assertAlmostEqual(hint['wallMm'],2,places=3)

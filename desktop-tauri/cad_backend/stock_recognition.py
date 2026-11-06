@@ -273,7 +273,7 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None):
 def recognize_stock(solid, bounds, plate_hint=None):
     """Try the existing world frame, then a frame aligned with the longest straight edge."""
     result=_recognize_axis_stock(solid,bounds,plate_hint)
-    if result.get('kind')=='unknown' and solid is not None:
+    if result.get('kind') in ('unknown','plate-candidate') and solid is not None:
         try:
             try:from . import cad_measure as api
             except ImportError:import cad_measure as api
