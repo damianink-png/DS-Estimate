@@ -562,7 +562,8 @@ def main():
         data=analyze_joints(args.step)
     else:
         data = inventory(args.step, args.density)
-    output = json.dumps(data, ensure_ascii=False, indent=2)
+    # Escaped Unicode keeps the JSON pipe portable across Windows code pages.
+    output = json.dumps(data, ensure_ascii=True, indent=2)
     if args.output:
         args.output.write_text(output, encoding="utf-8")
     else:
