@@ -1,5 +1,5 @@
 """Named, nested, rotated manufacturing assembly shared by CAD and installed UI tests."""
-import sys,json,math
+import sys,json,math,re
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).parent))
 from manufacturing_geometry_test import box,rotated,BRepPrimAPI_MakeCylinder,BRepAlgoAPI_Cut,BRepAlgoAPI_Fuse,BRepBuilderAPI_MakePolygon,BRepBuilderAPI_MakeFace,BRepPrimAPI_MakePrism,gp_Pnt,gp_Vec,gp_Trsf,gp_Ax1,gp_Dir
@@ -30,8 +30,11 @@ def write_fixture(path):
  sub=tool.NewShape();set_name(sub,S('Podzespół obrócony',True))
  def location(x,y,z):
   tr=gp_Trsf();tr.SetTranslation(gp_Vec(x,y,z));return TopLoc_Location(tr)
+ definitions={}
  def part(parent,shape,name,loc=None):
-  definition=tool.AddShape(shape,False);set_name(definition,S('Definicja '+name,True))
+  if id(shape) not in definitions:
+   definition=tool.AddShape(shape,False);set_name(definition,S('Definicja '+name,True));definitions[id(shape)]=(shape,definition)
+  definition=definitions[id(shape)][1]
   instance=tool.AddComponent(parent,definition,loc or TopLoc_Location());set_name(instance,S(name,True))
  left=[(-50,0),(0,0),(0,2),(-8,10),(-50,10)]
  part(root,prepared_plate(left),'Blacha lewa V')
@@ -49,6 +52,15 @@ def write_fixture(path):
  bent=BRepAlgoAPI_Fuse(BRepAlgoAPI_Fuse(ring,box(50,3,100,(-50,7,0))).Shape(),box(3,40,100,(7,-40,0))).Shape()
  part(root,rotated(bent),'Blacha gięta BG-003',location(3500,0,0))
  tool.UpdateAssemblies();writer=STEPCAFControl_Writer();assert writer.Transfer(doc);writer.Write(str(path))
+ # OCCT's exporter may lose captions on repeated definitions across assembly
+ # levels. Author explicit, standard NAUO names in the fixture so the import
+ # test checks names actually stored in STEP rather than lost exporter state.
+ text=Path(path).read_text(encoding='utf8')
+ for usage,name in [('3','Płyta P-015 druga'),('4','Płyta P-015')]:
+  pattern=r"NEXT_ASSEMBLY_USAGE_OCCURRENCE\('"+usage+r"','[^']*'"
+  text,count=re.subn(pattern,"NEXT_ASSEMBLY_USAGE_OCCURRENCE('"+usage+"','"+name+"'",text)
+  if count!=1:raise ValueError('Fixture occurrence id was not unique: '+usage)
+ Path(path).write_text(text,encoding='utf8')
  return {'names':['Blacha lewa V','Blacha prawa V','Płyta P-015','Płyta P-015 druga','Profil SHS z wycięciem','Blacha gięta BG-003'],'count':6,'grooveAreaMm2':64,'grooveLengthMm':100}
 
 if __name__=='__main__':
