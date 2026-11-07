@@ -2,14 +2,25 @@
 import json,time
 from PIL import ImageGrab,ImageChops
 from pywinauto import Application,mouse
+from pywinauto.controls.uiawrapper import UIAWrapper
 
 def run_accessibility_test(pid,exe,step,out):
  part_names=['Blacha lewa V','Blacha prawa V','Płyta P-015','Płyta P-015 druga','Profil SHS z wycięciem','Blacha gięta BG-003']
  app=Application(backend='uia').connect(process=pid,timeout=30);win=app.window(title='DS Estimate 0.7.1');win.wait('exists visible',timeout=60);win.set_focus()
+ def snapshot(root):
+  # WebView2 can retire an element while UIA constructs its wrappers. An
+  # anonymous control with no type is not a test target; keep all valid peers.
+  result=[]
+  for info in root.element_info.descendants():
+   if info.control_type is None:continue
+   try:result.append(UIAWrapper(info))
+   except KeyError as error:
+    if error.args!=(None,):raise
+  return result
  def find(name,timeout=30):
   deadline=time.monotonic()+timeout
   while time.monotonic()<deadline:
-   controls=win.descendants();candidates=[c for c in controls if c.element_info.name==name]
+   controls=snapshot(win);candidates=[c for c in controls if c.element_info.name==name]
    if candidates:return candidates[0]
    # WebView2 combines text within table cells into a single DataItem name.
    cells=[c for c in controls if c.element_info.control_type=='DataItem']
@@ -54,7 +65,7 @@ def run_accessibility_test(pid,exe,step,out):
   find('Płyta 15 mm')
   part=find('Płyta P-015');parent=part
   for _ in range(6):
-   buttons=[c for c in parent.descendants() if c.element_info.name=='Parametry / biblioteka']
+   buttons=[c for c in snapshot(parent) if c.element_info.name=='Parametry / biblioteka']
    if len(buttons)==1:break
    parent=parent.parent()
   else:raise AssertionError('Cannot locate parameters for the named native part')
@@ -68,8 +79,8 @@ def run_accessibility_test(pid,exe,step,out):
   assert sum(1 for pixel in diff.getdata() if max(pixel)>10)>1000,'Native preview did not rotate'
   screenshot('installed-part-preview.png');press('Zamknij parametry');press('Spawanie')
   deadline=time.monotonic()+30
-  while time.monotonic()<deadline and not any('Przygotowanie V' in c.element_info.name for c in win.descendants()):time.sleep(.3)
-  assert any('Przygotowanie V' in c.element_info.name for c in win.descendants())
+  while time.monotonic()<deadline and not any('Przygotowanie V' in c.element_info.name for c in snapshot(win)):time.sleep(.3)
+  assert any('Przygotowanie V' in c.element_info.name for c in snapshot(win))
   area='Przekrój spoiny solid-1|solid-2';assert abs(float(value(area).replace(',','.'))-64)<.01
   before_time=value('Przyjęto Wykonanie spoin');enter(area,'80');time.sleep(.3);assert value('Przyjęto Wykonanie spoin')!=before_time
   screenshot('installed-weld-preparation.png');press('Gięcie');find('Blacha gięta 3 mm');screenshot('installed-bending.png')
@@ -78,6 +89,6 @@ def run_accessibility_test(pid,exe,step,out):
  except Exception:
   try:screenshot('failure.png')
   except Exception:pass
-  try:(out/'failure-controls.json').write_text(json.dumps([{'name':c.element_info.name,'type':c.element_info.control_type} for c in win.descendants()],ensure_ascii=False,indent=2),encoding='utf8')
+  try:(out/'failure-controls.json').write_text(json.dumps([{'name':c.element_info.name,'type':c.element_info.control_type} for c in snapshot(win)],ensure_ascii=False,indent=2),encoding='utf8')
   except Exception:pass
   raise
