@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from cad_backend.stock_patterns import orthogonal_section_kind
+from cad_backend.stock_patterns import orthogonal_section_kind, convex_polygon_section_kind
 from cad_backend.stock_recognition import _classify_section, recognize_stock
 from unittest.mock import patch
 
@@ -206,6 +206,41 @@ class StockPatternTests(unittest.TestCase):
         self.assertIsNone(orthogonal_section_kind(close([(0,0),(10,0),(10,10),(0,10)]), 0.002))
         self.assertIsNone(orthogonal_section_kind([(0,0),(30,0),(30,5),(5,5)], 0.002))
 
+
+    def test_nonstandard_convex_section_never_gets_rectangle_label(self):
+        # Exact cross section from Earthpress 5x5x50 ribs: four sides,
+        # measured metal area 15 mm2 (rather than 25 mm2 from bounding box).
+        points=[(0,0),(5,0),(3,3),(0,5),(0,0)]
+        hint=convex_polygon_section_kind(points,.002)
+        self.assertEqual(hint['kind'],'polygon-bar')
+        self.assertAlmostEqual(hint['sectionAreaMm2'],15.0)
+        edges=[(points[i:i+2],False,None) for i in range(len(points)-1)]
+        self.assertEqual(_classify_section(edges,.002)['kind'],'polygon-bar')
+
+    def test_polygonal_bar_requires_repeated_sections_and_independent_volume(self):
+        points=[(0,0),(5,0),(3,3),(0,5),(0,0)]
+        edges=[(points[i:i+2],False,None) for i in range(len(points)-1)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \\
+             patch('cad_backend.stock_recognition._measured_solid_volume',return_value=750) as measure:
+            result=recognize_stock(object(),(0,0,0,5,5,50))
+        self.assertEqual(result['kind'],'polygon-bar')
+        self.assertEqual(result['confidence'],'cross-section-consistent')
+        measure.assert_called_once()
+        self.assertAlmostEqual(result['sectionAreaMm2'],15)
+        self.assertEqual(result['lengthMm'],50)
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \\
+             patch('cad_backend.stock_recognition._measured_solid_volume',return_value=600):
+            missing=recognize_stock(object(),(0,0,0,5,5,50))
+        self.assertEqual(missing['kind'],'unknown')
+        self.assertIn('volume',missing['reason'])
+
+    def test_polygon_profile_rejects_concave_or_nearly_rectangle(self):
+        concave=[(0,0),(6,0),(6,6),(3,3),(0,6),(0,0)]
+        self.assertIsNone(convex_polygon_section_kind(concave,.002))
+        near_rectangle=[(0,0),(80,0),(80.35,40),(0.35,40),(0,0)]
+        self.assertIsNone(convex_polygon_section_kind(near_rectangle,.002))
+        unclosed=[(0,0),(6,0),(6,6),(0,6)]
+        self.assertIsNone(convex_polygon_section_kind(unclosed,.002))
 
 def run_suite():
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(StockPatternTests)
