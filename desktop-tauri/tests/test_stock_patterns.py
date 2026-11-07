@@ -220,7 +220,7 @@ class StockPatternTests(unittest.TestCase):
     def test_polygonal_bar_requires_repeated_sections_and_independent_volume(self):
         points=[(0,0),(5,0),(3,3),(0,5),(0,0)]
         edges=[(points[i:i+2],False,None) for i in range(len(points)-1)]
-        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \\
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
              patch('cad_backend.stock_recognition._measured_solid_volume',return_value=750) as measure:
             result=recognize_stock(object(),(0,0,0,5,5,50))
         self.assertEqual(result['kind'],'polygon-bar')
@@ -228,7 +228,7 @@ class StockPatternTests(unittest.TestCase):
         measure.assert_called_once()
         self.assertAlmostEqual(result['sectionAreaMm2'],15)
         self.assertEqual(result['lengthMm'],50)
-        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \\
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
              patch('cad_backend.stock_recognition._measured_solid_volume',return_value=600):
             missing=recognize_stock(object(),(0,0,0,5,5,50))
         self.assertEqual(missing['kind'],'unknown')
