@@ -127,6 +127,38 @@ class StockPatternTests(unittest.TestCase):
         self.assertEqual(result['kind'],'unknown')
         self.assertIn('volume',result['reason'])
 
+    def test_independent_volume_evaluated_only_once_for_matching_sections(self):
+        # Large assemblies must not re-run expensive OCCT B-Rep volume
+        # once for candidate stock and again for the final volume gate.
+        pts=[(0,0),(40,0),(40,40),(0,40),(0,0)]
+        edges=[(pts[i:i+2],False,None) for i in range(4)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',return_value=1600000) as volume:
+            result=recognize_stock(object(),(0,0,0,40,40,1000))
+        self.assertEqual(result['kind'],'square-bar')
+        volume.assert_called_once()
+
+    def test_volume_failure_remains_unknown_not_free_stock(self):
+        pts=[(0,0),(40,0),(40,40),(0,40),(0,0)]
+        edges=[(pts[i:i+2],False,None) for i in range(4)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',side_effect=RuntimeError('OCCT unavailable')):
+            result=recognize_stock(object(),(0,0,0,40,40,1000))
+        self.assertEqual(result['kind'],'unknown')
+        self.assertIn('Independent volume check unavailable',result['reason'])
+
+    def test_changing_section_volume_failure_remains_explicit(self):
+        def rect(w):
+            pts=[(0,0),(w,0),(w,40),(0,40),(0,0)]
+            return [(pts[i:i+2],False,None) for i in range(4)]
+        def sample(shape,bounds,axis,fraction):
+            return rect(35 if fraction < .2 else 40)
+        with patch('cad_backend.stock_recognition._section_edges',side_effect=sample), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',side_effect=ValueError('bad volume')):
+            result=recognize_stock(object(),(0,0,0,40,40,1000))
+        self.assertEqual(result['kind'],'unknown')
+        self.assertIn('Independent volume check unavailable',result['reason'])
+
     def test_independent_volume_accepts_prismatic_bar(self):
         pts=[(0,0),(40,0),(40,40),(0,40),(0,0)]
         edges=[(pts[i:i+2],False,None) for i in range(4)]
