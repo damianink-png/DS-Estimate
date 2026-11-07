@@ -18,6 +18,11 @@ on:
       - 'desktop-tauri/tests/public_fabrication_regression.test.mjs'
       - 'desktop-tauri/src/QuickEstimate.svelte'
       - 'desktop-tauri/cad_backend/step_inventory.py'
+      - 'desktop-tauri/cad_backend/section_catalog.py'
+      - 'desktop-tauri/cad_backend/stock_recognition.py'
+      - 'desktop-tauri/src/lib/data/steel-sections.json'
+      - 'desktop-tauri/licenses/steel-section-database-MIT.txt'
+      - 'desktop-tauri/tests/manufacturing_geometry_test.py'
       - 'desktop-tauri/cad_backend/rigid_match.py'
       - 'desktop-tauri/cad_backend/shape_index.py'
       - 'desktop-tauri/tests/test_shape_index.py'
@@ -77,9 +82,16 @@ jobs:
       - name: Build the genuine DS Estimate CAD engine EXE
         shell: pwsh
         run: |
-          conda run -n ds-cad python -m PyInstaller --onefile --collect-all OCC --name ds-cad-engine --distpath src-tauri/cad-backend --workpath build/cad-pyinstaller --specpath build/cad-spec cad_backend/step_inventory.py
+          $catalogPath = (Resolve-Path 'src/lib/data/steel-sections.json').Path
+          $catalogLicensePath = (Resolve-Path 'licenses/steel-section-database-MIT.txt').Path
+          conda run -n ds-cad python -m PyInstaller --onefile --collect-all OCC --add-data "$catalogPath;data" --add-data "$catalogLicensePath;licenses" --name ds-cad-engine --distpath src-tauri/cad-backend --workpath build/cad-pyinstaller --specpath build/cad-spec cad_backend/step_inventory.py
           if ($LASTEXITCODE -ne 0) { throw 'Engine compilation failed' }
           if (!(Test-Path src-tauri/cad-backend/ds-cad-engine.exe)) { throw 'Missing compiled DS Estimate CAD engine' }
+      - name: Verify packaged catalogue and manufacturing geometry before public benchmarks
+        shell: pwsh
+        run: |
+          conda run -n ds-cad python tests/manufacturing_geometry_test.py --compiled
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged catalogue or manufacturing geometry regression failed' }
       - name: Install PDF text extraction for the independently published drawings
         shell: pwsh
         run: |
