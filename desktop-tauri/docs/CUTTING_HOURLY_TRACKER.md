@@ -259,3 +259,24 @@ geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
   wdrożyć poprawki detektora osiowych łączników i walidatora SHS na
   podstawie oryginalnego B-Rep, bez zmiany tolerancji i bez nowych pól UX.
 
+
+## Iteracja 7.11.2026, 21:11 CET — audyt osi i dowodów SHS
+
+- PR #7 HEAD na początku: `beaaa0fa8a5ca970465b29fd8706da438cc25187`.
+- GitHub Actions dla tego SHA: benchmark [42405496689](https://github.com/damianink-png/DS-Estimate/actions/runs/42405496689) **PASS**;
+  Windows [42405496662](https://github.com/damianink-png/DS-Estimate/actions/runs/42405496662) **PASS**.
+  Poprzednie runy `42405480336/337` anulowane przez nowy commit, nie FAIL.
+- Bezpośrednie B-Rep wcześniejszego audytu: sześć SHS z zaokrąglonymi narożami
+  mają pole inne od uproszczonego wzoru ostronarożnego; nie wolno tego
+  naprawiać globalnym poluzowaniem tolerancji.
+- Nowy commit `ead15dfac707f87073c2926c6621e4c5245c423f`:
+  rozszerzenie testu oryginalnego Earthpress o jawny zapis dowodów
+  `PUBLIC_ROUNDED_SHS_EVIDENCE` dla brył 1–6, bez zmiany klasyfikacji
+  i bez zmian UI. Ten commit wymaga osobnego potwierdzenia CI.
+- Liczniki przed/po bez zmiany silnika: Earthpress 121/251 znanych czasów,
+  130 nieustalonych; Portal 6/15 i 9; StepGen 0/1 i 1.
+  **Nie deklarować poprawy skuteczności** z samego testu diagnostycznego.
+- Kolejny krok: odczytać nowy JSON diagnostyczny z logów, następnie
+  poprawić walidację promieni naroży względem rzeczywistego B-Rep,
+  bez zmiany 2% tolerancji. Osobno detektor osiowych łączników.
+
