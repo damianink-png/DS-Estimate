@@ -280,3 +280,15 @@ geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
   poprawić walidację promieni naroży względem rzeczywistego B-Rep,
   bez zmiany 2% tolerancji. Osobno detektor osiowych łączników.
 
+
+## Kontrola bieżącego HEAD — 7.11.2026, 22:11 CET
+
+- PR #7 HEAD: `3ee49dd11c1fdb852e97c04d2763c8db0e6e8b47`.
+- Publiczny benchmark [42409886979](https://github.com/damianink-png/DS-Estimate/actions/runs/42409886979): **PASS**; Windows [42409886980](https://github.com/damianink-png/DS-Estimate/actions/runs/42409886980): **PASS** (`workspace-ui` i `build-windows`).
+- Odczytano bezpośrednio log joba `128515548608`. Earthpress: 251 brył; `CANDIDATE=85`, `GEOMETRY_ONLY=84`, `INVALID_HINT=7`, `UNKNOWN=75`; desktop cutting `known=121, pending=130`. Portal Frame `known=6, pending=9`; StepGen `known=0, pending=1`. **Bez wzrostu liczników względem poprzedniego PASS.**
+- Test osi Earthpress 10/11 PASS; Portal Frame 2–9 i Earthpress 132 PASS. Log `PUBLIC_ROUNDED_SHS_EVIDENCE` pokazuje, że **natywny silnik już oznacza bryły 1–6 jako `square-hollow`**, a więc ich `INVALID_HINT` powstaje **w diagnostycznym `tests/public_stock_audit.py`**, nie w natywnym klasyfikatorze.
+- Przyczyna w audycie: `_section_area_consistent` liczy `w*h-(w-2t)*(h-2t)`, czyli przekrój ostronarożny, i odrzuca rzeczywiste pole B-Rep z promieniami przy twardym progu 2%. **Nie wolno podnosić progu ani zastępować pola zmierzonego polem uproszczonym**. Potrzebny jest niezależny dowód promieni naroży z oryginalnego B-Rep i kontrola zgodności rzeczywistego pola z ich geometrią.
+- To **diagnostyczne 6× INVALID_HINT**, nie dowód, że silnik nie rozpoznał sześciu rur. Osobno bryła 251 nie ma kompletu wymiarów blachy.
+- W tej kontroli **nie wdrażano zmiany klasyfikatora**: brak wystarczającego potwierdzenia niezależnej formuły pola z promieni, a sztuczny PASS naruszyłby zakaz poluzowania tolerancji. Nie publikowano EXE i nie scalano do main.
+
+**Następny bezpieczny krok:** w testach oryginalnego Earthpress pobrać rzeczywiste promienie naroży i zweryfikować pole z B-Rep dla sześciu SHS, dopiero potem poprawić audyt. Równolegle dodać detektor osi obrotowych dla 44 wystąpień, bez przypisywania technologii zakupowej i czasów.
