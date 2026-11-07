@@ -11,7 +11,7 @@ export function metalFamily(p){const grade=p.grade||'';return /^S\d|carbon/.test
 export function curveFeed(curve,t){valid(t,'Grubość',true);if(!Array.isArray(curve)||!curve.length)throw new RangeError('Krzywa maszyny');
  const sorted=curve.map(([x,y])=>[valid(x,'Grubość w tabeli',true),valid(y,'Posuw w tabeli',true)]).sort((a,b)=>a[0]-b[0]);
  if(t<=sorted[0][0])return sorted[0][1];for(let i=1;i<sorted.length;i++){const [x,y]=sorted[i],[px,py]=sorted[i-1];if(t<=x)return py+(y-py)*(t-px)/(x-px);}return sorted.at(-1)[1];}
-const profiles=new Set(['square-hollow','rectangular-hollow','round-tube','round-bar','square-bar','rectangular-bar','polygon-bar','flat-section','angle','channel','tee','i-section']);
+const profiles=new Set(['square-hollow','rectangular-hollow','round-tube','round-bar','square-bar','rectangular-bar','flat-section','angle','channel','tee','i-section']);
 export function planAutomaticCutting(parts,{machines=MACHINES,laserLimit=10,rate=null,catalog=[]}={}){
  const rows=[];for(const p of parts){if(p.route!=='make')continue;
   const s=p.solid,h=s.stockHint?.kind==='unknown'&&s.stockHint?.rawStockCandidate?s.stockHint.rawStockCandidate:(s.stockHint??{}),kind=p.stockKind||h.kind,selected=catalog.find(x=>x.id===p.catalogId);const notes=[];if(h.confidence==='raw-stock-candidate')notes.push('Półfabrykat z powtarzalnych przekrojów; gotowy detal ma otwory lub obróbkę.');if(s.cuttingHint?.estimated)notes.push(s.cuttingHint.kind==='estimated-bent-outline'?'Szacunek rozwinięcia z powierzchni środkowej; przyjęto 1 przebicie.':'Kontur półfabrykatu z większej ściany blachy; sprawdź naddatek fazowania.');
@@ -19,7 +19,12 @@ export function planAutomaticCutting(parts,{machines=MACHINES,laserLimit=10,rate
   const thickness=h.thicknessMm??s.bendHint?.bends?.[0]?.thicknessMm??s.cuttingHint?.thicknessMm??Math.min(...p.dims);
   const isProfile=profiles.has(kind)||(selected&&selected.shape!=='FLAT');
   const plate=kind==='plate-candidate'||kind==='plate'||kind==='bent-plate'||s.cuttingHint?.kind==='plate-outline';
-  let method=p.cutMethod!=='auto'?p.cutMethod:isProfile?'saw':plate?(thickness<=laserLimit?'laser':thickness<=35?'plasma':['steel','assumed-steel'].includes(family)?'oxy':'plasma'):null;
+  // A measured non-rectangular polygon proves the FINISHED geometry, not
+  // that an identical special-section bar was bought and sawn to length.
+  // Keep existing manual saw override optional; no new input is required.
+  if(kind==='polygon-bar'&&p.cutMethod==='auto')
+   notes.push('Przekrój specjalny potwierdzony geometrycznie; przygotówka i proces cięcia nieustalone.');
+  let method=p.cutMethod!=='auto'?p.cutMethod:kind==='polygon-bar'?null:isProfile?'saw':plate?(thickness<=laserLimit?'laser':thickness<=35?'plasma':['steel','assumed-steel'].includes(family)?'oxy':'plasma'):null;
   if(family==='unknown'&&p.cutMethod==='auto'&&method!=='saw'){method=null;notes.push('Nieznany materiał: wybierz technologię.');}
   let m=machines[method],minutes=null,runMin=null,setupMin=0,feed=null;
   let contour=p.contourMm??s.cuttingHint?.contourMm??null,pierces=p.pierces??s.cuttingHint?.pierces??null;
