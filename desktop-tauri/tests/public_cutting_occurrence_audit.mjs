@@ -22,7 +22,7 @@ const root=resolve(process.argv[2]||'public_fabrication_output');
 const cases=JSON.parse(readFileSync(join(root,'public_cases.json'),'utf8'));
 const output=[],csvRows=[['Projekt','Wystąpienie STEP','Produkt STEP','Grupa geometrii',
  'Nazwa STEP','Droga realizacji','Półfabrykat','Stan','Kod przyczyny',
- 'Opis przyczyny','Technologia','Czas automatyczny [min]','Gatunek',
+ 'Opis przyczyny','Kod przyczyny CAD','Opis z silnika CAD','Technologia','Czas automatyczny [min]','Gatunek',
  'Grubość [mm]','Pole przekroju [mm2]','Kontur [mm]','Przebicia']];
 for(const c of cases){
  const path=join(root,c.id,'ds_estimate_inventory.json');
@@ -39,6 +39,7 @@ for(const c of cases){
  const item={project:c.id,engineVersion:inventory.engineVersion,
   sourceStep:c.files?.find?.(f=>/\.st(e)?p$/i.test(f.path??''))?.path??null,
   statusCounts:audit.statusCounts,missingReasonCounts:audit.missingReasonCounts,
+  stockFailureCounts:audit.stockFailureCounts,
   totalOccurrences:audit.totalOccurrences,ownCutOccurrences:audit.ownCutOccurrences,
   knownTimeOccurrences:audit.knownTimeOccurrences,
   unresolvedOwnOccurrences:audit.unresolvedOwnOccurrences,
@@ -52,11 +53,12 @@ for(const c of cases){
  output.push(item);
  for(const r of audit.rows)csvRows.push([c.id,r.occurrenceId,r.productOccurrenceKey,
   r.geometryGroupId,r.name,r.route,r.stockKind,r.status,r.reasonCode,
-  r.reasonText,r.method,r.automaticMinutes,r.grade,r.thicknessMm,
+  r.reasonText,r.stockFailureCode,r.nativeStockReason,r.method,r.automaticMinutes,r.grade,r.thicknessMm,
   r.sectionAreaMm2,r.contourMm,r.pierces]);
  console.log('DESKTOP_CUTTING_OCCURRENCE_AUDIT',JSON.stringify({
   project:c.id,solids:inventory.count,known:audit.knownTimeOccurrences,
   pending:audit.unresolvedOwnOccurrences,reasons:audit.missingReasonCounts,
+  stockFailures:audit.stockFailureCounts,
   note:'proposed methods and known partial time only'
  }));
 }
