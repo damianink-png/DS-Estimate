@@ -39,6 +39,23 @@ def check(root):
             "blankClassification": hint["kind"],
             "cutTimeCertified": False
         }))
+
+    # Six genuine rounded-corner SHS members are currently rejected by the
+    # audit's sharp-corner area formula. Record exact original STEP evidence;
+    # do not weaken the global 2% geometric tolerance to mask this.
+    shs = []
+    for number in range(1, 7):
+        solid = solids[number - 1]
+        hint = solid.get("stockHint") or {}
+        shs.append({
+            "solid": number,
+            "status": hint.get("kind"),
+            "section": hint.get("section") or hint.get("coreSectionCandidate"),
+            "reason": hint.get("reason"),
+        })
+    print("PUBLIC_ROUNDED_SHS_EVIDENCE", json.dumps(shs, ensure_ascii=False))
+    assert len(shs) == 6
+
     # Real original STEP: correct axis does not imply a constant stock profile.
     # Portal Frame 2-9 have 100x200 ends but 100x10 central sections.
     portal = json.loads((Path(root) / "portal-frame" / "ds_estimate_inventory.json").read_text(encoding="utf-8"))
