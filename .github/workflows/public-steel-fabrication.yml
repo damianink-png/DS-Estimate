@@ -1,8 +1,19 @@
 name: DS Estimate public steel frames vs manual estimates
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/public-steel-fabrication.yml'
+      - 'desktop-tauri/src/lib/cutting-audit.mjs'
+      - 'desktop-tauri/src/lib/automatic-cutting.mjs'
+      - 'desktop-tauri/src/lib/parts.mjs'
+      - 'desktop-tauri/src/lib/cutting-plan.mjs'
+      - 'desktop-tauri/src/lib/cutting-batch.mjs'
+      - 'desktop-tauri/tests/cutting-audit.test.mjs'
+      - 'desktop-tauri/tests/public_cutting_occurrence_audit.mjs'
   push:
-    branches: [main, 'codex/cutting-audit-statuses-20261107']
+    branches: [main]
     paths:
       - '.github/workflows/public-steel-fabrication.yml'
       - 'desktop-tauri/tests/public_fabrication_projects.json'
