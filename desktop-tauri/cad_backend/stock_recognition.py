@@ -249,7 +249,15 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None, axis_override=None):
         return a['kind']==b['kind'] and all(abs(v-b.get(k,float('inf')))<=max(tol*10,.02*max(abs(v),abs(b.get(k,0)))) for k,v in a.items() if k!='kind')
     first=max(valid,key=lambda p:sum(alike(p,q) for q in valid));support=sum(alike(first,p) for p in valid)
     expected=first['sectionAreaMm2']*length
-    measured=_measured_solid_volume(solid) if solid is not None else expected
+    if not math.isfinite(expected) or expected <= 0:
+        return {'kind':'unknown','reason':'Invalid predicted extrusion volume'}
+    # One independent OCCT volume evaluation is enough for both the raw-stock
+    # candidate and the final prism check. It is expensive on large STEP parts.
+    # Failure must be explicit, not swallowed by the orientation fallback.
+    try:
+        measured=_measured_solid_volume(solid) if solid is not None else expected
+    except Exception as exc:
+        return {'kind':'unknown','reason':'Independent volume check unavailable: '+type(exc).__name__}
     raw={**first,'lengthMm':length,'confidence':'raw-stock-candidate','supportingSections':support,
          'sampledSections':5,'removedVolumeMm3':max(0,expected-measured),'source':'repeated B-Rep sections, finished part contains stock removal'} if support>=3 and 0<measured<expected*1.02 else None
     if support<5:
@@ -257,16 +265,8 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None, axis_override=None):
     # Cross-sections can all match while a pocket or notch exists between
     # sampling planes. Compare independent B-Rep volume against the prism
     # implied by the measured section and its full bounding length.
-    if solid is not None:
-        try:
-            measured_volume = _measured_solid_volume(solid)
-        except Exception as exc:
-            return {'kind':'unknown','reason':'Independent volume check unavailable: '+type(exc).__name__}
-        expected_volume = first['sectionAreaMm2'] * length
-        if not math.isfinite(expected_volume) or expected_volume <= 0:
-            return {'kind':'unknown','reason':'Invalid predicted extrusion volume'}
-        if abs(measured_volume-expected_volume) > max(1.0, expected_volume*.02):
-            return {'kind':'unknown','reason':'3-D volume inconsistent with constant stock section (possible pocket, notch or end machining)',**({'rawStockCandidate':raw} if raw else {})}
+    if abs(measured-expected) > max(1.0, expected*.02):
+        return {'kind':'unknown','reason':'3-D volume inconsistent with constant stock section (possible pocket, notch or end machining)',**({'rawStockCandidate':raw} if raw else {})}
     return {**first,'lengthMm':length,'confidence':'cross-section-consistent',
             'source':'OCCT sections at 10/25/50/75/90% length',
             'limitations':'Cannot determine material grade, nominal standard, plate vs flat-bar procurement or end-cut stock length'}
