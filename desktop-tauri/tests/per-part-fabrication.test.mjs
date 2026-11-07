@@ -94,8 +94,13 @@ test('measured polygonal profile uses actual 15 mm2 section for saw cut, not 5x5
  assert.deepEqual(parts[0].dims,[50,5,5]);
  assert.ok(Math.abs(parts[0].stockMassKg-750*7850/1e9)<1e-9);
  const cut=planAutomaticCutting(parts);
- assert.equal(cut.rows[0].method,'saw');
+ assert.equal(cut.rows[0].method,null);
  assert.equal(cut.rows[0].sectionArea,15);
- assert.ok(cut.rows[0].minutes>0);
+ assert.equal(cut.rows[0].minutes,null); // geometry alone is not procurement/process proof
+ parts[0].cutMethod='saw'; // existing optional correction, never required
+ const approved=planAutomaticCutting(parts);
+ assert.equal(approved.rows[0].method,'saw');
+ assert.equal(approved.rows[0].sectionArea,15);
+ assert.ok(approved.rows[0].minutes>0);
  assert.equal(automaticOperations(parts,null).bendRows[0].count,0);
 });
