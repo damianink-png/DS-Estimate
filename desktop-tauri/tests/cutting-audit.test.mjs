@@ -69,5 +69,5 @@ test('explicit zero is classified as known, missing null remains pending',()=>{
  assert.equal(a.complete,true);
  const b=auditCutting([p],{rows:[{id:'zero',method:'laser',minutes:null}]});
  assert.equal(b.knownTimeOccurrences,0);
- assert.equal(b.rows[0].reasonCode,'UNKNOWN_CUT_PATH');
+ assert.equal(b.rows[0].reasonCode,'UNKNOWN_THICKNESS'); // The synthetic row supplies no measured thickness.
 });
