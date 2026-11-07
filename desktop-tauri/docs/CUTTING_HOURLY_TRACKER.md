@@ -292,3 +292,13 @@ geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
 - W tej kontroli **nie wdrażano zmiany klasyfikatora**: brak wystarczającego potwierdzenia niezależnej formuły pola z promieni, a sztuczny PASS naruszyłby zakaz poluzowania tolerancji. Nie publikowano EXE i nie scalano do main.
 
 **Następny bezpieczny krok:** w testach oryginalnego Earthpress pobrać rzeczywiste promienie naroży i zweryfikować pole z B-Rep dla sześciu SHS, dopiero potem poprawić audyt. Równolegle dodać detektor osi obrotowych dla 44 wystąpień, bez przypisywania technologii zakupowej i czasów.
+
+## Iteracja 7.11.2026, 23:10 CET — oryginalne SHS i kontrola regresji
+
+- Przed zmianą HEAD PR #7: `75d72fc7d18eaf16558013b77804a56b7783aff6`, otwarty.
+- Weryfikacja bieżącego HEAD: benchmark [42414725370](https://github.com/damianink-png/DS-Estimate/actions/runs/42414725370) **PASS**; Windows [42414725327](https://github.com/damianink-png/DS-Estimate/actions/runs/42414725327) **PASS**.
+- Log oryginalnego Earthpress: `CANDIDATE=85`, `GEOMETRY_ONLY=84`, `INVALID_HINT=7`, `UNKNOWN=75`; desktop cięcie `known=121/251`, `pending=130`. Portal `6/15`, StepGen `0/1`. **Przed/po: brak zmiany silnika i liczników.**
+- Dodano rygorystyczny test pól B-Rep **sześciu SHS 50×50×3 / 60×60×3**: porównanie rzeczywistego `sectionAreaMm2` z wzorem ostrokątnym, oczekiwane 3–5% różnicy, zachowanie klasy `square-hollow`, pewności wyłącznie geometrii i braku automatycznego dowodu zakupu. Commit `f84d37b2cf540632d6e8337f9904fbc41fd090b3`.
+- Test ten nie jest jeszcze potwierdzony przez Actions; jeżeli FAIL, zbadać rzeczywiste pola i pola `rawStockCandidate`, zamiast osłabiać asercje. Nie zmieniono tolerancji, operacji, interfejsu ani `main`.
+- Następny etap: weryfikacja nowego runu; niezależny pomiar promieni naroży oryginalnych B-Rep, potem poprawka audytu tylko przy udokumentowanym promieniu. Równolegle detektor części obrotowych bez domniemania technologii.
+
