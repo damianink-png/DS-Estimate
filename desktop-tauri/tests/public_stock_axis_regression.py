@@ -55,6 +55,31 @@ def check(root):
         })
     print("PUBLIC_ROUNDED_SHS_EVIDENCE", json.dumps(shs, ensure_ascii=False))
     assert len(shs) == 6
+    # Independent strict numerical evidence from the ORIGINAL STEP.
+    # Never increase the generic 2% tolerance to hide rounded corners.
+    for number in range(1, 7):
+        hint = solids[number - 1].get("stockHint") or {}
+        assert hint.get("kind") == "square-hollow", (
+            f"Earthpress {number}: SHS detection regressed")
+        assert hint.get("confidence") == "cross-section-consistent"
+        width, height, wall = hint["widthMm"], hint["heightMm"], hint["wallMm"]
+        measured = hint["sectionAreaMm2"]
+        assert math.isclose(width, height, abs_tol=0.02)
+        assert math.isclose(wall, 3, abs_tol=0.02)
+        assert any(math.isclose(width, w, abs_tol=0.02) for w in (50, 60))
+        sharp = width * height - (width - 2 * wall) * (height - 2 * wall)
+        difference = (sharp - measured) / sharp
+        assert 0.03 < difference < 0.05, (
+            f"Earthpress {number}: B-Rep rounded area changed: "
+            f"measured={measured}, sharp={sharp}")
+        assert not hint.get("rawStockCandidate"), (
+            f"Earthpress {number}: measured section cannot certify procurement")
+        print("PUBLIC_ROUNDED_SHS_AREA_PASS", json.dumps({
+            "solid": number, "widthMm": width, "wallMm": wall,
+            "measuredAreaMm2": measured, "sharpCornerAreaMm2": sharp,
+            "relativeDifferencePct": round(difference * 100, 3),
+            "procurementCertified": False
+        }))
 
     # Real original STEP: correct axis does not imply a constant stock profile.
     # Portal Frame 2-9 have 100x200 ends but 100x10 central sections.
