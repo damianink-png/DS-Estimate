@@ -79,6 +79,14 @@ class PublicStockAuditTests(unittest.TestCase):
                 rejected=stock_audit({'count':1,'solids':[{'stockHint':bad}]})
                 self.assertEqual(rejected['statusCounts'],{'INVALID_HINT':1})
 
+
+    def test_measured_non_catalogue_polygon_bar_is_supported_without_bbox_area_guess(self):
+        hint={'kind':'polygon-bar','confidence':'cross-section-consistent',
+              'lengthMm':50,'widthMm':5,'heightMm':5,'sectionAreaMm2':15}
+        result=stock_audit({'count':1,'solids':[{'id':'rib-1','stockHint':hint}]})
+        self.assertEqual(result['statusCounts'],{'GEOMETRY_ONLY':1})
+        self.assertEqual(result['kindCounts'],{'polygon-bar':1})
+
     def test_malformed_occurrence_inventory_rejected(self):
         with self.assertRaises(ValueError):
             stock_audit({'count':2,'solids':[{'id':'1'}]})
