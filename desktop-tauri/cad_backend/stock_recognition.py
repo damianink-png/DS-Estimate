@@ -10,9 +10,9 @@ try:
 except ImportError:
     from section_catalog import match_hint,match_open_loop
 try:
-    from .stock_patterns import orthogonal_section_kind
+    from .stock_patterns import orthogonal_section_kind, convex_polygon_section_kind
 except ImportError:
-    from stock_patterns import orthogonal_section_kind
+    from stock_patterns import orthogonal_section_kind, convex_polygon_section_kind
 
 
 def _section_edges(shape, bounds, axis, fraction):
@@ -192,7 +192,7 @@ def _classify_section(edges, tol):
     if inner is None and not any(loops[0][1]):
         # Unmodified one-loop orthogonal sections only. Rounded corners or
         # unexpected transitions stay unclassified, not catalogued by bbox.
-        return orthogonal_section_kind(loops[0][0], tol) or match_open_loop(loops[0][0],loops[0][3])
+        return (orthogonal_section_kind(loops[0][0], tol) or\n                match_open_loop(loops[0][0],loops[0][3]) or\n                convex_polygon_section_kind(loops[0][0], tol))
     return match_open_loop(loops[0][0],loops[0][3]) if inner is None else None
 
 
