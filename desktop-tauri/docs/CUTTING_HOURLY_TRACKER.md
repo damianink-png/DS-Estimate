@@ -229,3 +229,33 @@ To problem segmentacji/złożenia, nie jeden niespotykany profil.
 Wszystkie wskazania typu łącznik, wałek, frezowane są **hipotezami
 geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
 
+
+## Iteracja 7.11.2026, 20:17 CET — oryginalne B-Rep, testy osi i zmiennego przekroju
+
+- HEAD wejściowy PR #7: `6c10b8149aa40d701a3f93ff8466400d3a52ff9e`.
+- Ostatni ukończony Windows PASS: [42400691046](https://github.com/damianink-png/DS-Estimate/actions/runs/42400691046);
+  public STEP PASS: [42400690874](https://github.com/damianink-png/DS-Estimate/actions/runs/42400690874).
+  Runy [42405019245](https://github.com/damianink-png/DS-Estimate/actions/runs/42405019245)
+  i [42405019206](https://github.com/damianink-png/DS-Estimate/actions/runs/42405019206)
+  były IN PROGRESS przy kontroli, nie ogłaszać PASS.
+- Odczytano bezpośrednio `ds_estimate_inventory.json` wygenerowane przez skompilowany
+  silnik z oryginalnych STEP w artefakcie `13585448632`:
+  Earthpress 10/11: Ø40×3, `geometric-core-only`, 191581.48 vs 128805.90 mm³;
+  Earthpress 132: Ø10, 8830.84 vs 7963.94 mm³, stożkowe końce;
+  Portal Frame 2–9: centralny 100×10, L4000, objętość
+  11 600 000 vs 4 000 000 mm³ — nie jest to stały pręt.
+- Dodano precyzyjne testy regresyjne **na oryginalnych danych publicznych STEP**
+  do `tests/public_stock_axis_regression.py`:
+  8× Portal Frame 2–9 (zakaz fałszywego stock i automatycznej piły)
+  oraz Earthpress 132 (stożkowe końce, tylko rdzeń geometryczny).
+  Commit testów: `028805140e20daf710d9ad938823fb00e6a7c13c`.
+  Test jest już wywoływany przez workflow public benchmark. Status nowego
+  commitu: **oczekuje na zakończenie CI**, nie deklarować PASS.
+- Liczniki **przed**: Earthpress desktop 121/251 znanych czasów cięcia,
+  130 nieustalonych; Portal 6/15 i 9; StepGen 0/1 i 1.
+  **Po**: zmiana dotyczy wyłącznie regresji; algorytm i oczekiwane
+  liczniki pozostają bez zmian. Nie udawać wzrostu skuteczności.
+- Następnie: odczytać logi nowych runów; w razie FAIL naprawić;
+  wdrożyć poprawki detektora osiowych łączników i walidatora SHS na
+  podstawie oryginalnego B-Rep, bez zmiany tolerancji i bez nowych pól UX.
+
