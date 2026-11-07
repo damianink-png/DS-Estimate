@@ -110,3 +110,46 @@ To są *powody odrzucenia przez obecny algorytm*, a nie dowód rzeczywistego typ
 
 Automatyczna kolejna iteracja powinna najpierw sprawdzić najnowszy HEAD i udokumentowane
 PASS/FAIL, dopiero potem wprowadzić następny mały pakiet.
+
+## Weryfikacja ORYGINALNEGO STEP — przekroje i osie (7.11.2026)
+
+Przeprowadzono niezależny od klasyfikatora przegląd brył OCP bezpośrednio z
+`earthpress/A-assembly.step` i `portal-frame/portal_frame.stp`.
+Nie wystarcza interpretacja samego `stockHint.reason`.
+
+- **Earthpress bryły 10–11:** model ma współosiowe powierzchnie walcowe
+  Ø40/Ø34, oś walca `(0.9997303, 0, -0.0232220)`, odchylenie **1,33°** od X.
+  Przekrój prostopadły do globalnej X to **2 elipsy**, a prostopadły do
+  faktycznej osi walca to **2 okręgi** (R20/R17) w 2/10/25/50/75/90%
+  długości. Zatem **rzeczywisty błąd wyboru płaszczyzny**. Cała bryła ma jednak
+  191581.48 mm³ wobec 128805.90 mm³ dla odcinka prostego przewodu 369,37 mm:
+  końce zawierają dodatkową geometrię; nie wolno z automatu traktować
+  całości jako surowej rury i zaniżać masy/kosztu.
+- **Earthpress bryły 182–185 i 193:** rzeczywiste czworokątne, nieprostokątne,
+  stałe przekroje: 5×5×50 ma 750 mm³ (A=15 mm²), 6×6×45 ma 972 mm³
+  (A=21,6 mm²). W tych konkretnych przypadkach płaszczyzna jest prawidłowa.
+  Jest to **rozpoznanie geometrii gotowego detalu**, a nie dowód zakupu
+  niestandardowego pręta lub wyboru piły zamiast frezowania.
+- **Earthpress bryła 132:** przekroje prostopadłe do Y pozostają kołowe R5,
+  ale końce są stożkowe (trzy powierzchnie stożkowe) i całkowita objętość nie
+  odpowiada prostemu walcowi. Nie naprawiać przez zwiększenie tolerancji.
+- **Earthpress bryła 20:** 80×28×95 mm, 13 powierzchni cylindrycznych,
+  8 sferycznych i 2 toroidalne; w środku również B-spline. Nie jest
+  rzetelnie rozpoznawalna z pojedynczego regularnego przekroju.
+- **Portal Frame bryły 2–9:** przekrój jest poprawnie prostopadły do Z.
+  W 2–3% długości wynosi **100×200 mm (A=20 000 mm²)**, w 10–90%
+  **100×10 mm (A=1000 mm²)**, w 97–99% znowu **100×200**;
+  objętość = 11 600 000 mm³. Posiada masywniejsze końce — to naprawdę
+  **geometria o zmiennym przekroju**, nie przekrój wybrany pod kątem.
+- **Portal Frame bryła 1 / StepGen bryła 1:** złożone bryły/scalone
+  konstrukcje, nie wnioskować z pojedynczego przekroju ani bbox.
+
+**NOWY priorytet godzinny:** zanim wdrożysz kolejną rodzinę kształtów, napraw
+dobór **lokalnej osi technologicznej i prostopadłej płaszczyzny** (cylinder axis,
+dominant planar normals, długość krawędzi jako poszlaka, wiele przekrojów).
+Oddziel dowód *geometrii gotowej bryły* od dowodu *kształtu przygotówki*;
+jeśli istnieją przyspawane/dodatkowe końce, rozpoznawaj rdzeń jako cechę
+`tube-like core`, ale zostaw pełną masę i czas niewyceniony, dopóki nie da się
+wywnioskować rozdziału procesów. Nie przydzielaj automatycznej piły
+`polygon-bar` bez dowodu, że półfabrykat jest takim kupowanym przekrojem.
+
