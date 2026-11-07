@@ -2,13 +2,17 @@ name: DS Estimate public steel frames vs manual estimates
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, 'codex/cutting-audit-statuses-20261107']
     paths:
       - '.github/workflows/public-steel-fabrication.yml'
       - 'desktop-tauri/tests/public_fabrication_projects.json'
       - 'desktop-tauri/tests/public_fabrication_benchmark.py'
       - 'desktop-tauri/tests/public_fabrication_compare.mjs'
       - 'desktop-tauri/tests/public_fabrication_geometry_audit.py'
+      - 'desktop-tauri/src/lib/cutting-audit.mjs'
+      - 'desktop-tauri/src/lib/automatic-cutting.mjs'
+      - 'desktop-tauri/src/lib/parts.mjs'
+      - 'desktop-tauri/tests/public_cutting_occurrence_audit.mjs'
       - 'desktop-tauri/src/lib/cutting-plan.mjs'
       - 'desktop-tauri/src/lib/geometry.mjs'
       - 'desktop-tauri/tests/geometry.test.mjs'
@@ -114,6 +118,16 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'DS Estimate public reference comparison failed' }
           } else {
             Write-Host 'No result JSON: previous setup failed. Check the logged reason.'
+          }
+      - name: Audit every public STEP body with production desktop cutting planner
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path public_fabrication_output/public_cases.json) {
+            node tests/public_cutting_occurrence_audit.mjs public_fabrication_output
+            if ($LASTEXITCODE -ne 0) { throw 'Per-occurrence cutting audit did not cover every imported STEP body' }
+          } else {
+            throw 'Missing public STEP inventory: per-occurrence audit cannot run'
           }
       - name: Independent StepGen mass and EarthPress grouped-occurrence Boolean audit
         shell: pwsh
