@@ -5,6 +5,30 @@ Dokument roboczy dla kolejnych godzinnych iteracji. Źródło wymagań:
 Zmiany w PR [#7](https://github.com/damianink-png/DS-Estimate/pull/7).
 **Żadna nieukończona pozycja nie staje się pełną wyceną, a brak czasu nie jest zerem.**
 
+## Zasada produktu — minimalizm i pełna automatyzacja
+
+**Wymaganie użytkownika (nadrzędne dla wszystkich pakietów A–F):**
+**wrzucam STEP → program sam analizuje i pokazuje gotowe wyniki**.
+Program ma pozostać maksymalnie minimalistyczny.
+
+- **ZAKAZ** dodawania kolejnych opcji, obowiązkowych pól formularzy, nowych dialogów,
+  dodatkowych zakładek, przycisków, ręcznych kroków i ekranów ustawień.
+- Poprawiać **istniejące silniki**: wykrywanie półfabrykatów i operacji, pomiar
+  geometrii, czasy, grupowanie i wyceny PLN — automatycznie na podstawie STEP.
+- Import STEP uruchamia analizę automatycznie; domyślny ekran pokazuje tylko
+  podstawowe **wyniki**: masa, półfabrykat, operacje/czasy, cena, jasny status
+  brakujących danych. Szczegóły techniczne w testach/CSV/JSON/logach, nie w UI.
+- Nie wymuszać uzupełniania parametrów, wybierania technologii ani potwierdzania
+  każdego detalu. Istniejące korekty ręczne pozostają **opcjonalne** i nie
+  blokują automatycznej analizy.
+- Wynik niepotwierdzony nie może być podawany jako pełna, wiarygodna wycena
+  ani zastępowany zerem; pokazać krótki komunikat „nieustalone”.
+- W każdej godzinnej iteracji oceniaj poprawę **jakości automatu** i regresje
+  UX; nie przedstawiaj dodanego formularza jako „rozwiązania” problemu CAD.
+
+Stan: w PR #7 usunięto z widoku głównego nowo dodane, rozbudowane kody
+przyczyn CAD, pozostawiając je w danych raportowych.
+
 ## Zamknięta bramka z poprzedniego kroku
 
 - [x] Etapy 0–2 — częściowy model audytu każdej bryły / wystąpienia STEP, kody braków i eksport CSV/JSON.
@@ -51,7 +75,7 @@ To są *powody odrzucenia przez obecny algorytm*, a nie dowód rzeczywistego typ
 5. **B, Etap 7:** półfabrykat, naddatki, masa netto/przygotówki, odpady i sposób zakupu; brak podwójnego materiału.
 6. **C, Etap 8:** wspólny model operacji i odwzorowanie cech. Dzisiaj historyczny benchmark i GUI liczą innymi kalkulatorami; scalić dopiero po niezależnych testach zgodności.
 7. **C, Etapy 10–13:** technologiczny wybór maszyny, czasy piły/lasera/plazmy/palnika, grupowanie partii, bez ukrytego nestingu.
-8. **D, Etapy 14–15:** per detal poprawki czasu/technologii, kolumny dowodowe, kompletność i brak zera za brak.
+8. **D, Etapy 14–15:** poprawa automatycznej korekty i weryfikacji, kompletność i brak zera za brak — bez nowych kolumn/formularzy w domyślnym widoku, bez wymagania ręcznej interwencji.
 9. **E, Etapy 6 i 9:** blachy gięte i scalone bryły. W pierwszym wydaniu scalone konstrukcje przynajmniej wykrywać i jawnie oznaczać, nie dopisywać fikcyjnych cięć.
 10. **F, Etapy 16–21:** integracje, wydajność, niezależne przypadki analityczne, prawdziwe STEP+PDF+BOM, instalator Windows/EXE i test użytkowy.
 
