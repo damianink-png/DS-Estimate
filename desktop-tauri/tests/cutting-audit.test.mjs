@@ -71,3 +71,36 @@ test('explicit zero is classified as known, missing null remains pending',()=>{
  assert.equal(b.knownTimeOccurrences,0);
  assert.equal(b.rows[0].reasonCode,'UNKNOWN_THICKNESS'); // The synthetic row supplies no measured thickness.
 });
+
+test('native unknown stock is never mislabeled as missing material because 7850 kg/m3 assumed steel',()=>{
+ const nativeReasons=[
+  ['Not an axis-aligned elongated extrusion; plate or custom stock needs BOM','NOT_ELONGATED_OR_NONAXIAL'],
+  ['Open, complex or unsupported cross-section','UNSUPPORTED_SECTION'],
+  ['3-D volume inconsistent with constant stock section (possible pocket, notch or end machining)','STOCK_VOLUME_MISMATCH'],
+  ['Section changes along finished part','VARIABLE_SECTION']
+ ];
+ const parts=nativeReasons.map(([reason],i)=>part('native-'+i,'make',{
+  grade:'',density:7850,
+  solid:{...solid('native-'+i,'unknown'),stockHint:{kind:'unknown',reason},cuttingHint:null}
+ }));
+ const planned=planAutomaticCutting(parts);
+ assert.ok(planned.rows.every(row=>row.method===null));
+ assert.ok(planned.rows.every(row=>row.notes.some(note=>/Przyjęto stal/.test(note))));
+ const audit=auditCutting(parts,planned);
+ assert.deepEqual(audit.missingReasonCounts,{UNKNOWN_STOCK:4});
+ assert.equal(audit.unresolvedOwnOccurrences,4);
+ assert.deepEqual(audit.stockFailureCounts,{
+  NOT_ELONGATED_OR_NONAXIAL:1,UNSUPPORTED_SECTION:1,STOCK_VOLUME_MISMATCH:1,VARIABLE_SECTION:1
+ });
+ assert.deepEqual(audit.rows.map(r=>r.stockFailureCode),nativeReasons.map(x=>x[1]));
+ assert.deepEqual(audit.rows.map(r=>r.nativeStockReason),nativeReasons.map(x=>x[0]));
+});
+test('machine unavailable stays distinct from missing geometry for recognized stock',()=>{
+ const p=part('plate-disabled');
+ const unavailable=planAutomaticCutting([p],{machines:{
+  laser:{enabled:false},plasma:{enabled:false},oxy:{enabled:false},saw:{enabled:false}
+ }});
+ const audit=auditCutting([p],unavailable);
+ assert.equal(audit.rows[0].reasonCode,'UNSUPPORTED_MACHINE_RANGE');
+ assert.equal(audit.rows[0].stockFailureCode,null);
+});
