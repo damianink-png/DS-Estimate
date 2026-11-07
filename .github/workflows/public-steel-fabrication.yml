@@ -8,6 +8,7 @@ on:
       - 'desktop-tauri/tests/public_fabrication_projects.json'
       - 'desktop-tauri/tests/public_fabrication_benchmark.py'
       - 'desktop-tauri/tests/public_fabrication_compare.mjs'
+      - 'desktop-tauri/tests/public_fabrication_geometry_audit.py'
       - 'desktop-tauri/src/lib/cutting-plan.mjs'
       - 'desktop-tauri/src/lib/geometry.mjs'
       - 'desktop-tauri/tests/geometry.test.mjs'
@@ -114,6 +115,11 @@ jobs:
           } else {
             Write-Host 'No result JSON: previous setup failed. Check the logged reason.'
           }
+      - name: Independent StepGen mass and EarthPress grouped-occurrence Boolean audit
+        shell: pwsh
+        run: |
+          conda run -n ds-cad python tests/public_fabrication_geometry_audit.py public_fabrication_output
+          if ($LASTEXITCODE -ne 0) { throw 'Independent public geometry proof failed; baseline must not be accepted' }
       - name: Pinned source STEP mass, duplicate grouping and partial cutting regression gate
         if: always()
         shell: pwsh

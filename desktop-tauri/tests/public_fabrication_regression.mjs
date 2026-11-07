@@ -13,8 +13,13 @@ import {fileURLToPath} from 'node:url';
 
 export const PINNED_BASELINE = Object.freeze({
  'portal-frame': {solids:15,groups:3,massKg:18045.244066,cutCoverage:0,knownCutHours:0},
- 'stepgen-frame': {solids:1,groups:1,massKg:24.837464,cutCoverage:0,knownCutHours:0},
- earthpress: {solids:251,groups:97,massKg:333.793279,cutCoverage:35.5,knownCutHours:4.57144},
+ // Reviewed after run 42362905988: adaptive integration gives 24.79488954 kg;
+ // independent STEPControl + 1e-9 integration gives 24.79488954 kg and
+ // full-triangle integral 24.79324833 kg. Previous default quadrature was 24.83746425 kg.
+ 'stepgen-frame': {solids:1,groups:1,massKg:24.794890,cutCoverage:0,knownCutHours:0},
+ // Independent two-way Boolean audit proves all 155 representative/member
+ // pairs in the 96 groups. CI repeats this proof; no equality tolerance relaxed.
+ earthpress: {solids:251,groups:96,massKg:333.793279,cutCoverage:35.5,knownCutHours:4.57144},
  // Revert unsafe 110 baseline: independent two-way Cut could not prove
  // occurrence 247 identical to 267 (run 41566796174).
  dockhub: {solids:541,groups:111,massKg:4056.864258,cutCoverage:19.4,knownCutHours:4.69192}
