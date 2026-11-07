@@ -242,6 +242,30 @@ class StockPatternTests(unittest.TestCase):
         unclosed=[(0,0),(6,0),(6,6),(0,6)]
         self.assertIsNone(convex_polygon_section_kind(unclosed,.002))
 
+    def test_oversized_finished_solid_preserves_core_but_never_claims_stock(self):
+        # Real Earthpress bodies 10/11 contain coaxial 40/34 mm cylinder faces,
+        # yet the final volume exceeds the straight pipe prism. Recognition of
+        # this core must NOT turn a welded/machined item into a saw-only part.
+        def ring(radius):
+            xy=[(radius*math.cos(2*math.pi*i/64),
+                 radius*math.sin(2*math.pi*i/64)) for i in range(65)]
+            return (xy,True,radius)
+        edges=[ring(20),ring(17)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',return_value=191581.48) as measure:
+            result=recognize_stock(object(),(0,0,0,40,40,369.371))
+        self.assertEqual(result['kind'],'unknown')
+        self.assertNotIn('rawStockCandidate',result)
+        core=result.get('coreSectionCandidate')
+        self.assertIsNotNone(core)
+        self.assertEqual(core['kind'],'round-tube')
+        self.assertAlmostEqual(core['diameterMm'],40)
+        self.assertAlmostEqual(core['wallMm'],3)
+        self.assertEqual(core['confidence'],'geometric-core-only')
+        self.assertGreater(core['finishedVolumeMm3'],core['sectionPrismVolumeMm3'])
+        measure.assert_called_once()
+
+
 def run_suite():
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(StockPatternTests)
     result = unittest.TextTestRunner(verbosity=1).run(suite)
