@@ -38,6 +38,13 @@ def rounded_box(w,h,length,r,origin=(0,0,0)):
 def rotated(shape):
  t=gp_Trsf();t.SetRotation(gp_Ax1(gp_Pnt(0,0,0),gp_Dir(1,1,1)),.41);return BRepBuilderAPI_Transform(shape,t,True).Shape()
 class Geometry(unittest.TestCase):
+ def test_short_imperial_hollow_is_not_four_sheet_bends(self):
+  outer=rounded_box(25.4,25.4,25.4,6.35)
+  inner=rounded_box(19.05,19.05,25.4,3.175,(3.175,3.175,0))
+  shape=BRepAlgoAPI_Cut(outer,inner).Shape()
+  for part in [shape,rotated(shape)]:
+   hint=recognize_stock(part,cad.bounds(part));self.assertEqual(hint['kind'],'square-hollow',hint)
+   self.assertAlmostEqual(hint['wallMm'],3.175,places=3)
  def test_prepared_t_joint_measures_foot_void_not_contact_perimeter(self):
   def plate(points):
    wire=BRepBuilderAPI_MakePolygon()
@@ -56,7 +63,7 @@ class Geometry(unittest.TestCase):
    self.assertGreaterEqual(len(a['assemblyPath']),3);self.assertAlmostEqual(cad.bounds(b['shape'])[0]-cad.bounds(a['shape'])[0],500,places=4)
    if '--compiled' in sys.argv:
     exe=Path('src-tauri/cad-backend/ds-cad-engine.exe').resolve();p=subprocess.run([str(exe),str(path)],capture_output=True,text=True,timeout=180)
-    self.assertEqual(p.returncode,0,p.stderr);data=json.loads(p.stdout);self.assertEqual(data['engineVersion'],'0.6.0');self.assertEqual(data['count'],6)
+    self.assertEqual(p.returncode,0,p.stderr);data=json.loads(p.stdout);self.assertEqual(data['engineVersion'],'0.7.0');self.assertEqual(data['count'],6)
     lookup={s['name']:s for s in data['solids']};self.assertEqual(set(lookup),set(expected['names']))
     for s in lookup.values():self.assertGreater(len(data['previews'][s['previewKey']]['triangles']),0)
     self.assertAlmostEqual(lookup['Płyta P-015']['stockHint']['thicknessMm'],15,places=3)

@@ -7,7 +7,7 @@
  import {MATERIALS,ROUTES,partDefaults,partsList,partValues,preferenceFor} from './lib/parts.mjs';
  import sectionCatalog from './lib/data/steel-sections.json';
  import {MACHINES,METHOD_LABELS,planAutomaticCutting} from './lib/automatic-cutting.mjs';
- import {NORMS,automaticOperations,partBends} from './lib/fabrication.mjs';
+ import {NORMS,automaticOperations,partBends,bendEstimate} from './lib/fabrication.mjs';
  import {createCadSession} from './lib/cad-session.mjs';
  import {validateStepBom} from './lib/inventory-validate.mjs';
  import {evaluateModules} from './lib/modular-quote.mjs';
@@ -50,7 +50,7 @@
  const modelScore=(p:string)=>/assembly|assembl|z[lł]o[żz]en|monta[żz]|komplet|main/i.test(filename(p))?0:1;
  const storageSettings='ds-estimate-modules-rates-v1';
  const cad=createCadSession(
-  async(path:string)=>{const data=JSON.parse(await invoke<string>('analyze_step',{path}));if(data.engineVersion!=='0.6.0')throw Error('Niezgodny silnik CAD. Uruchom instalator DS Estimate 0.6.0 i sprawdź wersję w tytule okna.');return validateStepBom(data) as Inv;},
+  async(path:string)=>{const data=JSON.parse(await invoke<string>('analyze_step',{path}));if(data.engineVersion!=='0.7.0')throw Error('Niezgodny silnik CAD. Uruchom instalator DS Estimate 0.7.0 i sprawdź wersję w tytule okna.');return validateStepBom(data) as Inv;},
   (path:string)=>invoke<string>('step_fingerprint',{path})
  );
  let inputPath=$state('');
@@ -116,7 +116,7 @@
    if(saved && typeof saved==='object'){
     edits=saved.edits||{};confirmed=saved.confirmed||{};
     excluded=saved.excluded||{};custom=saved.custom||{};
-    grade=saved.grade||'unknown';materialApproved=saved.materialApproved===true;partMaterials=saved.partMaterials||{};contacts=saved.contacts?.engineVersion==='0.6.0'?saved.contacts:null;jointEdits=saved.jointEdits||{};
+    grade=saved.grade||'unknown';materialApproved=saved.materialApproved===true;partMaterials=saved.partMaterials||{};contacts=saved.contacts?.engineVersion==='0.7.0'?saved.contacts:null;jointEdits=saved.jointEdits||{};
    }
   }catch{}
  }
@@ -232,11 +232,11 @@
  let stockMass=$derived(detailRows.filter(p=>p.route!=='purchase'&&!(p.route==='cooperate'&&p.includesMaterial)).reduce((sum,p)=>sum+p.stockMassKg,0));
  async function chooseInputs(folder=false){try{const paths=await pickInputs(folder);if(paths.length)await openInputs(paths);}catch(e){error=String(e);}}
  function changeMaterial(key:string,field:string,value:any){
-  partMaterials={...partMaterials,[key]:{...partDefaults(),...partMaterials[key],[field]:value}};
+  partMaterials={...partMaterials,[key]:{...preferenceFor(inventory.solids.find(s=>s.id===key),partMaterials),[field]:value}};
   confirmed={};materialApproved=false;saveProject();
  }
  function chooseGrade(key:string,value:string){const m=MATERIALS.find(x=>x.grade===value);if(!m)return;
-  partMaterials={...partMaterials,[key]:{...partDefaults(),...partMaterials[key],grade:m.grade,density:m.density}};
+  partMaterials={...partMaterials,[key]:{...preferenceFor(inventory.solids.find(s=>s.id===key),partMaterials),grade:m.grade,density:m.density}};
   materialApproved=false;confirmed={};saveProject();
  }
  function resetValue(moduleId:string,key:string){const own={...edits[moduleId]};delete own[key];
@@ -265,7 +265,7 @@
  }
  function changeMachine(key:string,field:string,value:number){if(!Number.isFinite(value)||value<0)return;machines={...machines,[key]:{...machines[key],[field]:value}};saveAutomation();}
  function changeNorm(key:string,field:string,value:any){if(typeof value==='number'&&(!Number.isFinite(value)||value<0))return;norms={...norms,[key]:{...norms[key],[field]:value}};saveAutomation();}
- function editPart(id:string){const p=detailRows.find(p=>p.id===id);if(!p)return;editingPart=id;draft=structuredClone($state.snapshot(partMaterials[id]??partDefaults()));catalogQuery='';partDialog.showModal();}
+ function editPart(id:string){const p=detailRows.find(p=>p.id===id);if(!p)return;editingPart=id;draft=structuredClone(preferenceFor(p.solid,$state.snapshot(partMaterials)));catalogQuery='';partDialog.showModal();}
  function savePart(){try{const solid=inventory?.solids.find(s=>s.id===editingPart);partValues(solid,draft,materialPrices);
   partMaterials={...partMaterials,[editingPart]:structuredClone($state.snapshot(draft))};confirmed={};materialApproved=false;saveProject();partDialog.close();
  }catch(e){error=String(e);}}
@@ -301,7 +301,7 @@
    </div>
    {#if draft.route==='cooperate'}<label class="check"><input type="checkbox" bind:checked={draft.includesMaterial}/>Cena kooperacji obejmuje materiał</label>{/if}
    <h3>Naddatki na sześciu stronach [mm]</h3><div class="form-grid">{#each ['Długość — początek','Długość — koniec','Szerokość — strona 1','Szerokość — strona 2','Grubość / wysokość — strona 1','Grubość / wysokość — strona 2'] as label,i}<label>{label}<input type="number" min="0" step=".1" bind:value={draft.allowances[i]} required/></label>{/each}</div>
-   <label class="stacked">Znana masa półfabrykatu [kg] — puste = szacunek z naddatków<input type="number" min="0" step=".001" value={draft.stockMassKg??''} onchange={e=>draft.stockMassKg=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
+   <label class="stacked">Znana masa półfabrykatu [kg] — puste = automatyczny półfabrykat i naddatki<input type="number" min="0" step=".001" value={draft.stockMassKg??''} onchange={e=>draft.stockMassKg=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
    <h3>Biblioteka przekrojów · {sectionCatalog.sections.length} pozycji</h3>
    <p>Dopasowanie wymiarów nie potwierdza gatunku ani normy dostawy. Wybierz oznaczenie, gdy kilka pozycji pasuje do geometrii.</p>
    <div class="form-grid"><label>Szukaj przekroju<input bind:value={catalogQuery} placeholder="np. IPE 200, SHS 40x40x2"/></label><label>Pasujące pozycje<select aria-label="Przekrój katalogowy" value={draft.catalogId} onchange={e=>setDraftCatalog(e.currentTarget.value)}><option value="">Bez przypisania katalogowego</option>{#if draft.catalogId&&!catalogOptions.some(c=>c.id===draft.catalogId)}<option value={draft.catalogId}>{sectionCatalog.sections.find(c=>c.id===draft.catalogId)?.name||draft.catalogId}</option>{/if}{#each catalogOptions as c}<option value={c.id}>{c.name} · {c.series}</option>{/each}</select></label>
@@ -334,7 +334,7 @@
   <div class="rail-bottom">
    <button class:active={showReport} onclick={()=>{showReport=true;showSettings=false;}}><ClipboardList size={18}/><span>Stan modułów</span></button>
    <button class:active={showSettings} onclick={()=>{showSettings=true;showReport=false;}}><Settings2 size={18}/><span>Stawki i ustawienia</span></button>
-   <small>DS Estimate 0.6.0 · zapis lokalny</small>
+   <small>DS Estimate 0.7.0 · zapis lokalny</small>
   </div>
  </aside>
  <div class="workspace">
@@ -349,6 +349,7 @@
   <main>
    {#if !native}<div class="banner info">Podgląd interfejsu. Dodawanie lokalnych plików i analiza CAD działają w programie Windows.</div>{/if}
    {#each inventory?.importIssues??[] as issue}<div class="banner warning">{issue}</div>{/each}
+   {#if inventory&&!busy&&!showSettings}<details class="machine-editor"><summary>Założenia automatycznej wyceny</summary>{#each automatic.notes??[] as note}<p class="muted">{note}</p>{/each}<p class="muted">Standardowe śruby, nakrętki i podkładki są proponowane jako zakup na podstawie nazwy. Sposób realizacji można zmienić przy detalu.</p></details>{/if}
    {#if partsResult.error}<div class="banner danger">{partsResult.error}</div>{/if}
    {#if error}<div class="banner danger" role="alert"><div><strong>Nie udało się ukończyć operacji</strong><p>{error}</p></div><button aria-label="Zamknij błąd" onclick={()=>error=''}><X size={16}/></button></div>{/if}
    {#if notice}<div class="banner info" role="status"><span>{notice}</span><button aria-label="Zamknij informację" onclick={()=>notice=''}><X size={16}/></button></div>{/if}
@@ -402,7 +403,7 @@
      </div>{#if m.curve}<div class="feed-curve">{#each m.curve as pair,i}<label>{pair[0]} mm<input aria-label={METHOD_LABELS[key]+' posuw '+pair[0]+' mm'} type="number" min="1" value={pair[1]} onchange={e=>{if(e.currentTarget.reportValidity()){const curve=machines[key].curve.map((p,j)=>j===i?[p[0],Number(e.currentTarget.value)]:p);machines={...machines,[key]:{...machines[key],curve}};saveAutomation();}}}/><small>mm/min</small></label>{/each}</div>{/if}</details>{/each}
     </section>
     <section class="panel"><h2>Automatyczne normy operacji</h2><p>Geometria jest mierzona; poniższe normy czasu są założeniami do wyceny. Wyniki możesz nadpisać przy operacjach.</p>
-     {#each Object.entries(norms) as [key,n]}<details class="machine-editor"><summary>{MODULES.find(m=>m.id===key)?.title||key}</summary><label class="check"><input type="checkbox" checked={n.enabled} onchange={e=>changeNorm(key,'enabled',e.currentTarget.checked)}/>Używaj automatycznego oszacowania</label><div class="form-grid">{#each Object.entries(n).filter(([field])=>field!=='enabled') as [field,v]}<label>{({setupMin:'Przygotowanie [min]',minutesPerPart:'Czas na detal [min]',minutesPerJoint:'Czas na połączenie [min]',heavyKg:'Próg ciężkiego detalu [kg]',heavyFactor:'Mnożnik ciężkiego detalu',a:'Domyślne a spoiny [mm]',deposition:'Wydajność stapiania [kg/h]',arcFactor:'Wykorzystanie łuku [0–1]',density:'Gęstość stopiwa [kg/m³]',secondsPerBend:'Cykl gięcia [s]',handlingMin:'Manipulacja [min]',removalCm3Min:'Usuwanie materiału [cm³/min]',layers:'Liczba warstw',m2Hour:'Wydajność powłoki [m²/h]',grindMinMeter:'Szlifowanie [min/m]',straightenMin:'Przygotowanie prostowania [min]',turnMinPart:'Obracanie [min/detal]',tackSpacingMm:'Rozstaw sczepów [mm]',tackSeconds:'Czas sczepu [s]',cleanMinMeter:'Czyszczenie spoin [min/m]',buttGrindFactor:'Mnożnik szlifowania spoin czołowych',straightenMinMeter:'Prostowanie [min/m spoiny]',vtMinMeter:'Kontrola VT [min/m]',packingMinPart:'Pakowanie [min/detal]',distanceKm:'Dystans [km]',costKm:'Transport [zł/km]',minutes:'Przygotowanie technologii [min]'} as any)[field]||field}<input type="number" min="0" step="any" value={v} onchange={e=>{if(e.currentTarget.reportValidity())changeNorm(key,field,Number(e.currentTarget.value));}}/></label>{/each}</div></details>{/each}
+     {#each Object.entries(norms) as [key,n]}<details class="machine-editor"><summary>{MODULES.find(m=>m.id===key)?.title||key}</summary><label class="check"><input type="checkbox" checked={n.enabled} onchange={e=>changeNorm(key,'enabled',e.currentTarget.checked)}/>Używaj automatycznego oszacowania</label><div class="form-grid">{#each Object.entries(n).filter(([field])=>field!=='enabled') as [field,v]}<label>{({setupMin:'Przygotowanie [min]',minutesPerPart:'Czas na detal [min]',minutesPerJoint:'Czas na połączenie [min]',heavyKg:'Próg ciężkiego detalu [kg]',heavyFactor:'Mnożnik ciężkiego detalu',a:'Domyślne a spoiny [mm]',deposition:'Wydajność stapiania [kg/h]',arcFactor:'Wykorzystanie łuku [0–1]',density:'Gęstość stopiwa [kg/m³]',secondsPerBend:'Cykl gięcia [s]',handlingMin:'Manipulacja [min]',removalCm3Min:'Usuwanie materiału [cm³/min]',layers:'Liczba warstw',m2Hour:'Wydajność powłoki [m²/h]',grindMinMeter:'Szlifowanie [min/m]',straightenMin:'Przygotowanie prostowania [min]',turnMinPart:'Manipulacja [min/podzespół]',longMm:'Próg długości podzespołu [mm]',profileFactor:'Mnożnik montażu profilu',bentFactor:'Mnożnik montażu blachy giętej',unknownFactor:'Mnożnik detalu nierozpoznanego',referenceLengthMm:'Długość odniesienia gięcia [mm]',referenceThicknessMm:'Grubość odniesienia gięcia [mm]',bevelSetupMin:'Przygotowanie fazowania [min]',bevelCm3Min:'Usuwanie materiału faz [cm³/min]',filletGrindFactor:'Mnożnik szlifowania pachwin',straightenDepositKgMeter:'Próg stopiwa dla prostowania [kg/m]',straightenLengthMeter:'Próg długości dla prostowania [m]',tackSpacingMm:'Rozstaw sczepów [mm]',tackSeconds:'Czas sczepu [s]',cleanMinMeter:'Czyszczenie spoin [min/m]',buttGrindFactor:'Mnożnik szlifowania spoin czołowych',straightenMinMeter:'Prostowanie [min/m spoiny]',vtMinMeter:'Kontrola VT [min/m]',packingMinPart:'Pakowanie [min/detal]',distanceKm:'Dystans [km]',costKm:'Transport [zł/km]',minutes:'Przygotowanie technologii [min]'} as any)[field]||field}<input type="number" min="0" step="any" value={v} onchange={e=>{if(e.currentTarget.reportValidity())changeNorm(key,field,Number(e.currentTarget.value));}}/></label>{/each}</div></details>{/each}
      <p class="hint">Powłoki wykorzystują sumę powierzchni detali z B-Rep (z powierzchniami stykowymi); zweryfikuj powierzchnię faktycznie malowaną. CNC z naddatków jest oszacowaniem objętości usuwanej, nie czasem CAM.</p>
     </section>
        <section class="panel results-panel"><div class="panel-title"><div><h2>Ceny materiałów [zł/kg]</h2><p>Stawki zakładowe do wyceny — wartości początkowe są przykładowe. Pusty gatunek korzysta z pierwszej pozycji.</p></div></div><div class="form-grid padded">{#each MATERIALS as m}<label>{m.grade?m.label:'Stal — gatunek nieokreślony'}<input aria-label={'Cena kg '+(m.grade||'stal')} type="number" min="0" step=".01" value={materialPrices[m.grade]??''} onchange={e=>materialPrice(m.grade,e.currentTarget.value)}/></label>{/each}</div></section>
@@ -425,7 +426,7 @@
          <td><input class="number-input" aria-label={'Gęstość '+p.id} type="number" min="1" value={p.density} onchange={e=>{if(e.currentTarget.reportValidity())changeMaterial(p.id,'density',Number(e.currentTarget.value));}}/></td>
          <td>{number(p.massKg)}</td>
          <td>{p.materialCost===null?'—':money(p.materialCost)}<small class="cell-note">{p.route==='purchase'||(p.route==='cooperate'&&p.includesMaterial)?'W cenie dostawcy':'cały materiał detalu'}</small></td>
-         <td><button class="tiny" aria-label={'Naddatki '+p.id} onclick={()=>editPart(p.id)}>{p.allowances.some(v=>v>0)?'Ustawione':'+ Dodaj'}</button><small class="cell-note">{number(p.stockMassKg)} kg</small></td>
+         <td><button class="tiny" aria-label={'Naddatki '+p.id} onclick={()=>editPart(p.id)}>{p.allowances.some(v=>v>0)?'Ustawione':'+ Dodaj'}</button><small class="cell-note">{number(p.stockMassKg)} kg</small><small class="cell-note">{p.stockSource}</small></td>
         </tr>
        {/each}
       </tbody></table></div>
@@ -445,7 +446,7 @@
      </section>
     {/if}
     {#if active==='bending'}
-     <section class="panel results-panel"><div class="panel-title"><div><h2>Gięcia detali</h2><p>Liczba gięć i czasy są pobierane z analizy STEP. Naroża gotowych profili nie są gięciami prasy.</p></div></div><div class="table-scroll"><table><thead><tr><th>Detal</th><th>Wyrób / grubość</th><th>Liczba gięć</th><th>Czas pracy [min]</th><th></th></tr></thead><tbody>{#each detailRows.filter(p=>p.route==='make') as p}<tr><td>{p.name}</td><td>{partDescription(p)}</td><td>{partBends(p)??'Nierozpoznane'}</td><td>{partBends(p)===null?'—':number(partBends(p)*(norms.bending.secondsPerBend/60+norms.bending.handlingMin))}</td><td><button class="tiny" onclick={()=>editPart(p.id)}>Parametry</button></td></tr>{/each}</tbody></table></div></section>
+     <section class="panel results-panel"><div class="panel-title"><div><h2>Gięcia detali</h2><p>Gięcia z geometrii; czas z długości linii, grubości, masy i norm prasy. Przezbrojenie na grupę materiał / grubość / promień. Naroża profili pomijane.</p></div></div><div class="table-scroll"><table><thead><tr><th>Detal</th><th>Wyrób / grubość</th><th>Liczba gięć</th><th>Czas pracy [min]</th><th></th></tr></thead><tbody>{#each detailRows.filter(p=>p.route==='make') as p}<tr><td>{p.name}</td><td>{partDescription(p)}</td><td>{partBends(p)??'Nierozpoznane'}</td><td>{partBends(p)===null?'—':number(bendEstimate(p,norms.bending).minutes)}</td><td><button class="tiny" onclick={()=>editPart(p.id)}>Parametry</button></td></tr>{/each}</tbody></table></div></section>
     {/if}
     {#if active==='welding'}
      <section class="panel results-panel"><div class="panel-title"><div><h2>Styki i proponowane spoiny</h2><p>Geometria wyznacza styk i długość. Potwierdź zamiar spawania, przekrój i dostęp.</p></div><button disabled={busy||jointBusy||!!contacts} onclick={()=>void detectJoints()}>{jointBusy?'Analiza…':contacts?'Przeanalizowano STEP':'Wykryj styki STEP'}</button></div>

@@ -6,7 +6,8 @@ export const partDefaults=()=>({grade:'',density:7850,price:null,route:'make',su
 const finite=(v,label,min=0)=>{if(typeof v!=='number'||!Number.isFinite(v)||v<min)throw new RangeError(label);return v;};
 export function preferenceFor(s,prefs={}){
  const old=prefs[s.id]??prefs[s.verifiedShapeKey]??{};
- return {...partDefaults(),...old,allowances:old.allowances??[old.allowStart??0,old.allowEnd??0,0,0,0,0]};
+ const hardware=/\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack(?:[\s_-]|$)|^electrical[ _-]enclosure(?:[\s:_-]|$)|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b/i.test(s.name??'');
+ return {...partDefaults(),...(hardware?{route:'purchase'}:{}),...old,allowances:old.allowances??[old.allowStart??0,old.allowEnd??0,0,0,0,0]};
 }
 export function detailDimensions(s){
  const h=s.stockHint?.kind==='unknown'&&s.stockHint?.rawStockCandidate?s.stockHint.rawStockCandidate:(s.stockHint??{});
@@ -14,6 +15,18 @@ export function detailDimensions(s){
  if(h.lengthMm&&['square-hollow','rectangular-hollow','round-tube','round-bar','square-bar','rectangular-bar','flat-section','angle','channel','tee','i-section'].includes(h.kind))return [h.lengthMm,h.widthMm??h.diameterMm??spans[1],h.heightMm??h.diameterMm??spans[2]];
  if(Array.isArray(h.localDimsMm)&&h.localDimsMm.length===3)return [...h.localDimsMm].sort((a,b)=>b-a);const dims=[...(s.bboxMm??[])].sort((a,b)=>b-a);
  return [h.lengthMm??dims[0],h.widthMm??h.diameterMm??dims[1],h.thicknessMm??h.heightMm??h.diameterMm??dims[2]];
+}
+// Material blank is separate from the finished solid. Unknown sections retain
+// an explicit volume-based estimate; recognized stock restores removed material.
+export function stockVolume(s,dims,stockDims){
+ const h=s.stockHint?.rawStockCandidate??s.stockHint??{},v=s.volumeMm3;
+ if(Number.isFinite(h.sectionAreaMm2)&&h.sectionAreaMm2>0&&h.lengthMm>0){
+  const dw=stockDims[1]-dims[1],dh=stockDims[2]-dims[2];
+  const extra=Math.max(0,stockDims[1]*stockDims[2]-dims[1]*dims[2]);
+  return {volume:Math.max(v,(h.sectionAreaMm2+extra)*stockDims[0]),source:dw||dh?'Przekrój półfabrykatu z naddatkiem zewnętrznym':'Pole przekroju × długość półfabrykatu'};
+ }
+ if(['plate','plate-candidate'].includes(h.kind))return {volume:Math.max(v,stockDims.reduce((a,b)=>a*b,1)),source:'Prostokątny półfabrykat blachy; bez optymalizacji rozkroju'};
+ return {volume:v*stockDims.reduce((ratio,x,i)=>ratio*x/dims[i],1),source:h.kind==='bent-plate'?'Objętość blachy giętej; kontur bez odpadu rozkroju':'Objętość gotowego detalu × naddatki; półfabrykat nierozpoznany'};
 }
 export function partValues(s,pref={},fallbackPrice=null){
  const p={...partDefaults(),...pref};
@@ -24,7 +37,8 @@ export function partValues(s,pref={},fallbackPrice=null){
  p.allowances.forEach(v=>finite(v,'Naddatek'));
  const stockDims=dims.map((v,i)=>v+p.allowances[2*i]+p.allowances[2*i+1]);
  const massKg=s.volumeMm3/1e9*p.density;
- const stockMassKg=p.stockMassKg===null?massKg*stockDims.reduce((ratio,v,i)=>ratio*v/dims[i],1):finite(p.stockMassKg,'Masa półfabrykatu');
+ const blank=stockVolume(s,dims,stockDims);
+ const stockMassKg=p.stockMassKg===null?blank.volume/1e9*p.density:finite(p.stockMassKg,'Masa półfabrykatu');
  const price=typeof fallbackPrice==='object'&&fallbackPrice!==null?(Object.hasOwn(fallbackPrice,p.grade)?fallbackPrice[p.grade]:(fallbackPrice['']??null)):(p.price??fallbackPrice);
  if(price!==null)finite(price,'Cena materiału');
  if(p.supplierPrice!==null)finite(p.supplierPrice,'Cena zakupu lub kooperacji');
@@ -32,7 +46,7 @@ export function partValues(s,pref={},fallbackPrice=null){
  const materialCost=materialIncluded?0:price!==null?stockMassKg*price:null;
  const supplierCost=p.route==='make'?0:p.supplierPrice;
  [massKg,stockMassKg,...stockDims,materialCost,supplierCost].filter(v=>v!==null).forEach(v=>finite(v,'Przekroczono zakres obliczeń'));
- return {...p,dims,stockDims,massKg,stockMassKg,price,materialCost,supplierCost};
+ return {...p,dims,stockDims,massKg,stockMassKg,stockSource:p.stockMassKg===null?blank.source:'Masa półfabrykatu podana ręcznie',price,materialCost,supplierCost};
 }
 export function partsList(inventory,prefs={},price=null){
  return (inventory?.solids??[]).map(s=>({solid:s,id:s.id,name:s.name||s.id,geometryKey:s.verifiedShapeKey,...partValues(s,preferenceFor(s,prefs),price)}));

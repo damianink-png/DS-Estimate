@@ -38,6 +38,12 @@ except ImportError:
     volume_props=BRepGProp.VolumeProperties_s;surface_props=BRepGProp.SurfaceProperties_s;linear_props=BRepGProp.LinearProperties_s
     add_bounds=BRepBndLib.Add_s
 
+_is_ocp=GProp_GProps.__module__.startswith("OCP")
+_native_volume=volume_props
+_native_surface=surface_props
+def volume_props(shape,props):return _native_volume(shape,props,Eps=1e-7) if _is_ocp else _native_volume(shape,props,1e-7)
+def surface_props(shape,props):return _native_surface(shape,props,Eps=1e-7) if _is_ocp else _native_surface(shape,props,1e-7)
+
 def shapes(shape,kind):
     ex=TopExp_Explorer(shape,kind)
     while ex.More():yield ex.Current();ex.Next()
