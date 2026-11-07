@@ -153,3 +153,11 @@ jeśli istnieją przyspawane/dodatkowe końce, rozpoznawaj rdzeń jako cechę
 wywnioskować rozdziału procesów. Nie przydzielaj automatycznej piły
 `polygon-bar` bez dowodu, że półfabrykat jest takim kupowanym przekrojem.
 
+
+## Kontrola HEAD 83cb453 — 7.11.2026, 19:18 CET
+
+- HEAD PR #7: `83cb45385fe8df7a34e64e40f333918f365f947b` (weryfikacja bezpośrednio z GitHub).
+- Publiczny benchmark [42398795393](https://github.com/damianink-png/DS-Estimate/actions/runs/42398795393): **PASS**. Wszystkie 21 etapów joba `benchmark` przeszły, w tym kompilowany silnik OCCT, trzy publiczne modele i osobna bramka oryginalnego Earthpress `public_stock_axis_regression.py`. Artefakt [13585405319](https://github.com/damianink-png/DS-Estimate/actions/runs/42398795393/artifacts/13585405319) został opublikowany; szczegółowe liczniki nowego raportu wymagają odczytu jego JSON przed podaniem porównania przed/po.
+- Windows [42398795310](https://github.com/damianink-png/DS-Estimate/actions/runs/42398795310): **IN PROGRESS** w chwili kontroli. `workspace-ui` PASS, `build-windows` dotarł do niezależnego benchmarku masy prasy, wcześniejsze 18 kroków PASS. Nie deklarować PASS całego Windows/instalatora i nie publikować EXE.
+- Ostatni potwierdzony bazowy pomiar desktop (starszy artefakt): Earthpress 121/251 rozpoznanych czasów, 130 nieustalonych; Portal 6/15 i 9; StepGen 0/1 i 1. **Przed/po dla bieżącego HEAD: nieustalone**, dopóki nie zostanie odczytany aktualny `cutting_occurrence_audit.json` z artefaktu. Nie przedstawiać starszych wartości jako bieżących.
+- Następna bramka: potwierdzić Windows PASS, odczytać liczby z bieżącego artefaktu, następnie dodać bezpośredni test zmiennego przekroju Portal Frame 2–9 (100×200 na końcach i 100×10 w środku) oraz nierozpoznanego surowca przy stożkowych końcach Earthpress 132. Nie zmieniać tolerancji ani nie wnioskować technologii z rdzenia geometrycznego.
