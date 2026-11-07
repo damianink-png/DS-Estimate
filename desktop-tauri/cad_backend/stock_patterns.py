@@ -90,3 +90,50 @@ def orthogonal_section_kind(pts, tol):
             'widthMm':max(xx[-1]-xx[0], yy[-1]-yy[0]),
             'heightMm':min(xx[-1]-xx[0], yy[-1]-yy[0]),
             'sectionAreaMm2':polygon_area}
+
+
+def convex_polygon_section_kind(points, tol):
+    """A measured, NON-standard polygonal bar profile — never a catalogue size.
+
+    Use only as a fallback after exact round/rectangular and certified rolled
+    section checks. Axial persistence and the independent 3-D volume test
+    in stock_recognition are mandatory before this becomes stock evidence.
+    Slightly skewed almost-rectangles are left unknown rather than relabelled
+    as intentional special sections.
+    """
+    if (not math.isfinite(tol) or tol <= 0 or
+            not 4 <= len(points) <= 13 or
+            any(not all(math.isfinite(z) for z in p) for p in points) or
+            math.dist(points[0], points[-1]) > tol):
+        return None
+    vertices = points[:-1]
+    edges = [(b[0]-a[0], b[1]-a[1]) for a,b in zip(points, points[1:])]
+    lengths = [math.hypot(*e) for e in edges]
+    if min(lengths) < tol*5:
+        return None
+    orientation = 0
+    for e, f in zip(edges, edges[1:] + edges[:1]):
+        cross = e[0]*f[1]-e[1]*f[0]
+        if abs(cross) <= tol*max(math.hypot(*e),math.hypot(*f))*3:
+            continue
+        sign = 1 if cross > 0 else -1
+        if orientation and orientation != sign:
+            return None # concave or self-intersecting, not a simple raw bar
+        orientation = sign
+    if not orientation:
+        return None
+    area = abs(sum(a[0]*b[1]-a[1]*b[0] for a,b in zip(points,points[1:]))) / 2
+    if area <= tol*tol*25:
+        return None
+    _, axis = max(zip(lengths, edges),key=lambda x:x[0])
+    co, si = axis[0]/math.hypot(*axis), axis[1]/math.hypot(*axis)
+    uv = [(x*co+y*si,-x*si+y*co) for x,y in vertices]
+    w = max(x for x,y in uv)-min(x for x,y in uv)
+    h = max(y for x,y in uv)-min(y for x,y in uv)
+    if min(w,h) <= tol or area > w*h*1.001:
+        return None
+    # Do not misclassify a dimensionally noisy rectangle/parallelogram.
+    if area >= w*h*.985:
+        return None
+    return {'kind':'polygon-bar','widthMm':max(w,h),'heightMm':min(w,h),
+            'sectionAreaMm2':area,'sideCount':len(vertices)}
