@@ -55,7 +55,7 @@ def load_occurrences(path):
     doc=TDocStd_Document(TCollection_ExtendedString('DS Estimate'));reader=STEPCAFControl_Reader();reader.SetNameMode(True)
     if reader.ReadFile(str(path))!=cad.IFSelect_RetDone or not reader.Transfer(doc):raise ValueError('XCAF STEP transfer failed')
     tool=tool_fn(doc.Main());roots=TDF_LabelSequence();tool.GetFreeShapes(roots);result=[]
-    def walk(label,parent,trail,depth=0):
+    def walk(label,parent,trail,depth=0,indices=()):
         if depth>64:return
         ref=TDF_Label();is_ref=call(tool,'IsReference',label)
         target=label
@@ -68,15 +68,19 @@ def load_occurrences(path):
         loc=parent.Multiplied(call(tool,'GetLocation',label))
         components=TDF_LabelSequence()
         if call(tool,'GetComponents',target,components):
-            for i in range(1,components.Length()+1):walk(components.Value(i),loc,trail+[name] if name else trail,depth+1)
+            for i in range(1,components.Length()+1):walk(components.Value(i),loc,trail+[name] if name else trail,depth+1,indices+(i,))
         else:
             shape=call(tool,'GetShape',label).Moved(parent)
             solids=list(cad.shapes(shape,cad.TopAbs_SOLID))
+            tags=[];entry=target
+            while not entry.IsRoot():tags.append(str(entry.Tag()));entry=entry.Father()
+            definition_key='xcaf-'+'.'.join(reversed(tags))
+            product_key='occ-'+'.'.join(map(str,indices))
             for index,s in enumerate(solids):
                 result.append({'shape':s,'name':name,'assemblyPath':trail+[name],
                     'nameSource':'XCAF occurrence/product' if name else 'missing',
-                    'bodyIndex':index,'bodyCount':len(solids)})
-    for i in range(1,roots.Length()+1):walk(roots.Value(i),TopLoc_Location(),[])
+                    'bodyIndex':index,'bodyCount':len(solids),'productOccurrenceKey':product_key,'productDefinitionKey':definition_key,'productIdentityReliable':True})
+    for i in range(1,roots.Length()+1):walk(roots.Value(i),TopLoc_Location(),[],indices=(i,))
     return result
 
 def assembly_names(path):

@@ -30,7 +30,7 @@ try:
    if pages:break
    time.sleep(1)
   page=pages[0];page.set_default_timeout(30000);errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-  page.get_by_text('DS Estimate 0.7.0 · zapis lokalny',exact=True).wait_for(timeout=60000)
+  page.get_by_text('DS Estimate 0.7.1 · zapis lokalny',exact=True).wait_for(timeout=60000)
   page.get_by_text('Otwórz plik przez ścieżkę',exact=True).click()
   page.get_by_label('Ścieżka modelu STEP',exact=True).fill(str(step));page.get_by_role('button',name='Analizuj ścieżkę',exact=True).click()
   page.get_by_role('heading',name='Części i materiały',exact=True).wait_for(timeout=300000)
@@ -61,7 +61,7 @@ try:
   row=page.locator('tr').filter(has=page.get_by_text('Blacha gięta BG-003',exact=True));assert 'Blacha gięta 3 mm' in row.inner_text()
   page.screenshot(path=str(out/'installed-bending.png'))
   assert not errors,errors
-  (out/'result.json').write_text(json.dumps({'status':'PASS','installedExecutable':str(exe),'version':'0.7.0','nativeBridgeMocked':False,'checks':['nested names','15mm rotated plate','embedded actual mesh','preview rotation','V groove 64mm2','automatic weld time edits','3mm bent sheet']},indent=2),encoding='utf8')
+  (out/'result.json').write_text(json.dumps({'status':'PASS','installedExecutable':str(exe),'version':'0.7.1','nativeBridgeMocked':False,'checks':['nested names','15mm rotated plate','embedded actual mesh','preview rotation','V groove 64mm2','automatic weld time edits','3mm bent sheet']},indent=2),encoding='utf8')
   print('INSTALLED_WINDOWS_UI_PASS: actual NSIS application, WebView2 and bundled CAD, no command mocks')
 except Exception:
  try:

@@ -1,13 +1,13 @@
-import {partValues} from './parts.mjs';
+import {partValues,commercialUnits} from './parts.mjs';
 // Independent analytic estimators, using OCCT measurements and editable shop assumptions.
 export const NORMS=Object.freeze({
  assembly:{enabled:true,setupMin:20,minutesPerPart:2.5,minutesPerJoint:1.5,heavyKg:50,heavyFactor:1.4,turnMinPart:.6,longMm:1500,profileFactor:1.2,bentFactor:1.4,unknownFactor:1.5,tackSpacingMm:250,tackSeconds:8},
  welding:{enabled:true,a:4,deposition:2.5,arcFactor:.35,setupMin:20,density:7850,cleanMinMeter:.8},
- cnc:{enabled:true,setupMin:20,removalCm3Min:8,bevelSetupMin:10,bevelCm3Min:6},
+ cnc:{enabled:true,setupMin:20,removalCm3Min:8,bevelSetupMin:10,bevelCm3Min:6,drillingMode:0},
  bending:{enabled:true,secondsPerBend:30,setupMin:20,handlingMin:.5,referenceLengthMm:1000,referenceThicknessMm:6,heavyKg:15},
- coating:{enabled:false,setupMin:30,layers:2,m2Hour:15},
- postweld:{enabled:true,grindMinMeter:3,buttGrindFactor:1.5,filletGrindFactor:0,straightenMinMeter:.5,straightenMin:5,straightenDepositKgMeter:.1,straightenLengthMeter:.5},
- quality:{enabled:true,setupMin:10,minutesPerPart:1,vtMinMeter:2},
+ coating:{enabled:false,setupMin:30,layers:2,m2Hour:15,scopeMode:0},
+ postweld:{enabled:true,grindMinMeter:3,buttGrindFactor:1.5,filletGrindFactor:0,straightenMinMeter:.5,straightenMin:5,straightenDepositKgMeter:.1,straightenLengthMeter:.5,machiningMode:0},
+ quality:{enabled:true,setupMin:10,minutesPerPart:1,minutesPerRepeat:.25,supplierSampleRatio:.1,supplierSampleMin:.25,vtMinMeter:2,ndtMode:0,ndtSetupMin:20,ndtMinMeter:10},
  logistics:{enabled:false,setupMin:20,packingMinPart:.5,distanceKm:0,costKm:4},
  engineering:{enabled:false,minutes:0}
 });
@@ -44,7 +44,9 @@ export function automaticOperations(parts,contacts,jointEdits={},norms=NORMS){
  const w=weldPlan(proposed,jointEdits,n.welding),jointCount=w?.rows.filter(r=>r.enabled).length??0;
  const result={};const operation=(key,value)=>{good(value,key);return value/60;};
  const active=w?.rows.filter(r=>r.enabled)??[],groups=weldGroups(parts,active),notes=[];
- const graphComplete=Boolean(contacts)&&contacts.complete!==false;
+ const graphComplete=Boolean(contacts)&&contacts.complete!==false&&contacts.geometryValid!==false;
+ const make=parts.filter(p=>p.route==='make'),units=commercialUnits(parts),unknownMachining=make.filter(p=>!p.stockKind&&(!p.solid.stockHint||['unknown','purchased-component'].includes(p.solid.stockHint.kind))&&!p.solid.stockHint?.rawStockCandidate);
+ const basis={};
  if(n.assembly.enabled){const a=n.assembly;Object.entries(a).filter(([k])=>k!=='enabled').forEach(([k,v])=>good(v,k));
   const factor=p=>{const k=p.stockKind||p.solid.stockHint?.rawStockCandidate?.kind||p.solid.stockHint?.kind;return k==='bent-plate'?a.bentFactor:['plate','plate-candidate'].includes(k)?1:k&&k!=='unknown'?a.profileFactor:a.unknownFactor;};
   result.assembly={fixtures:graphComplete?operation('Stanowisko',groups.length*a.setupMin):null,
@@ -66,25 +68,38 @@ export function automaticOperations(parts,contacts,jointEdits={},norms=NORMS){
  }).filter(r=>r.volumeMm3>1e-3);
  const bevels=active.filter(r=>r.groove?.hasBevel).map(r=>({id:r.id,volumeMm3:Math.max(0,r.groove.sectionMm2-(r.groove.rootGapMm??0)*r.groove.thicknessMm)*r.lengthMm}));
  if(n.cnc.enabled){good(n.cnc.removalCm3Min,'Wydajność CNC',true);good(n.cnc.bevelCm3Min,'Wydajność fazowania',true);
-  result.cnc={program:operation('Przygotowanie CNC',new Set(machined.map(r=>r.part.geometryKey??r.part.id)).size*n.cnc.setupMin),
-   milling:machined.reduce((s,r)=>s+r.volumeMm3,0)/1000/n.cnc.removalCm3Min/60,drilling:0,
+  result.cnc={program:unknownMachining.length&&!machined.length?null:operation('Przygotowanie CNC',new Set(machined.map(r=>r.part.geometryKey??r.part.id)).size*n.cnc.setupMin),
+   milling:unknownMachining.length?null:machined.reduce((s,r)=>s+r.volumeMm3,0)/1000/n.cnc.removalCm3Min/60,drilling:make.length&&n.cnc.drillingMode!==1?null:0,
    bevelSetup:graphComplete?operation('Przygotowanie fazowania',bevels.length?n.cnc.bevelSetupMin:0):null,
    bevel:graphComplete?bevels.reduce((s,r)=>s+r.volumeMm3,0)/1000/n.cnc.bevelCm3Min/60:null};
   if(machined.length)notes.push('Usunięcie materiału z profili / naddatków: norma objętościowa obróbki. Wybór frezowania lub lasera do rur wymaga potwierdzenia.');
   if(bevels.length)notes.push('Fazowanie: objętość zmierzonego rowka bez szczeliny; doliczono przygotowanie. Bez osobnych danych o narzędziu jest to norma obróbki, nie ścieżka CAM.');
  }
- const areaM2=parts.reduce((s,p)=>s+(p.solid.areaMm2??0)/1e6,0);
+ const coatingParts=n.coating.scopeMode===1?parts:make;
+ const areaM2=coatingParts.reduce((s,p)=>s+(p.solid.areaMm2??0)/1e6,0);
  if(n.coating.enabled){good(n.coating.m2Hour,'Wydajność malowania',true);result.coating={prepare:operation('Przygotowanie',n.coating.setupMin),paint:areaM2*n.coating.layers/n.coating.m2Hour,handle:null};}
- if(n.quality.enabled)result.quality={dimensions:operation('Kontrola',n.quality.setupMin+parts.length*n.quality.minutesPerPart),visual:w&&graphComplete?operation('VT',w.totalLengthMm/1000*n.quality.vtMinMeter):null,ndt:0};
+ const inspection=inspectionPlan(parts,n.quality);
+ if(n.quality.enabled){
+  const meters=(w?.totalLengthMm??0)/1000;
+  result.quality={dimensions:operation('Kontrola',n.quality.setupMin+inspection.firstCount*n.quality.minutesPerPart+inspection.repeatCount*n.quality.minutesPerRepeat+inspection.supplierSamples*n.quality.supplierSampleMin),
+   visual:w&&graphComplete?operation('VT',meters*n.quality.vtMinMeter):null,
+   ndt:graphComplete&&(!active.length||n.quality.ndtMode===1)?0:graphComplete&&n.quality.ndtMode===2?operation('NDT',n.quality.ndtSetupMin+meters*n.quality.ndtMinMeter):null};
+  basis.quality={dimensions:inspection.firstCount+' pierwszych sztuk + '+inspection.repeatCount+' powtórzeń + '+inspection.supplierSamples+' próbek dostaw; normy edytowalne',ndt:n.quality.ndtMode===0?'Zakres NDT nieustalony — ustaw w normach lub wpisz czas':n.quality.ndtMode===1?'Jawnie przyjęto: NDT niewymagane':'Zakres NDT przyjęty w ustawieniach × długość spoin'};
+ }
  const weldMeters=(w?.totalLengthMm??0)/1000,depositPerMeter=weldMeters?active.reduce((s,r)=>s+r.kg,0)/weldMeters:0;
  const straightenRisk=weldMeters>=n.postweld.straightenLengthMeter&&depositPerMeter>=n.postweld.straightenDepositKgMeter;
  if(n.postweld.enabled)result.postweld={straighten:graphComplete?operation('Rezerwa prostowania',straightenRisk?n.postweld.straightenMin+weldMeters*n.postweld.straightenMinMeter:0):null,
-  grind:graphComplete?operation('Szlifowanie',active.reduce((s,r)=>s+r.lengthMm/1000*n.postweld.grindMinMeter*(r.type==='butt'?n.postweld.buttGrindFactor:n.postweld.filletGrindFactor),0)):null,machining:0};
+  grind:graphComplete?operation('Szlifowanie',active.reduce((s,r)=>s+r.lengthMm/1000*n.postweld.grindMinMeter*(r.type==='butt'?n.postweld.buttGrindFactor:n.postweld.filletGrindFactor),0)):null,machining:graphComplete&&(!active.length||n.postweld.machiningMode===1)?0:null};
  if(w)notes.push('Prostowanie: '+(straightenRisk?'rezerwa z progu długości i ilości stopiwa':'bez automatycznej rezerwy poniżej progów')+'; odkształcenie nie jest mierzone. Szlifowanie pachwin domyślnie wyłączone.');
- if(n.logistics.enabled)result.logistics={pack:operation('Pakowanie',parts.length*n.logistics.packingMinPart),load:operation('Załadunek',n.logistics.setupMin),ship:null};
+ if(n.logistics.enabled)result.logistics={pack:operation('Pakowanie',units.length*n.logistics.packingMinPart),load:operation('Załadunek',n.logistics.setupMin),ship:null};
  if(n.engineering.enabled)result.engineering={documentation:operation('Technologia',n.engineering.minutes)};
- const extraRows={};if(n.logistics.enabled){const fee=n.logistics.distanceKm*n.logistics.costKm;good(fee,'Transport');result.logistics.ship=0;extraRows.logistics=[{key:'transport-distance',name:'Przewóz według dystansu',kind:'amount',autoAmount:fee,detail:n.logistics.distanceKm+' km × '+n.logistics.costKm+' zł/km',evidence:'shop-logistics-assumption'}];}
- return {disabledModules:Object.keys(n).filter(k=>!n[k].enabled),modules:result,extraRows,welds:w,areaM2,jointCount,groups:groups.map(g=>({partIds:g.parts.map(p=>p.id),massKg:g.massKg,normalGroups:g.normalGroups})),bendRows,machining:machined.map(r=>({partId:r.part.id,volumeMm3:r.volumeMm3})),bevels,notes};
+ const extraRows={};if(n.logistics.enabled){const fee=n.logistics.distanceKm*n.logistics.costKm;good(fee,'Transport');result.logistics.ship=null;extraRows.logistics=[{key:'transport-distance',name:'Przewóz według dystansu',kind:'amount',autoAmount:fee,detail:n.logistics.distanceKm+' km × '+n.logistics.costKm+' zł/km',evidence:'shop-logistics-assumption'}];}
+ basis.cnc={milling:unknownMachining.length?unknownMachining.length+' detali bez potwierdzonego zakresu obróbki':'Ubytki profili i naddatki × norma objętościowa',drilling:n.cnc.drillingMode===1?'Jawnie przyjęto brak dodatkowego wiercenia':'Zakres wiercenia nieustalony — geometria nie potwierdza wymagań rysunku'};
+ basis.logistics={pack:units.length+' produktów STEP × norma pakowania; stan wysyłki wymaga potwierdzenia',ship:'Czas jazdy nieustalony; opłata kilometrowa jest osobną kwotą'};
+ basis.postweld={machining:n.postweld.machiningMode===1?'Jawnie przyjęto brak obróbki po spawaniu':'Obróbka po spawaniu: wymagania rysunku nieustalone'};
+ if(unknownMachining.length)notes.push('Obróbka: '+unknownMachining.length+' detali wymaga ustalenia zakresu; brak danych nie jest zerowym czasem.');
+ if(!graphComplete)notes.push('Połączenia: wynik częściowy lub nierozwiązane błędy geometrii. Pełne czasy operacji zależnych pozostają nieustalone.');
+ return {basis,inspection,commercialUnitCount:units.length,unknownMachiningPartIds:unknownMachining.map(p=>p.id),disabledModules:Object.keys(n).filter(k=>!n[k].enabled),modules:result,extraRows,welds:w,areaM2,jointCount,groups:groups.map(g=>({partIds:g.parts.map(p=>p.id),massKg:g.massKg,normalGroups:g.normalGroups})),bendRows,machining:machined.map(r=>({partId:r.part.id,volumeMm3:r.volumeMm3})),bevels,notes};
 }
 export function bendAllowance({angleDeg,radiusMm,thicknessMm,kFactor=.4}){[angleDeg,radiusMm,thicknessMm,kFactor].forEach(v=>good(v,'Parametr gięcia'));if(kFactor>1||angleDeg>180)throw new RangeError('Parametry gięcia');return angleDeg*Math.PI/180*(radiusMm+kFactor*thicknessMm);}
 
@@ -110,3 +125,17 @@ export function bendEstimate(p,n=NORMS.bending){
   keys.add([p.grade,p.density,t.toFixed(2),b?.radiusMm?.toFixed(2)??'nieznany promień'].join('|'));
  }return {partId:p.id,count,minutes,batchKeys:[...keys]};
 }
+
+export function inspectionPlan(parts,n=NORMS.quality){
+ good(n.supplierSampleRatio,'Udział próbek');if(n.supplierSampleRatio>1)throw new RangeError('Udział próbek 0–1');
+ const own=parts.filter(p=>p.route==='make'),types=new Set(own.map(p=>[p.geometryKey??p.id,p.grade,p.density].join('|'))),supplied=new Map();
+ for(const u of commercialUnits(parts).filter(u=>u.route!=='make')){const key=u.definitionKey;supplied.set(key,(supplied.get(key)??0)+1);}
+ return {firstCount:types.size,repeatCount:own.length-types.size,supplierSamples:[...supplied.values()].reduce((s,q)=>s+Math.ceil(q*n.supplierSampleRatio),0),suppliedUnits:[...supplied.values()].reduce((a,b)=>a+b,0),suppliedTypes:supplied.size};
+}
+
+export const NORM_CHOICES=Object.freeze({
+ drillingMode:[[0,'Zakres nieustalony'],[1,'Brak dodatkowego wiercenia — przyjęte jawnie']],
+ machiningMode:[[0,'Zakres nieustalony'],[1,'Obróbka po spawaniu niewymagana — przyjęte jawnie']],
+ ndtMode:[[0,'Zakres NDT nieustalony'],[1,'NDT niewymagane — przyjęte jawnie'],[2,'NDT według normy czasu poniżej']],
+ scopeMode:[[0,'Tylko detale produkowane'],[1,'Wszystkie detale, także zakupowe']]
+});

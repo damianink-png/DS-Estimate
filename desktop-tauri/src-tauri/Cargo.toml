@@ -1,6 +1,6 @@
 [package]
 name = "ds-estimate"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 [lib]
 name = "ds_estimate_lib"

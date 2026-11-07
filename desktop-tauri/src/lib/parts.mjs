@@ -51,3 +51,13 @@ export function partValues(s,pref={},fallbackPrice=null){
 export function partsList(inventory,prefs={},price=null){
  return (inventory?.solids??[]).map(s=>({solid:s,id:s.id,name:s.name||s.id,geometryKey:s.verifiedShapeKey,...partValues(s,preferenceFor(s,prefs),price)}));
 }
+
+// The identity is an occurrence in the XCAF tree, never a name or volume hash.
+export function commercialUnits(parts){
+ const groups=new Map();for(const p of parts){const key=p.solid.productIdentityReliable&&p.solid.productOccurrenceKey?p.solid.productOccurrenceKey:p.id;
+  if(!groups.has(key))groups.set(key,[]);groups.get(key).push(p);}
+ return [...groups].map(([id,members])=>{const routes=new Set(members.map(p=>p.route)),prices=new Set(members.map(p=>p.supplierCost).filter(v=>v!==null));
+  const route=routes.size===1?members[0].route:'mixed',conflict=routes.size>1||prices.size>1;
+  return {id,name:members[0].name,route,parts:members,bodyCount:members.length,definitionKey:members[0].solid.productDefinitionKey??members[0].geometryKey??id,
+   massKg:members.reduce((s,p)=>s+p.massKg,0),supplierCost:conflict?null:prices.size===1?[...prices][0]:null,conflict};});
+}

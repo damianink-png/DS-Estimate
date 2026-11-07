@@ -8,8 +8,10 @@ async fn analyze_step(app: tauri::AppHandle, path: String) -> Result<String, Str
 }
 
 #[tauri::command]
-async fn analyze_joints(app: tauri::AppHandle, path: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || analyze_step_blocking(app, path, Some("--joints".to_string())))
+async fn analyze_joints(app: tauri::AppHandle, path: String, max_seconds: Option<f64>) -> Result<String, String> {
+    let budget = max_seconds.unwrap_or(180.0);
+    if !budget.is_finite() || !(1.0..=600.0).contains(&budget) { return Err("Limit analizy musi wynosić 1–600 sekund".into()); }
+    tauri::async_runtime::spawn_blocking(move || analyze_step_blocking(app, path, Some(format!("--joints --joint-seconds {budget}"))))
         .await.map_err(|e| format!("Błąd analizy styków: {e}"))?
 }
 

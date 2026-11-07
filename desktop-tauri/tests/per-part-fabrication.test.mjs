@@ -73,7 +73,7 @@ test('weld type edits recalculate welding and postweld while assembly includes t
 });
 
 test('measured groove area drives deposition time and external raw-stock proposal drives saw routing',()=>{
- const contacts={engineVersion:'0.7.0',complete:true,candidates:[{id:'a|b',partA:'a',partB:'b',lengthMm:100,suggestedType:'butt',measuredSectionMm2:64,preparation:'V'}]};
+ const contacts={engineVersion:'0.7.1',complete:true,candidates:[{id:'a|b',partA:'a',partB:'b',lengthMm:100,suggestedType:'butt',measuredSectionMm2:64,preparation:'V'}]};
  const parts=partsList(inventory,{},5);const auto=automaticOperations(parts,contacts);
  assert.equal(auto.welds.rows[0].type,'butt');assert.equal(auto.welds.rows[0].sectionMm2,64);
  const edited=automaticOperations(parts,contacts,{'a|b':{sectionMm2:80}});assert.ok(edited.welds.minutes>auto.welds.minutes);
