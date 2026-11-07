@@ -302,3 +302,27 @@ geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
 - Test ten nie jest jeszcze potwierdzony przez Actions; jeżeli FAIL, zbadać rzeczywiste pola i pola `rawStockCandidate`, zamiast osłabiać asercje. Nie zmieniono tolerancji, operacji, interfejsu ani `main`.
 - Następny etap: weryfikacja nowego runu; niezależny pomiar promieni naroży oryginalnych B-Rep, potem poprawka audytu tylko przy udokumentowanym promieniu. Równolegle detektor części obrotowych bez domniemania technologii.
 
+
+## Iteracja 8.11.2026, 00:15 CET — weryfikacja oryginalnych SHS i powtarzalności
+
+- Start HEAD PR #7: `e5e77108bf96bd93728f5b1c92f22813b92235b6`.
+- Benchmark [42419451287](https://github.com/damianink-png/DS-Estimate/actions/runs/42419451287) **PASS**;
+  Windows [42419451297](https://github.com/damianink-png/DS-Estimate/actions/runs/42419451297) **PASS**.
+  Wcześniejsze `42419439532/42419439647` były **CANCELLED** wskutek nowszego commitu.
+- Odczyt logu skompilowanego silnika na oryginalnym Earthpress:
+  SHS bryły 1–2: 60×60×3, pole B-Rep 660.7023539873 mm² wobec
+  684 mm² wzoru ostronarożnego (−3.406%);
+  bryły 3–6: 50×50×3, pole 540.7023539873 mm² wobec
+  564 mm² (−4.131%). Każde z sześciu `PUBLIC_ROUNDED_SHS_AREA_PASS`.
+- Dodano test ścisłej powtarzalności pól B-Rep dla 2+4 wystąpień tych samych
+  przekrojów, tolerancja rozrzutu pomiarów 1e−5 mm², **bez zwiększania
+  tolerancji geometrii**. Commit `700b4e08055b798f4ddf8eaaa916cd088d87b89b`.
+  Ten commit **wymaga potwierdzenia w nowych Actions**.
+- Ostatni potwierdzony licznik bez zmian: Earthpress `known=121/251,
+  pending=130`; Portal `6/15`; StepGen `0/1`. Audyt SHS nadal
+  `INVALID_HINT=6`, dodatkowa blacha `INVALID_HINT=1`.
+  Nie ma podstaw, by nazywać to wzrostem rozpoznania lub wyceny.
+- Kolejny krok: pomiar rzeczywistych promieni naroży bezpośrednio z B-Rep
+  i ścisły model pola z zaokrągleniami, a dopiero potem korekta audytu.
+  Następnie detektor osiowych łączników; nie zgadywać surowca, technologii
+  ani czasu cięcia.
