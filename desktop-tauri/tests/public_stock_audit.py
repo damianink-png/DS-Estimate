@@ -11,7 +11,7 @@ import math
 STOCK_KINDS = frozenset({
     "plate-candidate", "flat-section", "square-bar", "rectangular-bar",
     "round-bar", "round-tube", "square-hollow", "rectangular-hollow",
-    "angle", "channel", "tee", "i-section", "unknown"
+    "angle", "channel", "tee", "i-section", "polygon-bar", "unknown"
 })
 REQUIRED_DIMENSIONS = {
     "plate-candidate": ("thicknessMm", "widthMm", "lengthMm"),
@@ -26,6 +26,7 @@ REQUIRED_DIMENSIONS = {
     "channel": ("lengthMm", "sectionAreaMm2"),
     "tee": ("lengthMm", "sectionAreaMm2"),
     "i-section": ("lengthMm", "sectionAreaMm2"),
+    "polygon-bar": ("widthMm", "heightMm", "lengthMm", "sectionAreaMm2"),
 }
 DIMENSIONS = ("lengthMm", "widthMm", "heightMm", "diameterMm",
               "wallMm", "thicknessMm", "sectionAreaMm2")
