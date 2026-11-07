@@ -3,7 +3,7 @@ name: DS Estimate Tauri Windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'codex/manufacturing-planning-07', 'codex/unified-compare-style-ui-20261105', 'codex/part-routing-automatic-fabrication-20261105']
+    branches: [main, 'codex/manufacturing-planning-07', 'codex/unified-compare-style-ui-20261105', 'codex/part-routing-automatic-fabrication-20261105', 'codex/cutting-audit-statuses-20261107']
     paths:
       - '.github/workflows/tauri-desktop-windows.yml'
       - 'desktop-tauri/src/**'
