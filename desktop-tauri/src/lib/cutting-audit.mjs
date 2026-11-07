@@ -17,6 +17,25 @@ export const CUTTING_MISSING_REASONS = Object.freeze({
  MATERIAL_TECHNOLOGY_UNKNOWN:'Brak potwierdzonych danych do doboru technologii',
  ANALYSIS_PARTIAL:'Analiza cięcia niekompletna lub przerwana'
 });
+// Subdiagnosis is deliberately separate from the top-level missing-time code.
+// These reasons are supplied by the native CAD classifier, not inferred from names.
+export const STOCK_FAILURE_CODES=Object.freeze({
+ NOT_ELONGATED_OR_NONAXIAL:'Bryła nie jest jednoznacznie pryzmatyczna w badanej osi',
+ UNSUPPORTED_SECTION:'Przekrój otwarty, złożony lub nieobsługiwany',
+ STOCK_VOLUME_MISMATCH:'Objętość detalu różni się od bazowego przekroju × długość',
+ VARIABLE_SECTION:'Przekrój zmienia się wzdłuż elementu',
+ OTHER:'Nierozpoznanie przekroju — sprawdź oryginalną przyczynę CAD',
+ UNSPECIFIED:'Silnik CAD nie podał szczegółowej przyczyny'
+});
+export function stockFailureCode(solid){
+ const reason=solid?.stockHint?.reason;
+ if(typeof reason!=='string'||!reason.trim())return 'UNSPECIFIED';
+ if(/Not an axis-aligned elongated extrusion/i.test(reason))return 'NOT_ELONGATED_OR_NONAXIAL';
+ if(/Open, complex or unsupported cross-section/i.test(reason))return 'UNSUPPORTED_SECTION';
+ if(/3-D volume inconsistent with constant stock section/i.test(reason))return 'STOCK_VOLUME_MISMATCH';
+ if(/Section changes along finished part/i.test(reason))return 'VARIABLE_SECTION';
+ return 'OTHER';
+}
 const finiteNonnegative=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0;
 const known=n=>n!==null&&n!==undefined&&finiteNonnegative(n);
 function stockHint(solid){
@@ -28,9 +47,12 @@ function classifyMissing(part,cut){
  if(s.fusedAssembly===true||hint.reasonCode==='FUSED_ASSEMBLY')return 'FUSED_ASSEMBLY';
  if(s.geometryValid===false||hint.reasonCode==='INVALID_GEOMETRY')return 'INVALID_GEOMETRY';
  if(kind==='bent-plate'&&s.cuttingHint?.estimated)return 'BENT_BLANK_UNRESOLVED';
+ // An assumed steel family is reported in machine notes for every blank
+ // material grade. It must not replace the native stock-recognition failure.
+ if(kind==='unknown'||kind==='unclassified')return 'UNKNOWN_STOCK';
  if(!cut?.method){
   if((cut?.notes??[]).some(n=>/Maszyna wyłączona|zakres maszyny|brak dostępnej maszyny/i.test(n)))return 'UNSUPPORTED_MACHINE_RANGE';
-  if((cut?.notes??[]).some(n=>/materiał|gatunek/i.test(n)))return 'MATERIAL_TECHNOLOGY_UNKNOWN';
+  if((cut?.notes??[]).some(n=>/Nieznany materiał|Brak danych materiałowych|gatunek nieznany/i.test(n)))return 'MATERIAL_TECHNOLOGY_UNKNOWN';
   return 'UNKNOWN_STOCK';
  }
  if(cut.method==='saw')return kind==='unknown'?'UNKNOWN_STOCK':'AMBIGUOUS_SECTION';
@@ -50,7 +72,7 @@ export function auditCutting(parts,plan){
   if(!cut?.id||indexed.has(cut.id))throw new Error('Duplicate or missing cutting operation ID');
   indexed.set(cut.id,cut);
  }
- const ids=new Set(),statusCounts={},missingReasonCounts={};
+ const ids=new Set(),statusCounts={},missingReasonCounts={},stockFailureCounts={};
  let knownTimeMin=0,knownTimeOccurrences=0,unresolvedOwnOccurrences=0,ownCutOccurrences=0;
  const rows=parts.map((part,index)=>{
   if(!part||!part.id||ids.has(part.id))throw new Error('Duplicate or missing STEP occurrence ID');
@@ -70,6 +92,8 @@ export function auditCutting(parts,plan){
   }
   statusCounts[status]=(statusCounts[status]??0)+1;
   if(reason)missingReasonCounts[reason]=(missingReasonCounts[reason]??0)+1;
+  const stockFailure=reason==='UNKNOWN_STOCK'?stockFailureCode(s):null;
+  if(stockFailure)stockFailureCounts[stockFailure]=(stockFailureCounts[stockFailure]??0)+1;
   return {
    index,occurrenceId:part.id,productOccurrenceKey:s.productOccurrenceKey??null,
    productDefinitionKey:s.productDefinitionKey??null,bodyIndex:s.bodyIndex??null,
@@ -78,6 +102,9 @@ export function auditCutting(parts,plan){
    route,status,reasonCode:reason,reasonText:reason?CUTTING_MISSING_REASONS[reason]:null,
    stockKind:part.stockKind||h.kind||'unknown',
    stockConfidence:h.confidence??null,stockEvidence:h.source??null,
+   stockFailureCode:stockFailure,
+   stockFailureText:stockFailure?STOCK_FAILURE_CODES[stockFailure]:null,
+   nativeStockReason:s.stockHint?.reason??null,
    grade:part.grade??'',densityKgM3:part.density??null,
    dimensionsMm:part.dims??s.bboxMm??null,volumeMm3:s.volumeMm3??null,
    netMassKg:part.massKg??null,stockMassKg:part.stockMassKg??null,
@@ -97,7 +124,7 @@ export function auditCutting(parts,plan){
   ownCutCoveragePct:ownCutOccurrences===0?null:Number((100*knownTimeOccurrences/ownCutOccurrences).toFixed(1)),
   occurrenceCoveragePct:rows.length===0?null:Number((100*knownTimeOccurrences/rows.length).toFixed(1)),
   complete:rows.length>0&&unresolvedOwnOccurrences===0&&!plan?.error,
-  statusCounts,missingReasonCounts,rows,
+  statusCounts,missingReasonCounts,stockFailureCounts,rows,
   limitations:[
    'A manufacturing route or geometry group is not evidence of a purchasing BOM unit.',
    'Unknown cutting time is not zero; known time is only a subtotal of estimated operations.',
