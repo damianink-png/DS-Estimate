@@ -161,3 +161,71 @@ wywnioskować rozdziału procesów. Nie przydzielaj automatycznej piły
 - Windows [42398795310](https://github.com/damianink-png/DS-Estimate/actions/runs/42398795310): **IN PROGRESS** w chwili kontroli. `workspace-ui` PASS, `build-windows` dotarł do niezależnego benchmarku masy prasy, wcześniejsze 18 kroków PASS. Nie deklarować PASS całego Windows/instalatora i nie publikować EXE.
 - Ostatni potwierdzony bazowy pomiar desktop (starszy artefakt): Earthpress 121/251 rozpoznanych czasów, 130 nieustalonych; Portal 6/15 i 9; StepGen 0/1 i 1. **Przed/po dla bieżącego HEAD: nieustalone**, dopóki nie zostanie odczytany aktualny `cutting_occurrence_audit.json` z artefaktu. Nie przedstawiać starszych wartości jako bieżących.
 - Następna bramka: potwierdzić Windows PASS, odczytać liczby z bieżącego artefaktu, następnie dodać bezpośredni test zmiennego przekroju Portal Frame 2–9 (100×200 na końcach i 100×10 w środku) oraz nierozpoznanego surowca przy stożkowych końcach Earthpress 132. Nie zmieniać tolerancji ani nie wnioskować technologii z rdzenia geometrycznego.
+
+## Pełny niezależny przegląd 75 nierozpoznanych brył — 7.11.2026
+
+Przeanalizowano sam ORYGINALNY `earthpress/A-assembly.step` przez lokalny OCCT/OCP:
+`STEPControl_Reader` → 251 `TopoDS_Solid` → niezależne objętości,
+`BRepAdaptor_Surface` (planes/cylinders/cones/spheres/tori/BSplines),
+osie cylindrów i bbox. Dane skonfrontowano z najnowszym skompilowanym
+raportem `42400690874` (sha `ab944e89`), nie z heurystyką nazwy COMPOUND.
+
+**75 nierozpoznanych** jest w zaledwie **37 grupach zweryfikowanych geometrii**:
+- **44 wystąpienia, 11 grup:** wielokrotnie powtarzane powierzchnie
+  cylindryczne/stożkowe + płaskie (np. bryły 88–93, 99, 106, 109, 122,
+  125, 131, 135, 141); geometria charakterystyczna dla łączników i detali
+  obrotowych, zgodnych z rodzinami BOM. Nie wymaga klasyfikatora profili
+  wydłużonych. Materiał/zakup technologiczny nadal niepewne.
+- **13 wystąpień, 11 grup:** płaszczyzny + cylindry (np. 25–30,
+  49–51, 53–55, 95), otwory i elementy złożone; prawdopodobne obrabiane
+  blachy/bloki, wymagają podziału na cechy.
+- **5 wystąpień, 4 grupy:** cylindry + torusy/promienie,
+  w tym osiowe wałki 62 i 71, obrabiane zakończenia.
+- **3 wystąpienia, 3 grupy:** bardzo złożone powierzchnie z
+  kulami/torusami (20, 21, 245).
+- **2 wystąpienia, 2 grupy:** same powierzchnie płaskie (22, 31),
+  więc bryły pryzmatyczne/schodkowe; błąd `not elongated` nie dowodzi
+  skomplikowanej technologii.
+- **3 wystąpienia, 3 grupy:** `unsupported section` (10, 11 i 250).
+  Rdzenie Ø40/Ø34 dla 10 i 11 już są wykrywane poprawnie, lecz gotowa
+  bryła ma dodatkowy materiał — surowiec nadal nieustalony; 250 ma
+  11 płaszczyzn, 24 cylindry, 12 sfer, 4 torusy.
+- **4 wystąpienia, 2 grupy:** rdzeń walcowy z obrobionymi końcami
+  (132, 136, 174, 178), 3 stożki na bryłę.
+- **1 wystąpienie, 1 grupa:** kanał UPN 80 po obróbce (15),
+  `rawStockCandidate` już ma prawidłowy katalog UPN 80, 3/5 przekrojów.
+- Razem 44+13+5+3+2+3+4+1 = **75**.
+
+**Niezależny problem: 7 × `INVALID_HINT`, a nie faktycznie nieznany kształt:**
+- **6 szt. SHS 60×60×3 i 50×50×3** (bryły 1–6) — przekrój B-Rep
+  z promieniami naroży ma odpowiednio 660,70 mm² i 540,70 mm² zamiast
+  684/564 mm² ostronarożnego wzoru kontrolnego.
+  Różnica 3,41% / 4,13% przekracza obecną twardą tolerancję 2%:
+  walidator raportu błędnie odrzuca poprawny pomiar. Naprawa: obliczać
+  pole zgodne z promieniami narożnikowymi z B-Rep, **nie zwiększać
+  tolerancji ogólnie**.
+- **1 szt. (251)** — klasyfikator nadał `plate-candidate` po
+  `sheet_hints`, ale bez kompletnego `lengthMm`/`widthMm`;
+  naprawić spójność wymiarów zamiast oznaczać wynik jako gotowy.
+
+**Portal Frame:** 8/9 nierozpoznanych to TA SAMA geometria
+`shared-tshape-1`: 18 płaszczyzn, zmienna grubość końców na
+4000 mm; dziewiąta to ogromna bryła modelu scalonego (960 płaszczyzn).
+**StepGen:** 1 scalona bryła 129 płaszczyzn + 20 cylindrów.
+To problem segmentacji/złożenia, nie jeden niespotykany profil.
+
+### Następne konkretne iteracje godzinne
+
+1. Osobny detektor osiowych części obrotowych oraz łączników, w
+   pierwszej kolejności **44 wystąpienia**, zachowując nieustalone
+   zakup/obróbkę kiedy brak dowodu.
+2. Naprawić **6 fałszywych INVALID_HINT** rur SHS przez geometrię
+   promieni i błąd kompletności blachy 251.
+3. Rozpoznawanie płyt/bloków/otworów bez warunku L/W>3,5;
+   profile z nacięciami i ukośne rdzenie rozdzielić od przygotówki.
+4. Dla Portal Frame i StepGen odtworzyć rozkład na części z segmentów
+   B-Rep/BOM, z zachowaniem sum masy, bez fikcyjnego cięcia i cen.
+
+Wszystkie wskazania typu łącznik, wałek, frezowane są **hipotezami
+geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
+
