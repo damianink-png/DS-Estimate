@@ -20,7 +20,7 @@ export function evaluateModules({
   try{
    let own=mod.rows({inventory,settings});
    const automatic=automation?.modules?.[mod.id];
-   if(automatic)own=own.map(row=>Object.hasOwn(automatic,row.key)?{...row,autoHours:automatic[row.key],detail:'Geometria STEP × edytowalne normy',evidence:'geometry-and-shop-assumptions'}:row);
+   if(automatic)own=own.map(row=>Object.hasOwn(automatic,row.key)?{...row,autoHours:automatic[row.key],detail:automation?.basis?.[mod.id]?.[row.key]??'Geometria STEP × edytowalne normy',evidence:'geometry-and-shop-assumptions'}:row);
    if(automation?.extraRows?.[mod.id])own=[...own,...automation.extraRows[mod.id]];
    const extras=custom[mod.id]||[];
    const specs=[...own,...extras.map(x=>({

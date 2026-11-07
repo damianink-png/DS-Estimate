@@ -5,7 +5,7 @@ from pywinauto import Application,mouse
 
 def run_accessibility_test(pid,exe,step,out):
  part_names=['Blacha lewa V','Blacha prawa V','Płyta P-015','Płyta P-015 druga','Profil SHS z wycięciem','Blacha gięta BG-003']
- app=Application(backend='uia').connect(process=pid,timeout=30);win=app.window(title='DS Estimate 0.7.0');win.wait('exists visible',timeout=60);win.set_focus()
+ app=Application(backend='uia').connect(process=pid,timeout=30);win=app.window(title='DS Estimate 0.7.1');win.wait('exists visible',timeout=60);win.set_focus()
  def find(name,timeout=30):
   deadline=time.monotonic()+timeout
   while time.monotonic()<deadline:
@@ -73,7 +73,7 @@ def run_accessibility_test(pid,exe,step,out):
   area='Przekrój spoiny solid-1|solid-2';assert abs(float(value(area).replace(',','.'))-64)<.01
   before_time=value('Przyjęto Wykonanie spoin');enter(area,'80');time.sleep(.3);assert value('Przyjęto Wykonanie spoin')!=before_time
   screenshot('installed-weld-preparation.png');press('Gięcie');find('Blacha gięta 3 mm');screenshot('installed-bending.png')
-  (out/'result.json').write_text(json.dumps({'status':'PASS','driver':'Windows UI Automation','installedExecutable':str(exe),'version':'0.7.0','nativeBridgeMocked':False,'checks':['nested names','15mm rotated plate','actual preview pixels','preview rotation','V groove 64mm2','automatic weld time edit','3mm bent sheet']},indent=2),encoding='utf8')
+  (out/'result.json').write_text(json.dumps({'status':'PASS','driver':'Windows UI Automation','installedExecutable':str(exe),'version':'0.7.1','nativeBridgeMocked':False,'checks':['nested names','15mm rotated plate','actual preview pixels','preview rotation','V groove 64mm2','automatic weld time edit','3mm bent sheet']},indent=2),encoding='utf8')
   print('INSTALLED_WINDOWS_UI_PASS: Windows UI Automation, actual NSIS app and native CAD, no mocks')
  except Exception:
   try:screenshot('failure.png')

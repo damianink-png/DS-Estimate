@@ -79,8 +79,8 @@ def measured_section(a,b,lo,hi):
     return {'kind':kind,'sectionMm2':max(0,area),'rootGapMm':gap,'rootLandMm':land,'depthMm':hi-lo-land,
             'includedAngleDeg':max(angles) if angles else 0,'bottomWidthMm':bottom,'topWidthMm':top,'maximumWidthMm':maximum,'hasBevel':bevel}
 
-def groove_between(a,b,max_gap=3):
-    sa,sb=primary_skin(a),primary_skin(b)
+def groove_between(a,b,max_gap=3,skins=None):
+    sa,sb=skins if skins is not None else (primary_skin(a),primary_skin(b))
     if not sa or not sb or abs(sa['normal'].Dot(sb['normal']))<.99999:return None
     n=sa['normal'];ca,cb=center(a),center(b)
     delta=[v-u for u,v in zip(ca.Coord(),cb.Coord())];dot=sum(v*u for v,u in zip(delta,n.Coord()));trans=[v-dot*u for v,u in zip(delta,n.Coord())]
@@ -122,13 +122,15 @@ def groove_between(a,b,max_gap=3):
     return {**profiles[1],'sectionMm2':mean,'lengthMm':length,'thicknessMm':thickness,'variable':variable,
             'samplesMm2':[p['sectionMm2'] for p in profiles],'source':'three transverse OCCT sections; measured void area','status':'variable-groove-candidate' if variable else 'measured-groove-candidate'}
 
-def t_groove_between(a,b,max_gap=3):
+def t_groove_between(a,b,max_gap=3,skins=None):
     """Foot preparation of a plate on another plate (half-V or double/K).
     Only void under the prepared foot is measured; an unprepared square T joint
     remains a fillet proposal instead of being invented as a butt groove.
     """
-    for base,stem in [(a,b),(b,a)]:
-        sa,sb=primary_skin(base),primary_skin(stem)
+    pairs=[(a,b),(b,a)]
+    cached=skins if skins is not None else (primary_skin(a),primary_skin(b))
+    for index,(base,stem) in enumerate(pairs):
+        sa,sb=cached if index==0 else cached[::-1]
         if not sa or not sb or abs(sa['normal'].Dot(sb['normal']))>.01:continue
         n=cad.gp_Dir(*sa['normal'].Coord());u=cad.gp_Dir(*sb['normal'].Coord());cb,cs=center(base),center(stem)
         delta=[v-w for w,v in zip(cb.Coord(),cs.Coord())]

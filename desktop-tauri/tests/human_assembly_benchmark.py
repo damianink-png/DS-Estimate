@@ -49,6 +49,8 @@ def main():
   else:data=inventory(a.step)
   (a.output/'inventory.json').write_text(json.dumps(data),encoding='utf8');assert data['count']==220;assert not data['importIssues'];assert len(data['solids'])==220;assert all(s['massKg']>0 for s in data['solids'])
  if not a.reference_only:
+  assert data['productCount']==212,data.get('productCount')
+  jack=[s for s in data['solids'] if s['name']=='Bottle Jack_2912T12'];assert len(jack)==5;assert len({s['productOccurrenceKey'] for s in jack})==1;assert all(s['bodyCount']==5 for s in jack)
   supports=[s for s in data['solids'] if s['name']=='Lower Plate Support_PreviewCfg'];assert len(supports)==4
   assert all(s['stockHint']['kind']=='square-hollow' for s in supports),'Short imperial tubing must not become sheet bends'
  reader=cad.STEPControl_Reader();assert reader.ReadFile(str(a.step))==cad.IFSelect_RetDone;assert reader.TransferRoots();solids=list(cad.shapes(reader.OneShape(),cad.TopAbs_SOLID));assert len(solids)==220

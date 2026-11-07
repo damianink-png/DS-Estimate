@@ -483,6 +483,7 @@ def inventory(path, density=7850.0):
             "nameSource":occurrence.get("nameSource","missing"),
             "previewKey":preview_key,
             "assemblyPath":occurrence.get("assemblyPath",[]),
+            **{k:occurrence[k] for k in ("bodyIndex","bodyCount","productOccurrenceKey","productDefinitionKey","productIdentityReliable") if k in occurrence},
             **features,
             "id": f"solid-{len(solids)+1}",
             "volumeMm3": volume,
@@ -588,7 +589,7 @@ def inventory(path, density=7850.0):
             f"Some duplicates may remain ungrouped: translation budget={skipped_translation}, "
             f"complex B-Rep={skipped_complex}, degenerate rigid orientation={skipped_degenerate}, "
             f"rigid budget={skipped_rigid}. These are NOT verified duplicates.")
-    return {"engineVersion":"0.7.0","integrationToleranceRelative":1e-7,"source": str(path), "previews":previews,"importIssues":import_issues,"solids": solids, "groups": groups, "count": len(solids),
+    return {"engineVersion":"0.7.1","integrationToleranceRelative":1e-7,"source": str(path), "previews":previews,"importIssues":import_issues,"solids": solids, "groups": groups, "count": len(solids), "productCount":len({s.get("productOccurrenceKey",s["id"]) for s in solids}),
             "totalMassKg": sum(x["massKg"] for x in solids),
             "matchingDiagnostics": diagnostics,
             "limitations": limitations}
@@ -599,6 +600,7 @@ def main():
     p.add_argument("--density", type=float, default=7850.0)
     p.add_argument("--output", type=Path)
     p.add_argument("--joints",action="store_true")
+    p.add_argument("--joint-seconds",type=float,default=180)
     p.add_argument("--preview",type=int)
     args = p.parse_args()
     if args.preview is not None:
@@ -608,7 +610,8 @@ def main():
     elif args.joints:
         try:from .joint_detection import analyze_joints
         except ImportError:from joint_detection import analyze_joints
-        data=analyze_joints(args.step)
+        if not math.isfinite(args.joint_seconds) or not 1<=args.joint_seconds<=600:raise ValueError('Joint budget must be 1–600 seconds')
+        data=analyze_joints(args.step,max_seconds=args.joint_seconds)
     else:
         data = inventory(args.step, args.density)
     # Escaped Unicode keeps the JSON pipe portable across Windows code pages.

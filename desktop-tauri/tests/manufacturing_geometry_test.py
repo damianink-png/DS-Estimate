@@ -1,5 +1,6 @@
 """Real OCCT geometry regression; supports production OCC and local OCP bindings."""
 import sys,unittest,math,tempfile,subprocess,json
+from unittest.mock import patch
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).parents[1]/'cad_backend'))
 import cad_measure as cad
@@ -38,6 +39,22 @@ def rounded_box(w,h,length,r,origin=(0,0,0)):
 def rotated(shape):
  t=gp_Trsf();t.SetRotation(gp_Ax1(gp_Pnt(0,0,0),gp_Dir(1,1,1)),.41);return BRepBuilderAPI_Transform(shape,t,True).Shape()
 class Geometry(unittest.TestCase):
+ def test_interrupted_face_pair_never_emits_a_partial_seam(self):
+  a=box(100,100,10);b=box(100,100,10,(100,0,0));state={'faces':0};real=cad.BRepAlgoAPI_Common
+  def common(x,y):
+   if x.ShapeType()==cad.TopAbs_FACE:state['faces']+=1
+   return real(x,y)
+  def clock():return 100 if state['faces'] else 0
+  with patch('joint_detection.time.monotonic',side_effect=clock),patch.object(cad,'BRepAlgoAPI_Common',side_effect=common):
+   data=detect_contacts([a,b],max_seconds=5)
+  self.assertFalse(data['complete']);self.assertEqual(data['candidates'],[]);self.assertEqual(data['completedPairs'],0);self.assertEqual(data['pendingPairs'],1)
+ def test_collision_invalidates_geometry_even_after_all_pairs_finished(self):
+  data=detect_contacts([box(100,100,10),box(100,100,10,(50,0,0))]);self.assertTrue(data['complete']);self.assertFalse(data['geometryValid']);self.assertEqual(data['pendingPairs'],0);self.assertEqual(len(data['collisions']),1)
+ def test_skin_measurements_are_cached_per_occurrence_during_contact_scan(self):
+  import weld_preparation
+  with patch.object(weld_preparation,'primary_skin',wraps=weld_preparation.primary_skin) as fn:
+   data=detect_contacts([box(100,100,10,(x,0,0)) for x in [0,100,200]])
+  self.assertTrue(data['complete']);self.assertEqual(fn.call_count,3);self.assertEqual(data['skinCacheEntries'],3)
  def test_short_imperial_hollow_is_not_four_sheet_bends(self):
   outer=rounded_box(25.4,25.4,25.4,6.35)
   inner=rounded_box(19.05,19.05,25.4,3.175,(3.175,3.175,0))
@@ -58,12 +75,14 @@ class Geometry(unittest.TestCase):
   from build_assembly_fixture import write_fixture
   with tempfile.TemporaryDirectory() as td:
    path=Path(td)/'nested.step';expected=write_fixture(path);items,issues=read_occurrences(path)
+   from step_inventory import inventory
+   report=inventory(path);self.assertEqual(report['productCount'],6);self.assertTrue(all(s.get('productOccurrenceKey') for s in report['solids']));self.assertEqual(len({s['productOccurrenceKey'] for s in report['solids']}),6)
    self.assertFalse(issues);self.assertEqual(len(items),6);self.assertEqual(set(i['name'] for i in items),set(expected['names']))
    lookup={i['name']:i for i in items};a=lookup['Płyta P-015'];b=lookup['Płyta P-015 druga']
    self.assertGreaterEqual(len(a['assemblyPath']),3);self.assertAlmostEqual(cad.bounds(b['shape'])[0]-cad.bounds(a['shape'])[0],500,places=4)
    if '--compiled' in sys.argv:
     exe=Path('src-tauri/cad-backend/ds-cad-engine.exe').resolve();p=subprocess.run([str(exe),str(path)],capture_output=True,text=True,timeout=180)
-    self.assertEqual(p.returncode,0,p.stderr);data=json.loads(p.stdout);self.assertEqual(data['engineVersion'],'0.7.0');self.assertEqual(data['count'],6)
+    self.assertEqual(p.returncode,0,p.stderr);data=json.loads(p.stdout);self.assertEqual(data['engineVersion'],'0.7.1');self.assertEqual(data['count'],6)
     lookup={s['name']:s for s in data['solids']};self.assertEqual(set(lookup),set(expected['names']))
     for s in lookup.values():self.assertGreater(len(data['previews'][s['previewKey']]['triangles']),0)
     self.assertAlmostEqual(lookup['Płyta P-015']['stockHint']['thicknessMm'],15,places=3)
