@@ -81,6 +81,25 @@ def check(root):
             "procurementCertified": False
         }))
 
+    # Independent occurrence-to-occurrence consistency on original rounded SHS:
+    # the same physical section measured at different assembly placements must
+    # retain its area. This is not a sharp-corner formula or procurement proof.
+    shs_areas = {}
+    for number in range(1, 7):
+        hint = solids[number - 1]["stockHint"]
+        width = round(hint["widthMm"])
+        shs_areas.setdefault(width, []).append(hint["sectionAreaMm2"])
+    assert set(shs_areas) == {50, 60}
+    assert len(shs_areas[50]) == 4 and len(shs_areas[60]) == 2
+    for width, areas in shs_areas.items():
+        assert max(areas) - min(areas) < 1e-5, (
+            f"Earthpress SHS {width}: identical section areas disagree across placements")
+    print("PUBLIC_ROUNDED_SHS_REPEATABILITY_PASS", json.dumps({
+        "sections": {str(k): {"occurrences": len(v), "measuredAreaMm2": round(v[0], 6)}
+                     for k, v in sorted(shs_areas.items())},
+        "toleranceRelaxed": False, "procurementCertified": False
+    }))
+
     # Real original STEP: correct axis does not imply a constant stock profile.
     # Portal Frame 2-9 have 100x200 ends but 100x10 central sections.
     portal = json.loads((Path(root) / "portal-frame" / "ds_estimate_inventory.json").read_text(encoding="utf-8"))
