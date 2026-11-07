@@ -28,6 +28,7 @@
   'flat-section':'Przekrój płaskownika (kandydat)',
   'square-bar':'Pręt kwadratowy',
   'rectangular-bar':'Pręt prostokątny',
+  'polygon-bar':'Profil specjalny (przekrój mierzony)',
   'round-bar':'Pręt okrągły',
   'round-tube':'Rura okrągła',
   'square-hollow':'Profil zamknięty kwadratowy',
