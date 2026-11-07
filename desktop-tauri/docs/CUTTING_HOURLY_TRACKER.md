@@ -29,6 +29,26 @@ Program ma pozostać maksymalnie minimalistyczny.
 Stan: w PR #7 usunięto z widoku głównego nowo dodane, rozbudowane kody
 przyczyn CAD, pozostawiając je w danych raportowych.
 
+## Iteracja 7.11.2026 — optymalizacja silnika bez zmian UI
+
+- **B, etap 3 (częściowo):** w `cad_backend/stock_recognition.py` usunięto drugie
+  wywołanie kosztownego `_measured_solid_volume()` dla tej samej osi i bryły.
+  Przy zgodnych 5 przekrojach pomiar objętości jest teraz wykonywany **raz**
+  zamiast **dwukrotnie**. Nie zmienia to tolerancji 2% ani kryteriów dopasowania.
+- Awaria pomiaru objętości jest jawnie zwracana jako `unknown`; nie wolno
+  na tej podstawie wyliczyć czasu ani kosztu. Dotyczy także przekrojów zmiennych.
+- Dodano 3 niezależne testy: liczba wywołań B-Rep, wyjątek przy przekroju stałym,
+  wyjątek przy przekroju zmiennym.
+- Poprzedni HEAD `7a85ed380a60951faf07f6455c10ddd02811f3d8`:
+  Windows [42391172079](https://github.com/damianink-png/DS-Estimate/actions/runs/42391172079)
+  PASS; benchmark [42391172162](https://github.com/damianink-png/DS-Estimate/actions/runs/42391172162)
+  PASS. To nie jest jeszcze wynik testów nowego kodu.
+- Weryfikacja nowych commitów: **oczekuje na GitHub Actions**; porównać
+  liczbę rozpoznanych wystąpień oraz czas analizy Earthpress, Portal frame, StepGen
+  po ukończeniu, bez przypisywania hipotetycznego przyspieszenia całej aplikacji.
+- Następny krok: analiza nierozpoznanych osi i przekrojów z rzeczywistych
+  STEP; zachować kryteria B-Rep i bez dodatkowych formularzy.
+
 ## Zamknięta bramka z poprzedniego kroku
 
 - [x] Etapy 0–2 — częściowy model audytu każdej bryły / wystąpienia STEP, kody braków i eksport CSV/JSON.
@@ -37,7 +57,7 @@ przyczyn CAD, pozostawiając je w danych raportowych.
 - [x] Pierwsze testy **PR HEAD `f4b1fc28e5042a853032f73f726a765aba1aea9d`**:
   - Windows installer/UI: [42387811260](https://github.com/damianink-png/DS-Estimate/actions/runs/42387811260) PASS.
   - Prawdziwe STEP/PDF/BOM: [42387811224](https://github.com/damianink-png/DS-Estimate/actions/runs/42387811224) PASS.
-- [ ] Nowe poprawki diagnozy silnika CAD dopiero po testach HEAD bieżącej gałęzi.
+- [x] Diagnoza CAD przeszła pełne testy HEAD `7a85ed3` (Windows i publiczny benchmark PASS); kolejny HEAD wymaga osobnych testów.
 
 ## Nowe odkrycie podczas audytu rzeczywistych modeli
 
