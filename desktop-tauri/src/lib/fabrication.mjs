@@ -29,7 +29,7 @@ export function weldPlan(contacts,edits={},norms=NORMS.welding){
 export function partBends(p){
  if(p.bendCount!==null)return p.bendCount;
  const k=p.stockKind||p.solid.stockHint?.rawStockCandidate?.kind||p.solid.stockHint?.kind;
- if(['square-hollow','rectangular-hollow','round-tube','angle','channel','i-section','tee','flat-section','round-bar','square-bar','rectangular-bar'].includes(k))return 0;
+ if(['square-hollow','rectangular-hollow','round-tube','angle','channel','i-section','tee','flat-section','round-bar','square-bar','rectangular-bar','polygon-bar'].includes(k))return 0;
  // Cylindrical pairs in an unknown extrusion are not proof of a formed sheet.
  return k==='bent-plate'?p.solid.bendHint?.count??null:['plate-candidate','plate'].includes(k)?0:null;
 }
