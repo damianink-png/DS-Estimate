@@ -12,7 +12,7 @@ export function preferenceFor(s,prefs={}){
 export function detailDimensions(s){
  const h=s.stockHint?.kind==='unknown'&&s.stockHint?.rawStockCandidate?s.stockHint.rawStockCandidate:(s.stockHint??{});
  const spans=[...(s.bboxMm??[])].sort((a,b)=>b-a);
- if(h.lengthMm&&['square-hollow','rectangular-hollow','round-tube','round-bar','square-bar','rectangular-bar','flat-section','angle','channel','tee','i-section'].includes(h.kind))return [h.lengthMm,h.widthMm??h.diameterMm??spans[1],h.heightMm??h.diameterMm??spans[2]];
+ if(h.lengthMm&&['square-hollow','rectangular-hollow','round-tube','round-bar','square-bar','rectangular-bar','polygon-bar','flat-section','angle','channel','tee','i-section'].includes(h.kind))return [h.lengthMm,h.widthMm??h.diameterMm??spans[1],h.heightMm??h.diameterMm??spans[2]];
  if(Array.isArray(h.localDimsMm)&&h.localDimsMm.length===3)return [...h.localDimsMm].sort((a,b)=>b-a);const dims=[...(s.bboxMm??[])].sort((a,b)=>b-a);
  return [h.lengthMm??dims[0],h.widthMm??h.diameterMm??dims[1],h.thicknessMm??h.heightMm??h.diameterMm??dims[2]];
 }
