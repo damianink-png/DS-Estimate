@@ -2,8 +2,16 @@ name: DS Estimate Tauri Windows
 # Build is a packaged-backend smoke test, not certification of fully automatic quoting.
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/tauri-desktop-windows.yml'
+      - 'desktop-tauri/src/**'
+      - 'desktop-tauri/cad_backend/**'
+      - 'desktop-tauri/tests/**'
+      - 'desktop-tauri/package.json'
   push:
-    branches: [main, 'codex/manufacturing-planning-07', 'codex/unified-compare-style-ui-20261105', 'codex/part-routing-automatic-fabrication-20261105', 'codex/cutting-audit-statuses-20261107']
+    branches: [main, 'codex/manufacturing-planning-07', 'codex/unified-compare-style-ui-20261105', 'codex/part-routing-automatic-fabrication-20261105']
     paths:
       - '.github/workflows/tauri-desktop-windows.yml'
       - 'desktop-tauri/src/**'
