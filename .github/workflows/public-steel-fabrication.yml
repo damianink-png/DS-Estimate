@@ -12,6 +12,9 @@ on:
       - 'desktop-tauri/src/lib/cutting-batch.mjs'
       - 'desktop-tauri/tests/cutting-audit.test.mjs'
       - 'desktop-tauri/tests/public_cutting_occurrence_audit.mjs'
+      - 'desktop-tauri/cad_backend/**'
+      - 'desktop-tauri/tests/test_stock_patterns.py'
+      - 'desktop-tauri/tests/public_stock_axis_regression.py'
   push:
     branches: [main]
     paths:
@@ -36,6 +39,8 @@ on:
       - 'desktop-tauri/cad_backend/step_inventory.py'
       - 'desktop-tauri/cad_backend/section_catalog.py'
       - 'desktop-tauri/cad_backend/stock_recognition.py'
+      - 'desktop-tauri/cad_backend/stock_patterns.py'
+      - 'desktop-tauri/tests/public_stock_axis_regression.py'
       - 'desktop-tauri/src/lib/data/steel-sections.json'
       - 'desktop-tauri/licenses/steel-section-database-MIT.txt'
       - 'desktop-tauri/tests/manufacturing_geometry_test.py'
@@ -120,6 +125,11 @@ jobs:
           $env:DS_CAD_PROFILE = '1'
           python tests/public_fabrication_benchmark.py --engine src-tauri/cad-backend/ds-cad-engine.exe --out public_fabrication_output --timeout 240
           if ($LASTEXITCODE -ne 0) { throw 'Real public STEP benchmark gate failed: all three active genuine CAD models must import successfully' }
+      - name: Confirm correct local tube axis on the unchanged Earthpress STEP
+        shell: pwsh
+        run: |
+          python tests/public_stock_axis_regression.py public_fabrication_output
+          if ($LASTEXITCODE -ne 0) { throw 'Earthpress oblique-section geometric-core regression' }
       - name: Run DS Estimate automatic cutting-time planner and compare independent manual time ranges
         if: always()
         shell: pwsh
