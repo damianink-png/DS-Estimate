@@ -89,7 +89,7 @@
  let cutPlan=$derived.by(()=>{try{if(partsResult.error)throw new Error(partsResult.error);return planAutomaticCutting(detailRows,{machines,laserLimit,rate:rates.cutting,catalog:sectionCatalog.sections});}catch(e){return {rows:[],batches:[],missing:0,error:String(e)};}});
  let cuttingAudit=$derived.by(()=>inventory&&!partsResult.error?auditCutting(detailRows,cutPlan):null);
  let automatic=$derived.by(()=>{try{return automaticOperations(detailRows,contacts,jointEdits,norms);}catch(e){return {modules:{},welds:null,areaM2:0,jointCount:0,error:String(e)};}});
- let visibleParts=$derived(detailRows.filter(p=>(p.name+' '+p.id+' '+p.geometryKey+' '+(p.solid.stockHint?.catalogDesignation||'')).toLowerCase().includes(materialQuery.toLowerCase())));
+ let visibleParts=$derived(detailRows.filter(p=>(p.name+' '+p.id+' '+p.geometryKey+' '+(p.solid.stockHint?.catalogDesignation||'')+' '+(p.solid.normaliaHint?.catalogCandidates??[]).map((n:any)=>n.designation+' '+n.standard).join(' ')).toLowerCase().includes(materialQuery.toLowerCase())));
 
  let materialPrices=$state<Record<string,number|null>>(Object.fromEntries(MATERIALS.map(m=>[m.grade,m.density<3000?22:m.grade.startsWith('1.')?18:m.grade.startsWith('Cu')?40:m.grade.startsWith('Ti')?150:5])));
  let materialApproved=$state(false);
@@ -295,7 +295,12 @@
  }
  function changeJoint(id:string,field:string,value:any){jointEdits={...jointEdits,[id]:{...jointEdits[id],[field]:value}};confirmed={...confirmed,welding:false,assembly:false,quality:false,postweld:false};saveProject();}
  function materialPrice(grade:string,raw:string){const value=raw===''?null:Number(raw);if(value!==null&&(!Number.isFinite(value)||value<0))return;materialPrices={...materialPrices,[grade]:value};try{localStorage.setItem('ds-estimate-material-prices-v1',JSON.stringify(materialPrices));}catch{}confirmed={};saveProject();}
- function partDescription(p:any){const h=p.solid.stockHint?.kind==='unknown'&&p.solid.stockHint?.rawStockCandidate?p.solid.stockHint.rawStockCandidate:(p.solid.stockHint??{}),kind=p.stockKind||h.kind;const label=sectionCatalog.sections.find(c=>c.id===p.catalogId)?.name||h.catalogDesignation;
+ function partDescription(p:any){const normalia=p.solid.normaliaHint;
+  if(normalia?.status==='geometry-candidate'&&normalia.catalogCandidates?.length){
+   const names=normalia.catalogCandidates.slice(0,2).map((n:any)=>n.standard+' '+n.designation).join(', ');
+   return 'Normalium — kandydat geometryczny: '+names+' (zakup niepotwierdzony)';
+  }
+  const h=p.solid.stockHint?.kind==='unknown'&&p.solid.stockHint?.rawStockCandidate?p.solid.stockHint.rawStockCandidate:(p.solid.stockHint??{}),kind=p.stockKind||h.kind;const label=sectionCatalog.sections.find(c=>c.id===p.catalogId)?.name||h.catalogDesignation;
   if(label)return label;
   if(['plate-candidate','plate','bent-plate'].includes(kind))return (kind==='bent-plate'?'Blacha gięta ':'Płyta ')+number(h.thicknessMm??p.solid.cuttingHint?.thicknessMm??p.dims[2])+' mm';
   return (stockLabels[kind]||'Detal')+' '+[h.widthMm,h.heightMm,h.wallMm].filter(v=>v!==undefined).map(number).join(' × ');
