@@ -326,3 +326,10 @@ geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
   i ścisły model pola z zaokrągleniami, a dopiero potem korekta audytu.
   Następnie detektor osiowych łączników; nie zgadywać surowca, technologii
   ani czasu cięcia.
+
+## 8.11.2026, 01:16 CET — korekta fałszywego INVALID_HINT dla SHS
+
+- HEAD wejściowy PR #7: `a71dd79af4adb834aab3b67c4ffadc1af91a8068`. GitHub Actions benchmark `42424478730` **PASS**, Windows `42424478738` **PASS**. Wcześniejsze uruchomienia `42424468736` i `42424468634` anulowano przez kolejne commity, nie traktować jako PASS.
+- Przejrzano `tests/public_stock_audit.py`: walidator stosował wzór ostrokątny dla `square-hollow` i `rectangular-hollow` mimo udokumentowanych promieni z oryginalnego Earthpress. Poprawiono rozróżnienie: rozbieżność pola w profilach zamkniętych **nie jest INVALID_HINT**, lecz `UNVERIFIED` z jawnym powodem; zachowane rodzaj i rzeczywiste pole B-Rep. **Nie przyznano GEOMETRY_ONLY ani nie potwierdzono surowca, piły, frezowania czy kosztu.** Pozostałe błędy pól i wymiarów nadal `INVALID_HINT`; tolerancja 2% bez zmian.
+- Commit kodu `abec1c4f4917943fb0ea6c72cb71a1d10defd902`. Oczekuje na nowy benchmark Windows; do jego zakończenia brak zweryfikowanych nowych liczników. Spodziewana tylko zmiana audytu 6× `INVALID_HINT` → `UNVERIFIED`; liczba znanych czasów cięcia nadal bazowo Earthpress 121/251, Portal 6/15, StepGen 0/1.
+- Następny krok: bezpośredni pomiar łuków naroży SHS z oryginalnego B-Rep i niezależna kontrola pola przekroju; dopiero wtedy certyfikować geometrię. Potem 44 powtarzalne elementy obrotowo-złączne, bez przypisywania technologii bez dowodu.
