@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cad_backend.stock_patterns import orthogonal_section_kind, convex_polygon_section_kind
+from cad_backend.rotational_features import coaxial_face_groups
 from cad_backend.stock_recognition import _classify_section, _recognize_axis_stock, recognize_stock
 from unittest.mock import patch
 
@@ -70,6 +71,27 @@ class StockPatternTests(unittest.TestCase):
         for vertices in invalid:
             with self.subTest(vertices=vertices):
                 self.assertIsNone(beveled_rectangle_section_kind(close(vertices),.002))
+
+    def test_position_aware_cylinder_cone_coaxiality(self):
+        # Same direction but 1 mm offset is NOT the same rotational axis.
+        # Opposite directions and shifted points along one infinite line ARE.
+        cylinders=[
+            {'axis':[0,0,1],'axisPointMm':[10,20,0],'radiusMm':6},
+            {'axis':[0,0,-1],'axisPointMm':[10,20,40],'radiusMm':4},
+            {'axis':[0,0,1],'axisPointMm':[11,20,0],'radiusMm':2},
+        ]
+        cones=[{'axis':[0,0,-1],'axisPointMm':[10,20,100],
+                'referenceRadiusMm':7,'semiAngleRad':.78539816}]
+        groups=coaxial_face_groups(cylinders,cones)
+        self.assertEqual(len(groups),2)
+        self.assertEqual(groups[0]['cylinderFaceCount'],2)
+        self.assertEqual(groups[0]['coneFaceCount'],1)
+        self.assertEqual(groups[0]['cylinderRadiiMm'],[4,6])
+        self.assertEqual(groups[1]['cylinderRadiiMm'],[2])
+        self.assertEqual(groups[1]['coneFaceCount'],0)
+        # A direction-only hint cannot certify physical coaxiality.
+        self.assertEqual(coaxial_face_groups(
+            [{'radiusMm':6,'axis':[0,0,1]}],[]),[])
 
     def test_rotated_rhs_sections_and_offset_hole(self):
         # Real OCCT sections may be rotated inside the cutting plane.
