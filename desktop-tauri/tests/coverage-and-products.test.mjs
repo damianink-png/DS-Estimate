@@ -1,9 +1,17 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {partsList,commercialUnits} from '../src/lib/parts.mjs';
+import {partsList,commercialUnits,preferenceFor} from '../src/lib/parts.mjs';
 import {automaticOperations,NORMS} from '../src/lib/fabrication.mjs';import {evaluateModules} from '../src/lib/modular-quote.mjs';
 const solid=(id,product='occ-1',definition='def-1')=>({id,name:'Same product name',volumeMm3:10000,bboxMm:[100,10,10],verifiedShapeKey:'same-shape',productIdentityReliable:true,productOccurrenceKey:product,productDefinitionKey:definition,bodyCount:2,stockHint:{kind:'rectangular-bar',lengthMm:100,widthMm:10,heightMm:10,sectionAreaMm2:100}});
 const inv={solids:[solid('a'),solid('b')]};
 const joint={id:'a|b',partA:'a',partB:'b',lengthMm:100};const contacts={complete:true,geometryValid:true,candidates:[joint]};
+test('a hardware-sounding STEP name cannot silently choose purchased routing',()=>{
+ const item={...solid('named'),name:'Śruba ISO 4017 M10x95',
+  nameEvidence:{status:'name-only-unverified',normaliaFamily:'hex-head',nominalDesignation:'M10x95'},
+  normaliaHint:{status:'geometry-candidate',families:['hex-head'],catalogCandidates:[{designation:'M10x95'}]}};
+ assert.equal(preferenceFor(item).route,'make');
+ assert.equal(preferenceFor(item,{named:{route:'purchase'}}).route,'purchase');
+ assert.equal(preferenceFor({...item,name:'Nakrętka M12'}).route,'make');
+});
 test('five bodies of a single STEP product produce one supplier charge',()=>{
  const inventory={solids:['a','b','c','d','e'].map(id=>solid(id))},prefs=Object.fromEntries(inventory.solids.map(s=>[s.id,{route:'purchase',supplierPrice:40}]));
  const rows=evaluateModules({inventory,partMaterials:prefs}).modules.find(m=>m.id==='purchased').rows;
