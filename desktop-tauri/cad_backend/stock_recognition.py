@@ -10,9 +10,9 @@ try:
 except ImportError:
     from section_catalog import match_hint,match_open_loop
 try:
-    from .stock_patterns import orthogonal_section_kind, convex_polygon_section_kind
+    from .stock_patterns import orthogonal_section_kind, convex_polygon_section_kind, beveled_rectangle_section_kind
 except ImportError:
-    from stock_patterns import orthogonal_section_kind, convex_polygon_section_kind
+    from stock_patterns import orthogonal_section_kind, convex_polygon_section_kind, beveled_rectangle_section_kind
 
 
 def _section_edges(shape, bounds, axis, fraction):
@@ -194,6 +194,7 @@ def _classify_section(edges, tol):
         # unexpected transitions stay unclassified, not catalogued by bbox.
         return (orthogonal_section_kind(loops[0][0], tol) or
                 match_open_loop(loops[0][0],loops[0][3]) or
+                beveled_rectangle_section_kind(loops[0][0], tol) or
                 convex_polygon_section_kind(loops[0][0], tol))
     return match_open_loop(loops[0][0],loops[0][3]) if inner is None else None
 
@@ -260,6 +261,28 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None, axis_override=None):
         measured=_measured_solid_volume(solid) if solid is not None else expected
     except Exception as exc:
         return {'kind':'unknown','reason':'Independent volume check unavailable: '+type(exc).__name__}
+    # A chamfer running along a bar is a feature of the FINISHED section,
+    # not proof that the purchased raw section has the same missing corner.
+    # Recover only a conservative rectangular blank candidate. Keep kind
+    # UNKNOWN so no existing cutting/production cost route treats it as a
+    # certified prismatic product; the user still sees its measured core.
+    if first['kind']=='beveled-rectangle':
+        blank_kind=('flat-section' if first['widthMm']/first['heightMm']>=4
+                    else 'square-bar' if first['widthMm']/first['heightMm']<=1.02
+                    else 'rectangular-bar')
+        verified=(support==5 and abs(measured-expected)<=max(1.,expected*.02))
+        raw_blank=({'kind':blank_kind,'widthMm':first['widthMm'],
+                    'heightMm':first['heightMm'],'lengthMm':length,
+                    'sectionAreaMm2':first['blankSectionAreaMm2'],
+                    'confidence':'geometric-blank-candidate',
+                    'source':'five original B-Rep cross-sections with small corner bevels',
+                    'limitations':'Rectangular envelope, not proof of purchased blank or chamfer operation'}
+                   if verified else None)
+        return {'kind':'unknown','reason':'Finished section contains longitudinal corner bevels',
+                'finishedSectionEvidence':{**first,'supportingSections':support,
+                                           'sampledSections':5,'finishedVolumeMm3':measured,
+                                           'sectionPrismVolumeMm3':expected},
+                **({'rawStockCandidate':raw_blank} if raw_blank else {})}
     raw={**first,'lengthMm':length,'confidence':'raw-stock-candidate','supportingSections':support,
          'sampledSections':5,'removedVolumeMm3':max(0,expected-measured),'source':'repeated B-Rep sections, finished part contains stock removal'} if support>=3 and 0<measured<expected*1.02 else None
     # A verified central section may describe a core, NOT a whole purchasable
