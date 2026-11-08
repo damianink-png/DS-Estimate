@@ -378,3 +378,13 @@ geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
 - Commit testu `a92cad707b7db542c6028f9ae477b250a3f1fbb7`: ścisła regresja trzech odrębnych kluczy przy identycznej objętości, powtórzenia położenia i zakaz wnioskowania technologii. **Nowy commit nie ma jeszcze potwierdzonego PASS**; sprawdzić nowe Actions przed kolejną zmianą.
 - Wynik przed/po wyceny: **bez zmian silnika**, ostatnie potwierdzone 121/251 Earthpress, 6/15 Portal, 0/1 StepGen; nie twierdzić, że nowy test zwiększył pokrycie.
 - Następny krok: bezpośredni pomiar osi i typów powierzchni 11 grup elementów obrotowych z oryginalnego STEP, niezależnie od kluczy/objętości; dopiero potem bezpieczny detektor cech. Półfabrykat, piła, frezowanie i czas pozostają nieustalone bez dowodu. Nie zmieniono tolerancji, UI ani main; nie opublikowano EXE.
+
+
+## 8.11.2026, 07:15 CET — kontrola HEAD i pełnego zbioru UNKNOWN
+
+- HEAD wejściowy PR #7: `fa08ca27300e2912ca0e1921a603e287d13c20e0`; PR otwarty, bez merge.
+- Dwa workflow dla **dokładnie tego SHA** zakończone sukcesem: [benchmark 42450077781](https://github.com/damianink-png/DS-Estimate/actions/runs/42450077781) **PASS** i [Windows 42450077761](https://github.com/damianink-png/DS-Estimate/actions/runs/42450077761) **PASS**. Potwierdzono obecność artefaktów: benchmark `13605472433`, Windows installer `13606310151`, UI evidence `13605720219`. Nie opublikowano EXE.
+- Po odczycie bieżącego testu oryginalnych STEP dodano do `tests/public_stock_axis_regression.py` bramkę całego zbioru nierozpoznanych brył Earthpress: dokładnie **75 wystąpień UNKNOWN w 37 różnych verifiedShapeKey**, bez utraty identyfikatorów. Jest to test regresji tożsamości B-Rep i zachowania nieustalonych pozycji, nie rozpoznawanie półfabrykatu ani technologii.
+- Commit kodu: `82f2e0644ab18edabb23f403b3553a632b8f361e`. **Nowy commit wymaga osobnego CI**; PASS poprzedniego HEAD nie certyfikuje tej zmiany. Nie zmieniono tolerancji, UI ani algorytmu cięcia.
+- Przed/po: brak zmiany silnika; ostatnie potwierdzone liczniki czasów Earthpress **121/251**, Portal **6/15**, StepGen **0/1**. Nowe liczby po commicie nie są jeszcze potwierdzone. Nie przedstawiać regresji jako wzrostu skuteczności.
+- Następny etap: pobrać i porównać pełne artefakty bieżącego benchmarku, następnie wykonać **bezpośredni pomiar osi cylindrów i stożków na oryginalnym B-Rep** w 11 grupach (44 wystąpienia) i dodać testy zmierzonych kierunków. Sam `verifiedShapeKey` i objętość nie są dowodem obrotowości ani surowca. Nie przypisywać piły/frezowania i czasu bez dowodu.
