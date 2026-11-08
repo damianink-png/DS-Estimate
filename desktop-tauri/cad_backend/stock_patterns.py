@@ -50,7 +50,7 @@ def orthogonal_section_kind(pts, tol):
             return None
     xx = _unique_coordinates([x for x, _ in rotated], epsilon)
     yy = _unique_coordinates([y for _, y in rotated], epsilon)
-    if len(xx) not in (3, 4) or len(yy) not in (3, 4):
+    if len(xx) not in (3, 4, 6) or len(yy) not in (3, 4, 6):
         return None
     widths = [b - a for a, b in zip(xx, xx[1:])]
     heights = [b - a for a, b in zip(yy, yy[1:])]
@@ -84,12 +84,100 @@ def orthogonal_section_kind(pts, tol):
             narrow = grid[0] if sum(grid[0]) == 1 else grid[1]
             if narrow == [False, True, False]:
                 kind = 'tee'
+    # Additional *geometric* section library: Z/zee and top-hat/omega.
+    # Exact cell occupancy is required: no size/area-only standard inference.
+    if kind is None and (w, h) in ((3, 3), (5, 3), (3, 5)):
+        rotated_grid=occupied
+        for _ in range(4):
+            variants=(rotated_grid, [row[::-1] for row in rotated_grid])
+            for grid in variants:
+                gh=len(grid);gw=len(grid[0])
+                if gh==3 and gw==3:
+                    left=[[True,True,False],[False,True,False],[False,True,True]]
+                    if grid==left:
+                        kind='zee'
+                        break
+                if gh==3 and gw==5:
+                    hat=[[True,True,False,True,True],
+                         [False,True,False,True,False],
+                         [False,True,True,True,False]]
+                    if grid==hat:
+                        kind='hat'
+                        break
+            if kind is not None:
+                break
+            rotated_grid=[list(row) for row in zip(*rotated_grid[::-1])]
     if kind is None:
         return None
     return {'kind':kind,
             'widthMm':max(xx[-1]-xx[0], yy[-1]-yy[0]),
             'heightMm':min(xx[-1]-xx[0], yy[-1]-yy[0]),
             'sectionAreaMm2':polygon_area}
+
+
+def beveled_rectangle_section_kind(points, tol):
+    """Measure a rectangular core with SMALL straight corner chamfers.
+
+    This intentionally does not classify an arbitrary polygon as a bought
+    rectangular bar. A verified core is evidence only; operations and stock
+    remain unestablished until the whole original B-Rep is checked.
+    """
+    if (not math.isfinite(tol) or tol<=0 or not 6<=len(points)<=12
+            or math.dist(points[0],points[-1])>tol
+            or any(not all(math.isfinite(v) for v in p) for p in points)):
+        return None
+    vertices=points[:-1]
+    segments=[(a,b) for a,b in zip(points,points[1:])]
+    lengths=[math.dist(a,b) for a,b in segments]
+    if min(lengths)<tol*5:
+        return None
+    index=max(range(len(lengths)), key=lambda i:lengths[i])
+    a,b=segments[index]
+    theta=math.atan2(b[1]-a[1],b[0]-a[0])
+    co,si=math.cos(theta),math.sin(theta)
+    xy=[(x*co+y*si,-x*si+y*co) for x,y in points]
+    umin,umax=min(p[0] for p in xy),max(p[0] for p in xy)
+    vmin,vmax=min(p[1] for p in xy),max(p[1] for p in xy)
+    w,h=umax-umin,vmax-vmin
+    if min(w,h)<=tol*10:
+        return None
+    epsilon=max(tol*2,max(w,h)*1e-5)
+    bevels=0;straight=0
+    for p,q in zip(xy,xy[1:]):
+        du,dv=q[0]-p[0],q[1]-p[1]
+        if abs(du)<=epsilon or abs(dv)<=epsilon:
+            straight+=1
+            continue
+        # A true corner bevel joins adjacent bounding edges, both near the
+        # SAME corner. Interior diagonals/notches are never ignored.
+        is_corner=False
+        for ux in (umin,umax):
+            for vy in (vmin,vmax):
+                near_p_vertical=abs(p[0]-ux)<=epsilon
+                near_q_vertical=abs(q[0]-ux)<=epsilon
+                near_p_horizontal=abs(p[1]-vy)<=epsilon
+                near_q_horizontal=abs(q[1]-vy)<=epsilon
+                max_bevel=.25*min(w,h)
+                if ((near_p_vertical and near_q_horizontal
+                     and abs(p[1]-vy)<=max_bevel and abs(q[0]-ux)<=max_bevel)
+                    or (near_q_vertical and near_p_horizontal
+                        and abs(q[1]-vy)<=max_bevel and abs(p[0]-ux)<=max_bevel)):
+                    is_corner=True
+                    break
+            if is_corner:
+                break
+        if not is_corner:
+            return None
+        bevels+=1
+    if bevels==0 or bevels>4 or straight<4:
+        return None
+    area=abs(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(xy,xy[1:]))) / 2
+    lost=w*h-area
+    if lost<=max(tol*tol,epsilon*min(w,h)) or lost>=w*h*.125:
+        return None
+    return {'kind':'beveled-rectangle','widthMm':max(w,h),
+            'heightMm':min(w,h),'sectionAreaMm2':area,
+            'blankSectionAreaMm2':w*h,'bevelCount':bevels}
 
 
 def convex_polygon_section_kind(points, tol):
