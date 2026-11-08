@@ -77,6 +77,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Existing quote and cutting regression tests
         run: npm test
+      - name: Test nominal normalia library and safeguards
+        run: python tests/test_normalia_catalog.py
       - name: Guard STEP inventory runtime budget declarations
         run: python tests/test_inventory_source_integrity.py
       - name: Guard partial profiling and failure timing
