@@ -81,6 +81,24 @@ def check(root):
             "procurementCertified": False
         }))
 
+    # Verify the AUDIT outcome on the same compiled original STEP inventory,
+    # not merely the raw engine hints. Rounded corners must not be treated as
+    # malformed, nor may a geometry-only result certify purchasable stock.
+    from public_stock_audit import stock_audit
+    audited = stock_audit(inventory)
+    for number in range(1, 7):
+        row = audited["rows"][number - 1]
+        assert row["status"] == "UNVERIFIED", (
+            f"Earthpress {number}: rounded SHS audit status {row['status']}")
+        assert row["kind"] == "square-hollow"
+        assert "rounded corners" in row["reason"]
+        assert math.isclose(row["sectionAreaMm2"],
+                            solids[number - 1]["stockHint"]["sectionAreaMm2"],
+                            abs_tol=1e-6)
+    assert audited["statusCounts"].get("GEOMETRY_ONLY", 0) <= 84, (
+        "Unverified rounded sections must not increase certified geometry")
+    print("PUBLIC_ROUNDED_SHS_AUDIT_PASS: six original SHS remain UNVERIFIED, not INVALID or certified")
+
     # Independent occurrence-to-occurrence consistency on original rounded SHS:
     # the same physical section measured at different assembly placements must
     # retain its area. This is not a sharp-corner formula or procurement proof.
