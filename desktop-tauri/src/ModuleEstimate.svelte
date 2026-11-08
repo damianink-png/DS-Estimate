@@ -295,10 +295,19 @@
  }
  function changeJoint(id:string,field:string,value:any){jointEdits={...jointEdits,[id]:{...jointEdits[id],[field]:value}};confirmed={...confirmed,welding:false,assembly:false,quality:false,postweld:false};saveProject();}
  function materialPrice(grade:string,raw:string){const value=raw===''?null:Number(raw);if(value!==null&&(!Number.isFinite(value)||value<0))return;materialPrices={...materialPrices,[grade]:value};try{localStorage.setItem('ds-estimate-material-prices-v1',JSON.stringify(materialPrices));}catch{}confirmed={};saveProject();}
- function partDescription(p:any){const normalia=p.solid.normaliaHint;
+ function partDescription(p:any){const normalia=p.solid.normaliaHint,nameEvidence=p.solid.nameEvidence;
   if(normalia?.status==='geometry-candidate'&&normalia.catalogCandidates?.length){
    const names=normalia.catalogCandidates.slice(0,2).map((n:any)=>n.standard+' '+n.designation).join(', ');
-   return 'Normalium — kandydat geometryczny: '+names+' (zakup niepotwierdzony)';
+   const checked=normalia.nameCorroboration?.status;
+   const notice=checked==='conflict'?' · Nazwa STEP niezgodna z B-Rep':checked==='corroborated'?' · Zgodna nazwa STEP':'';
+   return 'Normalium — kandydat geometryczny: '+names+' (zakup niepotwierdzony)'+notice;
+  }
+  if(nameEvidence?.normaliaFamily||nameEvidence?.stockFamily){
+   const label=nameEvidence.normaliaFamily||nameEvidence.stockFamily;
+   return 'Nazwa STEP sugeruje: '+label+
+    (nameEvidence.nominalDesignation?' '+nameEvidence.nominalDesignation:'')+
+    (nameEvidence.nominalDimensionsMm?' '+nameEvidence.nominalDimensionsMm.join('×')+' mm':'')+
+    ' (bez potwierdzenia geometrii)';
   }
   const h=p.solid.stockHint?.kind==='unknown'&&p.solid.stockHint?.rawStockCandidate?p.solid.stockHint.rawStockCandidate:(p.solid.stockHint??{}),kind=p.stockKind||h.kind;const label=sectionCatalog.sections.find(c=>c.id===p.catalogId)?.name||h.catalogDesignation;
   if(label)return label;
