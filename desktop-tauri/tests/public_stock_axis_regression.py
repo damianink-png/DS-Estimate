@@ -242,6 +242,10 @@ def check(root):
             normal = plane["normal"]
             assert len(normal) == 3 and all(math.isfinite(v) for v in normal)
             assert math.isclose(sum(v*v for v in normal), 1.0, abs_tol=2e-6)
+            assert math.isfinite(plane["areaMm2"]) and plane["areaMm2"] > 0, (
+                "Original B-Rep planar face must have a positive measured area")
+            assert math.isfinite(plane["signedOffsetMm"]), (
+                "Original B-Rep planar face must have a finite signed offset")
         planar_faces += evidence.get("planeFaceCount", 0)
         planar_solids += bool(planes)
     assert planar_solids > 0, "Original STEP unresolved solids have no planar B-Rep evidence"
