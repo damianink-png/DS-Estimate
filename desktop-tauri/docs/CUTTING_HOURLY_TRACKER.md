@@ -352,3 +352,10 @@ geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
 - Zmiana kodu testu `4aaf80711fb6945f42928af5bcfcf7ebef6e4e95`: na **oryginalnym Earthpress** dodatkowo wywołano audyt na wyniku skompilowanego silnika; wymuszono dla wszystkich 6 SHS status `UNVERIFIED`, zachowanie pola B-Rep, brak `GEOMETRY_ONLY`. Nie zmieniono klasyfikatora, tolerancji ani wyceny.
 - Nowy test wymaga osobnego PASS po commicie; nie twierdzić, że nowy HEAD już przeszedł CI. Nie publikowano EXE i nie scalano do main.
 - Dalej: niezależny pomiar promieni naroży bezpośrednio z oryginalnego B-Rep i poprawa rozpoznania 44 obrotowych wystąpień bez zakładania przygotówki, piły ani frezowania.
+
+## 8.11.2026, 04:10 CET — kontrola powtarzalnych brył złącznych
+
+- Wejściowa baza: benchmark [42433536765](https://github.com/damianink-png/DS-Estimate/actions/runs/42433536765) PASS; Windows [42433536780](https://github.com/damianink-png/DS-Estimate/actions/runs/42433536780) PASS (workspace-ui oraz build-windows). Należy sprawdzić Actions dla nowego HEAD, ponieważ poprzedni PASS nie certyfikuje nowych zmian.
+- W oryginalnym Earthpress 75 UNKNOWN tworzy 37 grup geometrii, w tym 44 wystąpienia obrotowo-złączne w 11 grupach. Dodano próbkę regresji 14 numerowanych wystąpień (88–93, 99, 106, 109, 122, 125, 131, 135, 141): dodatnia objętość oryginalnego B-Rep, brak niepotwierdzonego rawStockCandidate, brak automatycznej klasyfikacji przygotówki, wypisanie verifiedShapeKey do diagnostyki. Commit `2edbbf97d3caaa34f3cf600416a7fb5e7372b127`.
+- To **test zabezpieczający**, nie nowy detektor. Jego PASS/FAIL na nowym HEAD jest jeszcze niepotwierdzony. Przed/po dla czasu cięcia nadal ostatnio potwierdzone Earthpress 121/251, Portal 6/15, StepGen 0/1. Nie przypisywać 44 wystąpieniom czasu piły ani frezowania bez dowodu przygotówki.
+- Kolejny krok: pobrać artefakty nowego runu i zbadać faktyczne krzywizny/osiowość z oryginalnych STEP, następnie rozdzielić rozpoznanie geometryczne detali obrotowych od decyzji zakup/technologia. Bez zmian tolerancji i UI, bez merge do main.
