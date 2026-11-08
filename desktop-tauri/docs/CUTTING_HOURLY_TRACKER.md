@@ -333,3 +333,13 @@ geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
 - Przejrzano `tests/public_stock_audit.py`: walidator stosował wzór ostrokątny dla `square-hollow` i `rectangular-hollow` mimo udokumentowanych promieni z oryginalnego Earthpress. Poprawiono rozróżnienie: rozbieżność pola w profilach zamkniętych **nie jest INVALID_HINT**, lecz `UNVERIFIED` z jawnym powodem; zachowane rodzaj i rzeczywiste pole B-Rep. **Nie przyznano GEOMETRY_ONLY ani nie potwierdzono surowca, piły, frezowania czy kosztu.** Pozostałe błędy pól i wymiarów nadal `INVALID_HINT`; tolerancja 2% bez zmian.
 - Commit kodu `abec1c4f4917943fb0ea6c72cb71a1d10defd902`. Oczekuje na nowy benchmark Windows; do jego zakończenia brak zweryfikowanych nowych liczników. Spodziewana tylko zmiana audytu 6× `INVALID_HINT` → `UNVERIFIED`; liczba znanych czasów cięcia nadal bazowo Earthpress 121/251, Portal 6/15, StepGen 0/1.
 - Następny krok: bezpośredni pomiar łuków naroży SHS z oryginalnego B-Rep i niezależna kontrola pola przekroju; dopiero wtedy certyfikować geometrię. Potem 44 powtarzalne elementy obrotowo-złączne, bez przypisywania technologii bez dowodu.
+
+
+## 8.11.2026, 02:15 CET — usunięcie FAIL testu audytu SHS/RHS
+
+- Kontrola HEAD przed zmianą: `515f9072526f8d75346bef3569c3d753ea091a35`, PR #7 otwarty.
+- Benchmark rzeczywistych STEP `42429011754`: **PASS**. Windows `42429011757`: **FAIL** w `workspace-ui`, etap `Stock report fixture regression (no CAD dependencies)`; `build-windows` pominięty.
+- Log: dwa nieaktualne oczekiwania testu `test_section_area_must_agree_with_measured_dimensions` dla `square-hollow` i `rectangular-hollow`: test żądał `INVALID_HINT`, a kod świadomie zwracał `UNVERIFIED`, gdy pole B-Rep odbiega od wzoru ostronarożnego. To regresja kontraktu testowego, nie dowód błędnego przekroju. 187 testów JS PASS, 0 FAIL.
+- Commit `24a53f4c7bb18a272eaa41e8c8e80c2a55de6d09`: poprawiono test tak, by SHS/RHS o niezgodnym polu pozostały `UNVERIFIED` (0% certyfikacji i jawna przyczyna), a inne przekroje nadal były `INVALID_HINT`. **Nie zmieniono tolerancji, silnika B-Rep ani algorytmu wyceny**.
+- Wynik po zmianie: oczekiwanie na nowe Actions; nie deklarować PASS przed zakończeniem. Ostatnie potwierdzone liczniki cięcia: Earthpress 121/251, Portal Frame 6/15, StepGen 0/1 (bez zmiany algorytmu).
+- Następny etap: odczytać wynik CI dla tego commitu; potem weryfikować promienie SHS na oryginalnym B-Rep i dopiero klasyfikację łączników, zachowując nieustalone półfabrykaty.
