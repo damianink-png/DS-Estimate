@@ -37,24 +37,32 @@ def coaxial_face_groups(cylinders, cones, position_tol_mm=0.02, axis_cosine_min=
     groups = []
     for kind, direction, point, radius in observations:
         for group in groups:
-            reference = group['direction']
-            dot = sum(a*b for a,b in zip(reference,direction))
-            if abs(dot) < axis_cosine_min:
-                continue
-            delta = tuple(a-b for a,b in zip(point,group['point']))
-            # Norm of cross product with unit vector = shortest distance
-            # from candidate axis point to the existing axis line.
-            cross = (delta[1]*reference[2]-delta[2]*reference[1],
-                     delta[2]*reference[0]-delta[0]*reference[2],
-                     delta[0]*reference[1]-delta[1]*reference[0])
-            if math.sqrt(sum(v*v for v in cross)) > position_tol_mm:
-                continue
-            break
+            # A representative-only comparison permits transitive chaining:
+            # three distinct parallel holes at 0, 0.015 and 0.030 mm can
+            # incorrectly become one axis at a 0.02 mm threshold.
+            # Require agreement with EVERY original B-Rep surface axis.
+            compatible = True
+            for reference, reference_point in group['_members']:
+                dot = sum(a*b for a,b in zip(reference,direction))
+                if abs(dot) < axis_cosine_min:
+                    compatible = False
+                    break
+                delta = tuple(a-b for a,b in zip(point,reference_point))
+                cross = (delta[1]*reference[2]-delta[2]*reference[1],
+                         delta[2]*reference[0]-delta[0]*reference[2],
+                         delta[0]*reference[1]-delta[1]*reference[0])
+                if math.sqrt(sum(v*v for v in cross)) > position_tol_mm:
+                    compatible = False
+                    break
+            if compatible:
+                break
         else:
             group = {'direction': direction, 'point': point,
                      'cylinderRadii': [], 'coneRadii': [],
-                     'cylinderFaceCount': 0, 'coneFaceCount': 0}
+                     'cylinderFaceCount': 0, 'coneFaceCount': 0,
+                     '_members': []}
             groups.append(group)
+        group['_members'].append((direction, point))
         group[kind+'FaceCount'] += 1
         group['cylinderRadii' if kind=='cylinder' else 'coneRadii'].append(radius)
     result = []
