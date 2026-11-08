@@ -228,6 +228,27 @@ def check(root):
     assert all(unknown_keys), "Earthpress: unresolved geometry identity missing"
     assert len(set(unknown_keys)) == 37, (
         "Earthpress: original 75 unresolved occurrences no longer form 37 distinct shapes")
+    # Inspect actual planar face normals of unresolved finished B-Rep solids.
+    # Bevel faces are geometric evidence, NOT proof of plate stock or milling.
+    planar_faces = 0
+    planar_solids = 0
+    for row in unknown_rows:
+        evidence = (row.get("stockHint") or {}).get("finishedBrepSurfaceEvidence") or {}
+        planes = evidence.get("planes") or []
+        assert evidence.get("planeFaceCount", 0) >= len(planes)
+        for plane in planes:
+            normal = plane["normal"]
+            assert len(normal) == 3 and all(math.isfinite(v) for v in normal)
+            assert math.isclose(sum(v*v for v in normal), 1.0, abs_tol=2e-6)
+        planar_faces += evidence.get("planeFaceCount", 0)
+        planar_solids += bool(planes)
+    assert planar_solids > 0, "Original STEP unresolved solids have no planar B-Rep evidence"
+    print("PUBLIC_ORIGINAL_BREP_PLANE_CENSUS_PASS", json.dumps({
+        "unresolvedSolidsWithPlaneEvidence": planar_solids,
+        "measuredPlaneFaces": planar_faces,
+        "stockCertified": False, "bevelMachiningInferred": False
+    }))
+
     print("PUBLIC_UNKNOWN_GEOMETRY_CENSUS_PASS", json.dumps({
         "unresolvedOccurrences": len(unknown_rows),
         "distinctVerifiedShapes": len(set(unknown_keys)),
