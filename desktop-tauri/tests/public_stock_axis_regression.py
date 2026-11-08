@@ -132,6 +132,16 @@ def check(root):
             f"Earthpress {number}: unexpected stock classification requires review")
         assert not hint.get("rawStockCandidate"), (
             f"Earthpress {number}: unproven purchasable blank")
+        # The independent diagnostic must preserve unresolved status for each
+        # original STEP occurrence, not silently promote rotational features
+        # to a stock type merely because a cylindrical surface was detected.
+        audit_row = audited["rows"][number - 1]
+        assert audit_row["status"] == "UNKNOWN", (
+            f"Earthpress {number}: fastener geometry incorrectly certified: {audit_row}")
+        assert audit_row["kind"] == "unknown", (
+            f"Earthpress {number}: unsupported procurement geometry")
+        assert audit_row["verifiedShapeKey"] == solid.get("verifiedShapeKey", ""), (
+            f"Earthpress {number}: occurrence geometry key lost in audit")
         unresolved.append({"solid": number, "volumeMm3": round(solid["volumeMm3"], 4),
                            "shapeKey": solid.get("verifiedShapeKey", ""),
                            "stock": "unknown"})
