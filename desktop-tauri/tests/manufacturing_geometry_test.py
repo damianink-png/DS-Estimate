@@ -108,6 +108,35 @@ class Geometry(unittest.TestCase):
   self.assertEqual(hint['catalogCandidates'][0]['designation'],'M6')
   self.assertGreater(catalog_summary()['entries'],550)
 
+ def test_original_xcaf_names_are_per_occurrence_and_never_override_brep(self):
+  # One verified TShape with three different names: no name hint may be
+  # copied from the first occurrence into the geometry cache of the next.
+  from step_inventory import inventory
+  pin=BRepPrimAPI_MakeCylinder(3,30).Shape()
+  names=('Kołek walcowy Ø6x30 ISO 2338','Nakrętka M12','COMPOUND')
+  occurrences=[{'shape':pin,'name':name,
+                'nameSource':'XCAF occurrence/product',
+                'assemblyPath':[name],
+                'bodyIndex':0,'bodyCount':1,
+                'productIdentityReliable':True,
+                'productDefinitionKey':'def-'+str(i),
+                'productOccurrenceKey':'occ-'+str(i)}
+               for i,name in enumerate(names)]
+  with patch('assembly_names.read_occurrences',return_value=(occurrences,[])):
+   result=inventory('virtual-fixture.step')
+  solids=result['solids']
+  self.assertEqual(result['count'],3)
+  self.assertEqual(len({s['verifiedShapeKey'] for s in solids}),1)
+  self.assertEqual(solids[0]['nameEvidence']['normaliaFamily'],'dowel-pin')
+  self.assertEqual(solids[1]['nameEvidence']['normaliaFamily'],'hex-nut')
+  self.assertNotIn('nameEvidence',solids[2])
+  for solid in solids:
+   self.assertEqual(solid['normaliaHint']['families'],['dowel-pin'])
+   self.assertNotEqual(solid['stockHint'].get('kind'),'purchased-component')
+  self.assertEqual(solids[0]['normaliaHint']['nameCorroboration']['status'],'family-compatible')
+  self.assertEqual(solids[1]['normaliaHint']['nameCorroboration']['status'],'conflict')
+  self.assertNotIn('nameCorroboration',solids[2]['normaliaHint'])
+
  def test_short_imperial_hollow_is_not_four_sheet_bends(self):
   outer=rounded_box(25.4,25.4,25.4,6.35)
   inner=rounded_box(19.05,19.05,25.4,3.175,(3.175,3.175,0))
