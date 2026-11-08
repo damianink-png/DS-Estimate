@@ -213,8 +213,18 @@ jobs:
           '@ | python -
       - name: Test native project file handling
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
-      - name: Build Tauri Windows installer
-        run: npm run tauri -- build --verbose
+      - name: Build Tauri Windows installer (retry transient NSIS download failures)
+        shell: pwsh
+        run: |
+          # Tauri downloads the pinned NSIS archive while bundling; GitHub release
+          # assets occasionally return HTTP 504. Do not mask persistent failures.
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            npm run tauri -- build --verbose
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 3) { throw 'Tauri installer build failed after 3 attempts' }
+            Write-Warning "Tauri build attempt $attempt failed (exit $LASTEXITCODE); retrying after transient download failure"
+            Start-Sleep -Seconds (15 * $attempt)
+          }
       - name: Verify installer
         shell: pwsh
         run: |
