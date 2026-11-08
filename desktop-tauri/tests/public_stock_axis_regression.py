@@ -15,6 +15,21 @@ def check(root):
     inventory = json.loads(source.read_text(encoding="utf-8"))
     solids = inventory["solids"]
     assert len(solids) == 251, "Earthpress STEP solids lost"
+    # The ORIGINAL three public STEP files contain only exporter-generated
+    # names. Parsing these as real engineering parts would be a false positive.
+    # BOM names are NOT joined to solids by row order or coincident volume.
+    generic_counts={}
+    for key in ("earthpress","portal-frame","stepgen-frame"):
+        path=Path(root)/key/"ds_estimate_inventory.json"
+        rows=json.loads(path.read_text(encoding="utf-8"))["solids"]
+        assert not any("nameEvidence" in row for row in rows), (
+            f"{key}: generic STEP exporter labels became false semantic evidence")
+        generic_counts[key]=len(rows)
+    assert generic_counts=={"earthpress":251,"portal-frame":15,"stepgen-frame":1}
+    print("PUBLIC_GENERIC_XCAF_NAMES_IGNORED_PASS",json.dumps({
+        "models":generic_counts,"nameOnlyClassifications":0,
+        "bomMappingByRowOrder":False,"automaticPurchaseFromNames":False}))
+
     for number in (10, 11):
         s = solids[number - 1]
         hint = s.get("stockHint") or {}
