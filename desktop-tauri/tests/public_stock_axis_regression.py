@@ -300,6 +300,28 @@ def check(root):
         "stockCertified": False, "bevelMachiningInferred": False
     }))
 
+    # Normalia are an independent B-Rep *candidate* only. They must never
+    # silently change stockHint, counts of unresolved parts or quote routes.
+    normalia_hits=[]
+    for number, solid in enumerate(solids,1):
+        hint=solid.get('normaliaHint')
+        if not hint:
+            continue
+        assert hint['status']=='geometry-candidate'
+        assert hint['candidateCount']>=len(hint['catalogCandidates'])>=1
+        assert all('standard' in x and 'designation' in x
+                   for x in hint['catalogCandidates'])
+        assert 'purchasePrice' not in hint and 'manufacturingProcess' not in hint
+        normalia_hits.append({'solid':number,
+                             'families':hint['families'],
+                             'examples':[r['designation']
+                                         for r in hint['catalogCandidates'][:3]]})
+    print("PUBLIC_NORMALIA_CANDIDATE_CENSUS",json.dumps({
+        'occurrences':len(normalia_hits),
+        'examples':normalia_hits[:20],
+        'cutHoursInferred':False,'purchasedCertified':False,
+    }))
+
     print("PUBLIC_UNKNOWN_GEOMETRY_CENSUS_PASS", json.dumps({
         "unresolvedOccurrences": len(unknown_rows),
         "distinctVerifiedShapes": len(set(unknown_keys)),
