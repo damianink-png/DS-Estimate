@@ -444,8 +444,6 @@ def inventory(path, density=7850.0):
         stage_start=time.perf_counter()
         if existing in manufacturing_cache:
             cut_hint,stock_hint,features=copy.deepcopy(manufacturing_cache[existing])
-        elif re.search(r'\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack(?:[\s_-]|$)|^electrical[ _-]enclosure(?:[\s:_-]|$)|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b',occurrence.get('name',''),re.I):
-            cut_hint=None;stock_hint={'kind':'purchased-component','source':'standard component name; routing can be overridden'};features={'bendHint':None}
         else:
             if profile:print('[DS-CAD-DETAIL] '+json.dumps({'solid':len(solids)+1,'name':occurrence.get('name',''),'stage':'manufacturing'}),file=sys.stderr,flush=True)
             cut_hint = planar_plate_cutting_hint(solid, dims)
@@ -483,6 +481,24 @@ def inventory(path, density=7850.0):
             except Exception:
                 pass # Normalia is optional evidence, not an import gate.
             manufacturing_cache[existing]=copy.deepcopy((cut_hint,stock_hint,features))
+        # Enrich EACH XCAF occurrence with its own semantic evidence AFTER
+        # copying/storing geometry results. Even when geometrically identical,
+        # parts can have different names: never leak one name into the cache.
+        try:
+            try:
+                from .part_name_evidence import parse_part_name, compare_name_to_geometry
+            except ImportError:
+                from part_name_evidence import parse_part_name, compare_name_to_geometry
+            label_evidence=parse_part_name(
+                occurrence.get('name'),occurrence.get('nameSource','missing'))
+            if label_evidence:
+                features['nameEvidence']=label_evidence
+                if isinstance(features.get('normaliaHint'),dict):
+                    comparison=compare_name_to_geometry(label_evidence,features['normaliaHint'])
+                    if comparison:
+                        features['normaliaHint']['nameCorroboration']=comparison
+        except Exception:
+            pass  # Names must never break CAD import or a measured cost.
         cutting_hint_seconds+=time.perf_counter()-stage_start
         preview_key=f'shared-tshape-{existing}'
         if preview_key not in previews:
