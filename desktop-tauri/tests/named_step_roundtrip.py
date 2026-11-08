@@ -154,6 +154,18 @@ def verify(path,engine):
         truths.append({'name':name,'geometry':key,'nameFamily':expected,
                        'normalia':(hint or {}).get('families'),
                        'nameStatus':(hint or {}).get('nameCorroboration',{}).get('status')})
+    # End-to-end count assertions from the physically reimported XCAF STEP,
+    # not from the name parser alone. Reject false hardware classifications.
+    assert sum(bool(row.get('normaliaHint')) for row in rows)==4, (
+        'Unexpected geometry-only normalia count',
+        [(row['name'],row.get('normaliaHint')) for row in rows])
+    assert sum(x['nameStatus']=='conflict' for x in truths)==1, truths
+    for name,key,expected in FIXTURES:
+        if expected=='none':
+            assert not mapped[name].get('normaliaHint'), (
+                'False positive normalium from a hole/placeholder name',name)
+    assert all(not (row.get('cuttingHint') or {}).get('confirmedManufacturingMethod')
+               for row in rows), 'XCAF names cannot confirm a manufacturing method'
     pins=[mapped[n] for n,key,_ in FIXTURES if key=='pin']
     assert pins[0]['verifiedShapeKey']==pins[1]['verifiedShapeKey'],(
         'Identical pin geometry lost group across different occurrence names')
