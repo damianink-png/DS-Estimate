@@ -32,6 +32,17 @@ def check(root):
         assert core.get("supportingSections") == 5
         assert core["finishedVolumeMm3"] > core["sectionPrismVolumeMm3"] * 1.02
         assert core.get("axisEvidence") == "B-Rep cylinder/edge axis"
+        surfaces = hint.get("finishedBrepSurfaceEvidence") or {}
+        assert surfaces.get("source") == "original STEP B-Rep face adaptors", (
+            f"Earthpress {number}: no original-face surface evidence")
+        assert surfaces.get("cylinderFaceCount", 0) >= 2, (
+            f"Earthpress {number}: missing measured inner/outer cylinders")
+        radii = [face["radiusMm"] for face in surfaces["cylinders"]]
+        assert any(math.isclose(r, 20, abs_tol=.02) for r in radii)
+        assert any(math.isclose(r, 17, abs_tol=.02) for r in radii)
+        assert all(len(face["axis"]) == 3 for face in surfaces["cylinders"])
+        print("PUBLIC_ORIGINAL_BREP_CYLINDER_PASS", json.dumps({
+            "solid": number, "radiiMm": radii, "axes": [f["axis"] for f in surfaces["cylinders"]]}))
         print("PUBLIC_STOCK_AXIS_PASS", json.dumps({
             "solid": number, "finishVolumeMm3": round(s["volumeMm3"], 2),
             "coreSection": "round-tube", "diameterMm": core["diameterMm"],
