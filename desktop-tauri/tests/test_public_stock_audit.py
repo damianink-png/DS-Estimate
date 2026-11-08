@@ -77,7 +77,12 @@ class PublicStockAuditTests(unittest.TestCase):
                 self.assertEqual(correct['statusCounts'],{'GEOMETRY_ONLY':1})
                 bad={**hint,'sectionAreaMm2':area*0.7}
                 rejected=stock_audit({'count':1,'solids':[{'stockHint':bad}]})
-                self.assertEqual(rejected['statusCounts'],{'INVALID_HINT':1})
+                self.assertEqual(rejected['statusCounts'],
+                                 {'UNVERIFIED':1} if kind in ('square-hollow','rectangular-hollow')
+                                 else {'INVALID_HINT':1})
+                if kind in ('square-hollow','rectangular-hollow'):
+                    self.assertEqual(rejected['geometryEvidencePct'], 0)
+                    self.assertIn('B-Rep verification', rejected['rows'][0]['reason'])
 
 
     def test_measured_non_catalogue_polygon_bar_is_supported_without_bbox_area_guess(self):
