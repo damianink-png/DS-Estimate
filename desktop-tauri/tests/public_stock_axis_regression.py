@@ -161,6 +161,45 @@ def check(root):
         "cuttingTimeInferred": False, "manufacturingProcessInferred": False
     }))
 
+    # Original B-Rep face measurements for fastener-like occurrences.  This is
+    # a diagnostic census, not a fastener catalogue or an operation classifier.
+    # Keep identity and measurements separate: equal volume is not proof of
+    # identical geometry, and a cylinder is not proof of purchased hardware.
+    face_samples = []
+    for item in unresolved:
+        number = item["solid"]
+        hint = solids[number - 1].get("stockHint") or {}
+        evidence = hint.get("finishedBrepSurfaceEvidence") or {}
+        cylinders = evidence.get("cylinders") or []
+        cones = evidence.get("cones") or []
+        if evidence:
+            assert evidence.get("source") == "original STEP B-Rep face adaptors", (
+                f"Earthpress {number}: surface data must originate in STEP faces")
+            assert evidence.get("cylinderFaceCount", 0) >= len(cylinders)
+            assert evidence.get("coneFaceCount", 0) >= len(cones)
+            for face in cylinders:
+                assert math.isfinite(face["radiusMm"]) and face["radiusMm"] > 0
+                assert len(face["axis"]) == 3
+                assert math.isclose(sum(v * v for v in face["axis"]), 1, abs_tol=1e-5)
+            for face in cones:
+                assert math.isfinite(face["referenceRadiusMm"])
+                assert math.isfinite(face["semiAngleRad"])
+                assert len(face["axis"]) == 3
+        face_samples.append({
+            "solid": number, "shapeKey": item["shapeKey"],
+            "evidencePresent": bool(evidence),
+            "cylinderFaceCount": evidence.get("cylinderFaceCount", 0),
+            "coneFaceCount": evidence.get("coneFaceCount", 0),
+            "cylinders": cylinders, "cones": cones,
+            "blankCertified": False, "manufacturingCertified": False,
+        })
+    print("PUBLIC_FASTENER_ORIGINAL_BREP_SURFACE_CENSUS", json.dumps({
+        "sampleOccurrences": len(face_samples),
+        "distinctGeometryKeys": len({item["shapeKey"] for item in face_samples}),
+        "withMeasuredSurfaces": sum(item["evidencePresent"] for item in face_samples),
+        "samples": face_samples,
+    }))
+
     # Three equal-volume fastener-like geometries repeat in two placements.
     # Equal B-Rep volume alone MUST NOT merge different shape identities.
     # This checks original compiled STEP occurrence keys, not a guessed BOM.
