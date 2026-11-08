@@ -97,6 +97,25 @@ def check(root):
     # malformed, nor may a geometry-only result certify purchasable stock.
     from public_stock_audit import stock_audit
     audited = stock_audit(inventory)
+    # Earthpress 12/13: real ORIGINAL STEP proves a thin plate along its
+    # measured local frame. Five flat sections plus end removal must not
+    # demote it to an invalid unquoted bar. No saw/milling assumption.
+    for number in (12,13):
+        hint=solids[number-1].get('stockHint') or {}
+        row=audited['rows'][number-1]
+        assert hint.get('kind')=='plate-candidate', (
+            f'Earthpress {number}: elongated finished plate lost after face evidence')
+        assert hint.get('confidence')=='candidate'
+        assert row['status']=='CANDIDATE', (
+            f'Earthpress {number}: malformed plate hint after local frame recovery: {row}')
+        assert math.isclose(hint['thicknessMm'],10,abs_tol=.02)
+        assert math.isclose(hint['widthMm'],60,abs_tol=.02)
+        assert math.isclose(hint['lengthMm'],565.0857866,abs_tol=.03)
+        assert (hint.get('rawStockCandidate') or {}).get('kind')=='flat-section'
+        assert hint['rawStockCandidate']['removedVolumeMm3']>0
+        assert 'cutTimeH' not in hint
+    print('PUBLIC_END_TRIMMED_PLATE_PASS: Earthpress 12/13 remain plate candidates in measured local frame; no machining quote')
+
     for number in range(1, 7):
         row = audited["rows"][number - 1]
         assert row["status"] == "UNVERIFIED", (
