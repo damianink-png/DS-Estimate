@@ -38,6 +38,8 @@ FIXTURES=[
     ('Nakretka DIN 934 M6','nut','hex-nut'),
     ('Plate 100x60x8','plate','plate'),
     ('Bolt hole M10','box','none'),
+    ('Bohrung für Schraube M12','box','none'),
+    ('Otwór pod śrubę M8','box','none'),
     ('COMPOUND','box','none'),
     ('Profil 40x40x2x500','profile','profile'),
 ]
