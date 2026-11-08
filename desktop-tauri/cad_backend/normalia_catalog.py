@@ -53,6 +53,11 @@ CIRCLIP = {8:(.8,7.6),10:(1,9.6),12:(1,11.5),15:(1,14.3),
            17:(1,16.2),20:(1.2,19),25:(1.2,23.9),
            30:(1.5,28.6),35:(1.5,33),40:(1.75,37.5),
            45:(1.75,42.5),50:(2,47),60:(2,57)}
+# DIN 71412 A reference (Bollhoff/KIPP): thread, wrench AF, overall length.
+# CAD often simplifies grease fittings; an unverified length must never
+# be silently promoted into an exact DIN catalogue match.
+GREASE_NIPPLE = {'M6x1':(6,7,16), 'M8x1':(8,9,16),
+                 'M10x1':(10,11,16)}
 PIN_DIAMETERS = (2,2.5,3,4,5,6,8,10,12,16,20)
 PIN_LENGTHS = (6,8,10,12,14,16,18,20,25,30,35,40,45,50,55,60,70,80,100)
 BOLT_LENGTHS = (6,8,10,12,14,16,18,20,25,30,35,40,45,50,55,60,70,80,90,95,100,110,120)
@@ -65,6 +70,7 @@ SOURCES={
     'bearing':'ISO 15',
     'dowel-pin':'ISO 2338 (nominal sizing only)',
     'circlip':'DIN 471 (shaft ring)',
+    'grease-nipple':'DIN 71412 A (reference geometry, not verified type)',
 }
 
 @functools.lru_cache(maxsize=1)
@@ -95,6 +101,10 @@ def normalia_catalog():
     for number,(inner,outer,width) in BEARING.items():
         add('bearing',number,number,
             {'innerDiameter':inner,'outerDiameter':outer,'width':width})
+    for name,(thread_d,flats,nominal_length) in GREASE_NIPPLE.items():
+        add('grease-nipple',name,name,
+            {'threadDiameter':thread_d,'acrossFlats':flats,
+             'overallLengthReference':nominal_length},matchable=False)
     for diameter in PIN_DIAMETERS:
         for length in PIN_LENGTHS:
             if length>=diameter:
