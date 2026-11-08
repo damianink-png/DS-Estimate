@@ -41,6 +41,17 @@ def check(root):
         assert any(math.isclose(r, 20, abs_tol=.02) for r in radii)
         assert any(math.isclose(r, 17, abs_tol=.02) for r in radii)
         assert all(len(face["axis"]) == 3 for face in surfaces["cylinders"])
+        # Both measured cylinders on an oblique Earthpress tube must share
+        # a physical 3-D axis, not merely a direction. Still UNKNOWN stock.
+        groups=surfaces.get("coaxialSurfaceGroups") or []
+        assert any(group.get("cylinderFaceCount",0)>=2
+                   and math.isclose(group["cylinderRadiiMm"][0],17,abs_tol=.02)
+                   and math.isclose(group["cylinderRadiiMm"][-1],20,abs_tol=.02)
+                   for group in groups), (
+            f"Earthpress {number}: missing position-verified 40/34 mm axis")
+        for face in surfaces["cylinders"]:
+            assert len(face.get("axisPointMm",[]))==3, (
+                f"Earthpress {number}: original STEP cylinder axis point lost")
         print("PUBLIC_ORIGINAL_BREP_CYLINDER_PASS", json.dumps({
             "solid": number, "radiiMm": radii, "axes": [f["axis"] for f in surfaces["cylinders"]]}))
         print("PUBLIC_STOCK_AXIS_PASS", json.dumps({
@@ -212,6 +223,21 @@ def check(root):
             "cylinders": cylinders, "cones": cones,
             "blankCertified": False, "manufacturingCertified": False,
         })
+    # Six original equal-volume, differently oriented B-Rep hardware-like
+    # occurrences must reveal true surface coaxiality without acquiring
+    # any purchased fastener designation or cutting/milling hours.
+    for number in (88,89,90,91,92,93):
+        evidence=(solids[number-1].get("stockHint") or {}).get("finishedBrepSurfaceEvidence") or {}
+        groups=evidence.get("coaxialSurfaceGroups") or []
+        assert any(g.get("cylinderFaceCount",0)>=3 and g.get("coneFaceCount",0)>=2
+                   and any(math.isclose(r,2.2,abs_tol=.02)
+                           for r in g.get("cylinderRadiiMm",[]))
+                   and any(math.isclose(r,3.,abs_tol=.02)
+                           for r in g.get("cylinderRadiiMm",[]))
+                   for g in groups), (
+            f"Earthpress {number}: 3 cylinders + 2 cones not physically coaxial")
+        assert (solids[number-1].get("stockHint") or {}).get("kind")=="unknown"
+    print("PUBLIC_FASTENER_COAXIAL_BREP_PASS: 88-93 share positioned cylinder/cone axes without quote")
     print("PUBLIC_FASTENER_ORIGINAL_BREP_SURFACE_CENSUS", json.dumps({
         "sampleOccurrences": len(face_samples),
         "distinctGeometryKeys": len({item["shapeKey"] for item in face_samples}),
