@@ -236,4 +236,12 @@ class Geometry(unittest.TestCase):
    writer=STEPControl_Writer();writer.Transfer(compound,STEPControl_AsIs);path=Path(td)/'joint.step';writer.Write(str(path))
    exe=Path('src-tauri/cad-backend/ds-cad-engine.exe').resolve();p=subprocess.run([str(exe),str(path),'--joints'],capture_output=True,text=True,timeout=120);self.assertEqual(p.returncode,0,p.stderr);data=json.loads(p.stdout);self.assertAlmostEqual(data['candidates'][0]['lengthMm'],90)
    preview=subprocess.run([str(exe),str(path),'--preview','0'],capture_output=True,text=True,timeout=120);self.assertEqual(preview.returncode,0,preview.stderr);self.assertGreaterEqual(len(json.loads(preview.stdout)['triangles']),12)
+ def test_rotational_axes_do_not_chain_offset_holes(self):
+  from rotational_features import coaxial_face_groups
+  def cylinder(y):return {'axis':[1,0,0],'axisPointMm':[0,y,0],'radiusMm':3}
+  groups=coaxial_face_groups([cylinder(0),cylinder(0.015),cylinder(0.030)],[])
+  self.assertEqual(len(groups),2)
+  self.assertEqual(sorted(g['cylinderFaceCount'] for g in groups),[1,2])
+  reverse={'axis':[-1,0,0],'axisPointMm':[100,0,0],'radiusMm':2}
+  self.assertEqual(len(coaxial_face_groups([cylinder(0),reverse],[])),1)
 if __name__=='__main__':unittest.main(argv=[sys.argv[0]],verbosity=2)
