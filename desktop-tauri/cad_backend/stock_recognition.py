@@ -433,6 +433,11 @@ def recognize_stock(solid, bounds, plate_hint=None):
             if best_local and 'localDimsMm' not in result:result['localDimsMm']=best_local
         except Exception:
             pass # An unsupported orientation stays unknown; never a bbox-only match.
+    # Capture coaxiality from axis LOCATIONS, not just their directions.
+    try:
+        from .rotational_features import coaxial_face_groups
+    except ImportError:
+        from rotational_features import coaxial_face_groups
     # Diagnostic evidence measured on the ORIGINAL imported B-Rep, never on
     # a bounding-box proxy. It is deliberately not used for stock/cost decisions.
     # Expose only unresolved solids to keep the STEP inventory reasonably small.
@@ -466,20 +471,23 @@ def recognize_stock(solid, bounds, plate_hint=None):
                     cyl=surface.Cylinder()
                     direction=cyl.Axis().Direction()
                     cylinders.append({'radiusMm':round(float(cyl.Radius()),6),
-                                      'axis':[round(float(v),8) for v in direction.Coord()]})
+                                      'axis':[round(float(v),8) for v in direction.Coord()],
+                                      'axisPointMm':[round(float(v),6) for v in cyl.Axis().Location().Coord()]})
                 elif kind == api.GeomAbs_Cone:
                     cone=surface.Cone()
                     direction=cone.Axis().Direction()
                     cones.append({'referenceRadiusMm':round(float(cone.RefRadius()),6),
                                   'semiAngleRad':round(float(cone.SemiAngle()),8),
-                                  'axis':[round(float(v),8) for v in direction.Coord()]})
+                                  'axis':[round(float(v),8) for v in direction.Coord()],
+                                  'axisPointMm':[round(float(v),6) for v in cone.Axis().Location().Coord()]})
             if cylinders or cones or planes:
                 result['finishedBrepSurfaceEvidence']={
                     'source':'original STEP B-Rep face adaptors',
                     'cylinders':cylinders[:64], 'cones':cones[:64], 'planes':planes[:64],
                     'cylinderFaceCount':len(cylinders), 'coneFaceCount':len(cones),
                     'planeFaceCount':len(planes),
-                    'limitations':'Surface axes/radii describe finished geometry, not purchased stock or operations'}
+                    'coaxialSurfaceGroups':coaxial_face_groups(cylinders,cones),
+                    'limitations':'Position-verified surface axes/radii describe finished geometry, not purchased stock or operations'}
         except Exception:
             pass  # Missing diagnostic evidence must never certify a stock or cost.
     if result.get('kind')!='unknown':
