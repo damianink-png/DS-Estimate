@@ -469,6 +469,19 @@ def inventory(path, density=7850.0):
                                   'contourMm':sheet['estimatedContourMm'],'pierces':1,
                                   'source':sheet['source'],'estimated':True}
             except Exception:pass
+
+        # Independent standard-part detection reads the ORIGINAL B-Rep and
+        # reuses the already measured volume. It never changes stockHint,
+        # cuttingHint, rates, costs, or the source occurrence's geometry.
+        # Cache only after this step so identical verified shapes share results.
+        if existing not in manufacturing_cache:
+            try:
+                try:from .normalia_recognition import recognize_normalia
+                except ImportError:from normalia_recognition import recognize_normalia
+                normalia=recognize_normalia(solid,volume_mm3=volume)
+                if normalia:features['normaliaHint']=normalia
+            except Exception:
+                pass # Normalia is optional evidence, not an import gate.
             manufacturing_cache[existing]=copy.deepcopy((cut_hint,stock_hint,features))
         cutting_hint_seconds+=time.perf_counter()-stage_start
         preview_key=f'shared-tshape-{existing}'
