@@ -9,19 +9,19 @@ from cad_backend.normalia_recognition import match_brep_signature
 
 
 class NormaliaCatalogueTests(unittest.TestCase):
-    def test_covers_seven_normalia_families_without_invented_purchase(self):
+    def test_covers_eight_normalia_families_without_invented_purchase(self):
         info=catalog_summary()
         self.assertGreater(info['entries'],550)
         self.assertEqual(set(info['families']),
                          {'hex-head','socket-head','hex-nut','washer',
-                          'dowel-pin','bearing','circlip'})
+                          'dowel-pin','bearing','circlip','grease-nipple'})
         rows=normalia_catalog()
         self.assertEqual(len(rows),len({r['id'] for r in rows}))
         self.assertTrue(all('dimensionsMm' in row and 'standard' in row
                             and row['status']=='nominal-catalogue-entry'
                             for row in rows))
         self.assertTrue(all(not row['geometricMatchingAvailable']
-                            for row in rows if row['family']=='circlip'))
+                            for row in rows if row['family'] in ('circlip','grease-nipple')))
         self.assertTrue(all('price' not in row and 'manufacturingProcess' not in row
                             for row in rows))
 
@@ -33,6 +33,7 @@ class NormaliaCatalogueTests(unittest.TestCase):
             ('bearing',{'innerDiameter':17,'outerDiameter':40,'width':12},'6203'),
             ('hex-head',{'threadDiameter':8,'acrossFlats':13,'headHeight':5.3,'underheadLength':30},'M8x30'),
             ('socket-head',{'threadDiameter':6,'headDiameter':10,'headHeight':6,'underheadLength':25},'M6x25'),
+            ('hex-head',{'threadDiameter':10,'acrossFlats':16,'headHeight':6.4,'underheadLength':95},'M10x95'),
             ('dowel-pin',{'diameter':6,'length':30},'6x30')
         ]
         for family,dims,expected in pairs:
@@ -46,6 +47,7 @@ class NormaliaCatalogueTests(unittest.TestCase):
         self.assertEqual(lookup_dimensions('washer',{'innerDiameter':True}),[])
         self.assertEqual(lookup_dimensions('washer',{}),[])
         self.assertEqual(lookup_dimensions('circlip',{'shaftDiameter':20}),[])
+        self.assertEqual(lookup_dimensions('grease-nipple',{'threadDiameter':6,'acrossFlats':7}),[])
 
     def test_brep_family_signature_only_generates_candidates(self):
         ring=match_brep_signature({'family':'ring','innerDiameter':8.4,
