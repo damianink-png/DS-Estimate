@@ -11,6 +11,8 @@ from manufacturing_features import feature_hints,sheet_hints
 from part_preview import mesh_part
 from assembly_names import assembly_names,signature,extended_text,read_occurrences
 from section_catalog import catalog
+from normalia_recognition import recognize_normalia
+from normalia_catalog import catalog_summary
 try:
  from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox,BRepPrimAPI_MakeCylinder,BRepPrimAPI_MakePrism
  from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform,BRepBuilderAPI_MakePolygon,BRepBuilderAPI_MakeFace
@@ -55,6 +57,57 @@ class Geometry(unittest.TestCase):
   with patch.object(weld_preparation,'primary_skin',wraps=weld_preparation.primary_skin) as fn:
    data=detect_contacts([box(100,100,10,(x,0,0)) for x in [0,100,200]])
   self.assertTrue(data['complete']);self.assertEqual(fn.call_count,3);self.assertEqual(data['skinCacheEntries'],3)
+ def test_normalia_from_original_brep_washer_and_bearing(self):
+  # Real analytic B-Rep rings can resemble nominal hardware, but the result
+  # is a dimensional candidate, never purchase or process certification.
+  washer=BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(8,1.6).Shape(),
+                        BRepPrimAPI_MakeCylinder(4.2,1.6).Shape()).Shape()
+  bearing_like=BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(17.5,11).Shape(),
+                              BRepPrimAPI_MakeCylinder(7.5,11).Shape()).Shape()
+  for shape,family,designation in [(washer,'washer','M8'),
+                                    (bearing_like,'bearing','6202'),
+                                    (rotated(washer),'washer','M8')]:
+   hint=recognize_normalia(shape,cad.volume(shape))
+   self.assertIsNotNone(hint, family)
+   self.assertEqual(hint['status'],'geometry-candidate')
+   self.assertEqual(hint['families'],[family])
+   self.assertIn(designation,[r['designation'] for r in hint['catalogCandidates']])
+   self.assertNotIn('price',hint)
+   self.assertNotIn('cutTimeH',hint)
+   self.assertNotIn('purchased',hint)
+
+ def test_normalia_from_original_brep_pin_and_offset_hole_guard(self):
+  pin=BRepPrimAPI_MakeCylinder(3,30).Shape()
+  hint=recognize_normalia(rotated(pin),cad.volume(pin))
+  self.assertIsNotNone(hint)
+  self.assertEqual(hint['families'],['dowel-pin'])
+  self.assertEqual(hint['catalogCandidates'][0]['designation'],'6x30')
+  # Eccentric bore is NOT a nominal plain washer, even if both cylinders
+  # have the correct diameters and annular mass is very similar.
+  shifted=gp_Trsf();shifted.SetTranslation(gp_Vec(1,0,0))
+  offset=BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(8,1.6).Shape(),
+                         BRepBuilderAPI_Transform(
+                            BRepPrimAPI_MakeCylinder(4.2,1.6).Shape(),
+                            shifted,True).Shape()).Shape()
+  self.assertIsNone(recognize_normalia(offset,cad.volume(offset)))
+
+ def test_normalia_hex_nut_is_verified_as_hexagon_not_round_bar(self):
+  af=10.;height=5.2;radius=af/math.sqrt(3)
+  polygon=BRepBuilderAPI_MakePolygon()
+  for i in range(6):
+   angle=i*math.pi/3
+   polygon.Add(gp_Pnt(radius*math.cos(angle),radius*math.sin(angle),0))
+  polygon.Close()
+  prism=BRepPrimAPI_MakePrism(
+      BRepBuilderAPI_MakeFace(polygon.Wire()).Face(),
+      gp_Vec(0,0,height)).Shape()
+  nut=BRepAlgoAPI_Cut(prism,BRepPrimAPI_MakeCylinder(3,height).Shape()).Shape()
+  hint=recognize_normalia(nut,cad.volume(nut))
+  self.assertIsNotNone(hint)
+  self.assertEqual(hint['families'],['hex-nut'])
+  self.assertEqual(hint['catalogCandidates'][0]['designation'],'M6')
+  self.assertGreater(catalog_summary()['entries'],550)
+
  def test_short_imperial_hollow_is_not_four_sheet_bends(self):
   outer=rounded_box(25.4,25.4,25.4,6.35)
   inner=rounded_box(19.05,19.05,25.4,3.175,(3.175,3.175,0))
