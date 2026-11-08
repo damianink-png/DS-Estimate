@@ -8,11 +8,18 @@ import math
 try:
     from .normalia_catalog import lookup_dimensions
     from .rotational_features import coaxial_face_groups
-    from . import cad_measure as cad
 except ImportError:
     from normalia_catalog import lookup_dimensions
     from rotational_features import coaxial_face_groups
-    import cad_measure as cad
+
+
+def _cad_api():
+    # Lazy import: unit tests and nominal catalogue work without OCCT.
+    try:
+        from . import cad_measure
+    except ImportError:
+        import cad_measure
+    return cad_measure
 
 def _dot(a,b):
     return sum(x*y for x,y in zip(a,b))
@@ -75,6 +82,7 @@ def match_brep_signature(measurements):
 
 
 def _measured_surfaces(solid, face_budget=90):
+    cad=_cad_api()
     cylinders=[];planes=[];count=0;other_types=0
     for raw in cad.shapes(solid,cad.TopAbs_FACE):
         count+=1
@@ -161,7 +169,7 @@ def recognize_normalia(solid,volume_mm3=None):
         if not math.isfinite(length) or length<=0:
             return None
         if volume_mm3 is None:
-            volume_mm3=float(cad.volume(solid))
+            volume_mm3=float(_cad_api().volume(solid))
         if not math.isfinite(volume_mm3) or volume_mm3<=0:
             return None
         candidates=[];evidence=None
