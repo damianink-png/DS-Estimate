@@ -83,7 +83,7 @@ def match_brep_signature(measurements):
 
 def _measured_surfaces(solid, face_budget=90):
     cad=_cad_api()
-    cylinders=[];planes=[];count=0;other_types=0
+    cylinders=[];planes=[];cones=[];count=0;other_types=0
     for raw in cad.shapes(solid,cad.TopAbs_FACE):
         count+=1
         if count>face_budget:
@@ -98,6 +98,13 @@ def _measured_surfaces(solid, face_budget=90):
                               'axis':tuple(float(v) for v in dr.Coord()),
                               'axisPointMm':tuple(float(v) for v in loc.Coord()),
                               'axialSurfaceSpanMm':abs(float(surface.LastVParameter()-surface.FirstVParameter()))})
+        elif typ==cad.GeomAbs_Cone:
+            cone=surface.Cone()
+            ax=cone.Axis();loc=ax.Location();dr=ax.Direction()
+            cones.append({'referenceRadiusMm':float(cone.RefRadius()),
+                          'semiAngleRad':abs(float(cone.SemiAngle())),
+                          'axis':tuple(float(v) for v in dr.Coord()),
+                          'axisPointMm':tuple(float(v) for v in loc.Coord())})
         elif typ==cad.GeomAbs_Plane:
             p=surface.Plane();loc=p.Location();direction=p.Axis().Direction()
             normal=tuple(float(v) for v in direction.Coord())
@@ -107,7 +114,7 @@ def _measured_surfaces(solid, face_budget=90):
                            'area':area})
         else:
             other_types+=1
-    return cylinders,planes,count,other_types
+    return cylinders,planes,cones,count,other_types
 
 
 def _hex_flats(planes,axis,axis_point):
@@ -145,7 +152,7 @@ def recognize_normalia(solid,volume_mm3=None):
         measured=_measured_surfaces(solid)
         if not measured:
             return None
-        cylinders,planes,face_count,other_types=measured
+        cylinders,planes,cones,face_count,other_types=measured
         if not cylinders or len(cylinders)>30:
             return None
         group_rows=coaxial_face_groups(cylinders,[])
@@ -172,15 +179,34 @@ def recognize_normalia(solid,volume_mm3=None):
             volume_mm3=float(_cad_api().volume(solid))
         if not math.isfinite(volume_mm3) or volume_mm3<=0:
             return None
+        # Detailed hex fasteners may have a smooth 'thread' cylinder and
+        # three (bolt) or two (nut) 45-degree conical chamfers. The previous
+        # ideal-only classifier discarded precisely this real STEP geometry.
+        if cones and other_types==0:
+            try:
+                from .normalia_hex import match_chamfered_hex
+            except ImportError:
+                from normalia_hex import match_chamfered_hex
+            match=match_chamfered_hex(cylinders,planes,cones,volume_mm3)
+            if match:
+                return {'status':'geometry-candidate',
+                        'families':[match['family']],
+                        'catalogCandidates':match['candidates'][:12],
+                        'candidateCount':len(match['candidates']),
+                        'measuredBrep':{k:round(v,6) if type(v) is float else v
+                                        for k,v in match['measurements'].items()},
+                        'threadEvidence':match['threadEvidence'],
+                        'source':'original STEP six hexagonal planar faces, coaxial cylindrical/conical faces, axial lengths and independent solid volume',
+                        'limitations':'Catalogue-size resemblance. No modelled helical thread, proof of bolt standard (ISO 4014 vs 4017), strength, purchase route or price.'}
         candidates=[];evidence=None
-        if len(radii)==2 and len(cylinders)==2 and other_types==0:
+        if len(radii)==2 and len(cylinders)==2 and not cones and other_types==0:
             outer,inner=max(radii),min(radii)
             predicted=math.pi*(outer*outer-inner*inner)*length
             if abs(predicted-volume_mm3)<=max(0.2,predicted*.025):
                 evidence={'family':'ring','innerDiameter':2*inner,
                           'outerDiameter':2*outer,'axialLength':length}
                 candidates=match_brep_signature(evidence)
-        elif len(radii)==1 and len(cylinders)==1 and other_types==0:
+        elif len(radii)==1 and len(cylinders)==1 and not cones and other_types==0:
             radius=radii[0]
             flats=_hex_flats(planes,direction,point)
             if flats is not None:
