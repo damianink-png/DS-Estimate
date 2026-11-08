@@ -1,4 +1,5 @@
 """Small OCCT binding adapter: production pythonocc; OCP for local geometric regression."""
+import math
 try:
     from OCC.Core.TopExp import TopExp_Explorer
     from OCC.Core.TopAbs import TopAbs_FACE,TopAbs_EDGE,TopAbs_SOLID,TopAbs_WIRE
@@ -63,16 +64,57 @@ def load_step(path):
 
 
 def plate_hint(shape):
-    dims=sorted(b-a for a,b in zip(bounds(shape)[:3],bounds(shape)[3:]))
-    if dims[0]<=0 or dims[1]/dims[0]<5-1e-5:return None
+    """Find a sheet's two ORIGINAL major B-Rep planes, even after edge bevels.
+
+    Different top/bottom areas are legitimate when one side is chamfered.
+    This is only a plate-outline CANDIDATE; it is not a stock or process proof.
+    Geometry checks (parallelism, plane spacing, axis, footprint and wires)
+    remain independent of the permitted face-area asymmetry.
+    """
+    xyz=bounds(shape)
+    sizes=[xyz[i+3]-xyz[i] for i in range(3)]
+    thin=min(range(3),key=lambda i:sizes[i])
+    thickness=sizes[thin]
+    others=sorted((sizes[i] for i in range(3) if i!=thin))
+    if (not all(math.isfinite(d) and d>0 for d in sizes)
+            or others[0]/thickness<5-1e-5):
+        return None
+    footprint=others[0]*others[1]
     faces=[]
-    for face in shapes(shape,TopAbs_FACE):
-        f=face_cast(face);surface=BRepAdaptor_Surface(f)
-        if surface.GetType()==GeomAbs_Plane:faces.append((area(f),f,surface.Plane()))
-    faces.sort(key=lambda f:f[0],reverse=True)
-    if len(faces)<2 or abs(faces[0][0]-faces[1][0])>max(.01,faces[0][0]*.005):return None
-    p,q=faces[0][2],faces[1][2]
-    if abs(p.Axis().Direction().Dot(q.Axis().Direction()))<.99999:return None
-    if abs(p.Distance(q.Location())-dims[0])>max(.02,dims[0]*.01):return None
-    contour=length(faces[0][1]);pierces=sum(1 for _ in shapes(faces[0][1],TopAbs_WIRE))
-    return {'kind':'plate-outline','thicknessMm':dims[0],'contourMm':contour,'pierces':pierces,'source':'local planar B-Rep face wires'} if contour>0 and pierces else None
+    for raw in shapes(shape,TopAbs_FACE):
+        f=face_cast(raw)
+        surf=BRepAdaptor_Surface(f)
+        if surf.GetType()!=GeomAbs_Plane:
+            continue
+        plane=surf.Plane()
+        direction=plane.Axis().Direction()
+        # In a world-frame probe the plate thickness must actually be
+        # normal to the thinnest bounding axis. Rotated plates are checked
+        # again in the measured local frame by recognize_stock().
+        if abs((direction.X(),direction.Y(),direction.Z())[thin])<.99999:
+            continue
+        face_area=area(f)
+        if math.isfinite(face_area) and face_area>footprint*.30:
+            faces.append((face_area,f,plane))
+    faces.sort(key=lambda item:item[0],reverse=True)
+    for i,(area_a,face_a,plane_a) in enumerate(faces):
+        for area_b,face_b,plane_b in faces[i+1:]:
+            if min(area_a,area_b)/max(area_a,area_b)<.75:
+                continue
+            if abs(plane_a.Axis().Direction().Dot(plane_b.Axis().Direction()))<.99999:
+                continue
+            if abs(plane_a.Distance(plane_b.Location())-thickness)>max(.02,thickness*.01):
+                continue
+            # The larger outline may include a chamfer: use its measured
+            # B-Rep wires, not the proxy rectangle perimeter.
+            main_face=face_a if area_a>=area_b else face_b
+            contour=length(main_face)
+            pierces=sum(1 for _ in shapes(main_face,TopAbs_WIRE))
+            if contour>0 and pierces:
+                return {'kind':'plate-outline','thicknessMm':thickness,
+                        'contourMm':contour,'pierces':pierces,
+                        'faceAreasMm2':[round(area_a,6),round(area_b,6)],
+                        'asymmetricFaces':abs(area_a-area_b)>max(.01,max(area_a,area_b)*.005),
+                        'source':'original B-Rep major parallel faces and measured outline',
+                        'limitations':'Geometric plate candidate only; bevels, material and blank outline need separate evidence'}
+    return None
