@@ -184,10 +184,11 @@ def recognize_normalia(solid,volume_mm3=None):
         # ideal-only classifier discarded precisely this real STEP geometry.
         if cones and other_types==0:
             try:
-                from .normalia_hex import match_chamfered_hex
+                from .normalia_hex import match_chamfered_hex,match_simplified_grease_nipple
             except ImportError:
-                from normalia_hex import match_chamfered_hex
-            match=match_chamfered_hex(cylinders,planes,cones,volume_mm3)
+                from normalia_hex import match_chamfered_hex,match_simplified_grease_nipple
+            match=(match_chamfered_hex(cylinders,planes,cones,volume_mm3)
+                   or match_simplified_grease_nipple(cylinders,planes,cones,volume_mm3))
             if match:
                 return {'status':'geometry-candidate',
                         'families':[match['family']],
@@ -196,8 +197,9 @@ def recognize_normalia(solid,volume_mm3=None):
                         'measuredBrep':{k:round(v,6) if type(v) is float else v
                                         for k,v in match['measurements'].items()},
                         'threadEvidence':match['threadEvidence'],
+                        'matchQuality':match.get('standardMatch','nominal-geometry-candidate'),
                         'source':'original STEP six hexagonal planar faces, coaxial cylindrical/conical faces, axial lengths and independent solid volume',
-                        'limitations':'Catalogue-size resemblance. No modelled helical thread, proof of bolt standard (ISO 4014 vs 4017), strength, purchase route or price.'}
+                        'limitations':'Dimensional candidate only. Thread/pitch, exact DIN/ISO variant, strength, material, purchase route, machining and price are unverified.'}
         candidates=[];evidence=None
         if len(radii)==2 and len(cylinders)==2 and not cones and other_types==0:
             outer,inner=max(radii),min(radii)
