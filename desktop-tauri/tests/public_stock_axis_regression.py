@@ -150,6 +150,24 @@ def check(root):
         "cuttingTimeInferred": False, "manufacturingProcessInferred": False
     }))
 
+    # Three equal-volume fastener-like geometries repeat in two placements.
+    # Equal B-Rep volume alone MUST NOT merge different shape identities.
+    # This checks original compiled STEP occurrence keys, not a guessed BOM.
+    repeat_keys = [solids[n - 1].get("verifiedShapeKey") for n in (88, 89, 90, 91, 92, 93)]
+    repeat_volumes = [solids[n - 1]["volumeMm3"] for n in (88, 89, 90, 91, 92, 93)]
+    assert all(repeat_keys), "Earthpress 88-93: missing verified geometry identity"
+    assert repeat_keys[:3] == repeat_keys[3:], (
+        "Earthpress 88-93: repeated original B-Rep identities changed")
+    assert len(set(repeat_keys[:3])) == 3, (
+        "Earthpress 88-90: distinct equal-volume geometries were merged")
+    assert max(repeat_volumes) - min(repeat_volumes) < 1e-3, (
+        "Earthpress 88-93: original B-Rep volumes unexpectedly changed")
+    print("PUBLIC_EQUAL_VOLUME_DISTINCT_GEOMETRY_PASS", json.dumps({
+        "occurrences": 6, "distinctGeometryKeys": 3,
+        "sameVolumeDoesNotImplySameShape": True,
+        "stockAndManufacturingRemainUnknown": True
+    }))
+
     # Real original STEP: correct axis does not imply a constant stock profile.
     # Portal Frame 2-9 have 100x200 ends but 100x10 central sections.
     portal = json.loads((Path(root) / "portal-frame" / "ds_estimate_inventory.json").read_text(encoding="utf-8"))
