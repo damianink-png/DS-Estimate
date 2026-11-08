@@ -300,6 +300,58 @@ def check(root):
         "stockCertified": False, "bevelMachiningInferred": False
     }))
 
+    # ORIGINAL Earthpress STEP/BOM cross-check: these are real, fully
+    # assembled B-Rep hex bolts/nuts, not synthetic CAD examples. Threads
+    # are modelled as smooth cylinders; end/head chamfers are real cones.
+    # Distinct verified occurrence keys remain independent; no cost/route.
+    proven_hardware={
+        'M16x25':{'family':'hex-head','numbers':(99,101,103,105,141,143,145,147)},
+        'M12x50':{'family':'hex-head','numbers':(106,110,114,118,148,152,156,160)},
+        'M12x60':{'family':'hex-head','numbers':(122,126,164,168)},
+        'M10x16':{'family':'hex-head','numbers':(131,173)},
+        'M10x95':{'family':'hex-head','numbers':(132,136,174,178)},
+        'M12-nut':{'family':'hex-nut','designation':'M12',
+                   'numbers':(109,113,117,121,125,129,151,155,159,163,167,171)},
+        'M10-nut':{'family':'hex-nut','designation':'M10',
+                   'numbers':(135,139,177,181)},
+    }
+    expected_hex=0
+    for label,case in proven_hardware.items():
+        for number in case['numbers']:
+            row=solids[number-1]
+            hint=row.get('normaliaHint') or {}
+            wanted=case.get('designation',label)
+            assert hint.get('status')=='geometry-candidate',(
+                f'Earthpress {number} ({label}): original B-Rep not recognized')
+            assert hint.get('families')==[case['family']], (
+                f'Earthpress {number}: wrong hardware family {hint.get("families")}')
+            assert any(c.get('designation')==wanted
+                       for c in hint.get('catalogCandidates',[])), (
+                f'Earthpress {number}: wrong catalogue dimensions {hint}')
+            assert (row.get('stockHint') or {}).get('kind')=='unknown'
+            assert 'cutTimeH' not in hint and 'purchasePrice' not in hint
+            assert 'not modelled' in hint.get('threadEvidence',''), (
+                f'Earthpress {number}: fake thread certification')
+            expected_hex+=1
+    assert expected_hex==42
+    grease=[]
+    for number in (88,89,90,91,92,93):
+        hint=solids[number-1].get('normaliaHint') or {}
+        assert hint.get('families')==['grease-nipple'], (
+            f'Earthpress {number}: missing real M6 grease-fitting geometry')
+        assert 'not certified' in hint.get('matchQuality',''), (
+            f'Earthpress {number}: 17 mm STEP must not certify DIN 71412 16 mm')
+        assert (solids[number-1].get('stockHint') or {}).get('kind')=='unknown'
+        grease.append(number)
+    print('PUBLIC_ORIGINAL_NORMALIA_BREP_PASS',json.dumps({
+        'hexBoltNutOccurrences':expected_hex,
+        'greaseNippleFamilyOccurrences':len(grease),
+        'totalGeometricCandidates':expected_hex+len(grease),
+        'modelledThreadHelices':0,
+        'exactGreaseDINMatch':False,'purchasedCertified':False,
+        'cuttingTimeInferred':False,
+    }))
+
     # Normalia are an independent B-Rep *candidate* only. They must never
     # silently change stockHint, counts of unresolved parts or quote routes.
     normalia_hits=[]
