@@ -52,7 +52,7 @@ class StockPatternTests(unittest.TestCase):
         geometry=_classify_section(edges,.002)
         self.assertEqual(geometry['kind'],'beveled-rectangle')
         self.assertAlmostEqual(geometry['blankSectionAreaMm2'],1600)
-        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \\
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
              patch('cad_backend.stock_recognition._measured_solid_volume',
                    return_value=geometry['sectionAreaMm2']*500):
             result=recognize_stock(None,(0,0,0,40,40,500))
