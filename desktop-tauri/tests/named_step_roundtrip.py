@@ -78,7 +78,7 @@ def build_named_step(path):
     doc=TDocStd_Document(TCollection_ExtendedString('DS Estimate XCAF fixture'))
     tool=XCAFDoc_DocumentTool.ShapeTool(doc.Main())
     root=tool.NewShape()
-    TDataStd_Name.Set(root,TCollection_ExtendedString('Named original STEP assembly'))
+    TDataStd_Name.Set(root,TCollection_ExtendedString('Bolt ISO 4017 M20 assembly'))
     shapes=_shapes()
     labels={}
     for key,shape in shapes.items():
@@ -119,6 +119,11 @@ def verify(path,engine):
     assert len(rows)==len(FIXTURES),f'Packaged engine imported {len(rows)} instead of {len(FIXTURES)}'
     mapped={row['name']:row for row in rows}
     assert sorted(mapped)==sorted(expected_names)
+    # The parent assembly has a deliberately misleading hardware name.
+    # Only the product/occurrence name may contribute semantic evidence.
+    assert 'Bolt ISO 4017 M20 assembly' not in mapped
+    assert all(row.get('nameEvidence',{}).get('rawName')!='Bolt ISO 4017 M20 assembly'
+               for row in rows if isinstance(row.get('nameEvidence'),dict))
     assert not result.get('importIssues'),result.get('importIssues')
     truths=[]
     for name,key,expected in FIXTURES:
