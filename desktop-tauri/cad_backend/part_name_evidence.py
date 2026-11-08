@@ -78,7 +78,7 @@ def parse_part_name(name, name_source="missing"):
     # Detect feature descriptions ("hole for M10 bolt") before family labels.
     # A specific product family cannot be inferred from a feature reference.
     if _PART_FEATURE.search(text) and re.search(
-            r"\b(?:srub\w*|bolt\w*|screw\w*|nakretk\w*|nut\w*|washer\w*|podkladk\w*)\b", text):
+            r"\b(?:srub\w*|bolt\w*|screw\w*|schraub\w*|nakretk\w*|nut\w*|mutter\w*|washer\w*|podkladk\w*|unterlegscheib\w*)\b", text):
         return None
 
     standard_matches = [(m.group(1), m.group(2)) for m in _NORM.finditer(text)]
