@@ -158,3 +158,57 @@ def match_chamfered_hex(cylinders,planes,cones,volume_mm3):
                                 'coneFaceCount':3},
                 'threadEvidence':'not modelled (smooth cylinder); ISO 4014 vs 4017 unverified'}
     return None
+
+
+def match_simplified_grease_nipple(cylinders,planes,cones,volume_mm3):
+    """Identify the distinctive nipple family, *not* exact DIN product.
+
+    The original Earthpress grease-fitting shape has three coaxial full
+    cylindrical portions (Ø6, Ø4.4, Ø6), two 45 degree cone skins, a
+    7 mm regular hex, five axial level planes and independently measured
+    3-D volume. It has a 17 mm modelled length while published DIN 71412 A
+    M6 reference rows commonly specify 15-16 mm: flag the mismatch.
+    """
+    if len(cylinders)!=3 or len(cones)!=2 or len(planes)!=11:
+        return None
+    groups=coaxial_face_groups(cylinders,cones)
+    if len(groups)!=1 or groups[0]['cylinderFaceCount']!=3 or groups[0]['coneFaceCount']!=2:
+        return None
+    axis=groups[0]['axis']
+    point=groups[0]['axisPointMm']
+    flats=_hex_flats(planes,axis,point)
+    if flats is None or abs(flats-7)>.02 or not _cone_evidence(cones,axis,point):
+        return None
+    if any(abs(c['referenceRadiusMm']-flats/math.sqrt(3))>.03 for c in cones):
+        return None
+    radius=sorted(round(c['radiusMm'],6) for c in cylinders)
+    if radius!=[2.2,3.,3.]:
+        return None
+    axial=_axial_planes(planes,axis)
+    if len(axial)!=5:
+        return None
+    length=axial[-1]-axial[0]
+    if abs(length-17)>.02:
+        return None
+    cylindrical_length=sum(c['axialSurfaceSpanMm'] for c in cylinders)
+    if cylindrical_length<=0 or cylindrical_length>=length:
+        return None
+    envelope=sum(math.pi*c['radiusMm']**2*c['axialSurfaceSpanMm']
+                 for c in cylinders)
+    envelope+=(math.sqrt(3)/2*flats**2)*(length-cylindrical_length)
+    if not _envelope_volume_ok(volume_mm3,envelope,max_chamfer_loss=.04):
+        return None
+    # The published nominal 16 mm DIN/KIPP value differs from this STEP by
+    # 1 mm; no DIN compliance or exact purchased variant is asserted.
+    return {'family':'grease-nipple',
+            'candidates':[{'family':'grease-nipple',
+                           'designation':'M6x1, SW7 (only geometry-family match)',
+                           'id':'grease-nipple:M6x1',
+                           'standard':'DIN 71412 A (reference only; length mismatch)',
+                           'matchLevel':'family-only'}],
+            'measurements':{'shaftDiameterMm':6,'neckDiameterMm':4.4,
+                            'acrossFlatsMm':flats,'overallLengthMm':length,
+                            'publishedReferenceLengthMm':16,
+                            'coneFaceCount':2},
+            'threadEvidence':'not modelled; pitch/type unverified',
+            'standardMatch':'not certified (STEP 17 mm; published DIN 71412 A 16 mm)'}
