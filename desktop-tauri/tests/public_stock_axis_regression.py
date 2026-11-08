@@ -118,6 +118,28 @@ def check(root):
         "toleranceRelaxed": False, "procurementCertified": False
     }))
 
+    # Repeatable geometric identity is not manufacturing evidence. Check the
+    # original compiled STEP occurrence keys for the unresolved fastener-like
+    # solids, without inferring purchase stock, saw time, or milling time.
+    fastener_occurrences = (88, 89, 90, 91, 92, 93, 99, 106, 109, 122, 125, 131, 135, 141)
+    unresolved = []
+    for number in fastener_occurrences:
+        solid = solids[number - 1]
+        hint = solid.get("stockHint") or {}
+        assert math.isfinite(solid["volumeMm3"]) and solid["volumeMm3"] > 0, (
+            f"Earthpress {number}: invalid B-Rep volume")
+        assert hint.get("kind") == "unknown", (
+            f"Earthpress {number}: unexpected stock classification requires review")
+        assert not hint.get("rawStockCandidate"), (
+            f"Earthpress {number}: unproven purchasable blank")
+        unresolved.append({"solid": number, "volumeMm3": round(solid["volumeMm3"], 4),
+                           "shapeKey": solid.get("verifiedShapeKey", ""),
+                           "stock": "unknown"})
+    print("PUBLIC_FASTENER_GEOMETRY_GUARD_PASS", json.dumps({
+        "sampleOccurrences": len(unresolved), "solids": unresolved,
+        "cuttingTimeInferred": False, "manufacturingProcessInferred": False
+    }))
+
     # Real original STEP: correct axis does not imply a constant stock profile.
     # Portal Frame 2-9 have 100x200 ends but 100x10 central sections.
     portal = json.loads((Path(root) / "portal-frame" / "ds_estimate_inventory.json").read_text(encoding="utf-8"))
