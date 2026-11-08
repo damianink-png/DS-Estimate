@@ -390,6 +390,37 @@ def recognize_stock(solid, bounds, plate_hint=None):
             if best_local and 'localDimsMm' not in result:result['localDimsMm']=best_local
         except Exception:
             pass # An unsupported orientation stays unknown; never a bbox-only match.
+    # Diagnostic evidence measured on the ORIGINAL imported B-Rep, never on
+    # a bounding-box proxy. It is deliberately not used for stock/cost decisions.
+    # Expose only unresolved solids to keep the STEP inventory reasonably small.
+    if result.get('kind') == 'unknown' and solid is not None:
+        try:
+            try:from . import cad_measure as api
+            except ImportError:import cad_measure as api
+            cylinders=[]
+            cones=[]
+            for raw_face in api.shapes(solid, api.TopAbs_FACE):
+                surface=api.BRepAdaptor_Surface(api.face_cast(raw_face))
+                kind=surface.GetType()
+                if kind == api.GeomAbs_Cylinder:
+                    cyl=surface.Cylinder()
+                    direction=cyl.Axis().Direction()
+                    cylinders.append({'radiusMm':round(float(cyl.Radius()),6),
+                                      'axis':[round(float(v),8) for v in direction.Coord()]})
+                elif kind == api.GeomAbs_Cone:
+                    cone=surface.Cone()
+                    direction=cone.Axis().Direction()
+                    cones.append({'referenceRadiusMm':round(float(cone.RefRadius()),6),
+                                  'semiAngleRad':round(float(cone.SemiAngle()),8),
+                                  'axis':[round(float(v),8) for v in direction.Coord()]})
+            if cylinders or cones:
+                result['finishedBrepSurfaceEvidence']={
+                    'source':'original STEP B-Rep face adaptors',
+                    'cylinders':cylinders[:64], 'cones':cones[:64],
+                    'cylinderFaceCount':len(cylinders), 'coneFaceCount':len(cones),
+                    'limitations':'Surface axes/radii describe finished geometry, not purchased stock or operations'}
+        except Exception:
+            pass  # Missing diagnostic evidence must never certify a stock or cost.
     if result.get('kind')!='unknown':
         candidates=match_hint(result)
         result={**result,'catalogCandidates':candidates,'catalogStatus':'unique-fit' if len(candidates)==1 else 'multiple-fits' if candidates else 'no-catalog-fit'}
