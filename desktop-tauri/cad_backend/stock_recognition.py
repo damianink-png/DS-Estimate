@@ -404,8 +404,21 @@ def recognize_stock(solid, bounds, plate_hint=None):
                 surface=api.BRepAdaptor_Surface(api.face_cast(raw_face))
                 kind=surface.GetType()
                 if kind == api.GeomAbs_Plane:
-                    direction=surface.Plane().Axis().Direction()
-                    planes.append({'normal':[round(float(v),8) for v in direction.Coord()]})
+                    plane=surface.Plane()
+                    direction=plane.Axis().Direction()
+                    origin=plane.Location()
+                    normal=tuple(float(v) for v in direction.Coord())
+                    # The signed plane offset is orientation-dependent. Together
+                    # with face area it permits future parallel-face/thickness
+                    # audits without mistaking a small bevel for a plate face.
+                    props=api.GProp_GProps()
+                    api.surface_props(api.face_cast(raw_face), props)
+                    face_area=abs(float(props.Mass()))
+                    offset=sum(normal[i]*float(origin.Coord()[i]) for i in range(3))
+                    if math.isfinite(face_area) and math.isfinite(offset):
+                        planes.append({'normal':[round(v,8) for v in normal],
+                                       'areaMm2':round(face_area,6),
+                                       'signedOffsetMm':round(offset,6)})
                 elif kind == api.GeomAbs_Cylinder:
                     cyl=surface.Cylinder()
                     direction=cyl.Axis().Direction()
