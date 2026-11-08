@@ -4,14 +4,15 @@ import {automaticOperations,NORMS} from '../src/lib/fabrication.mjs';import {eva
 const solid=(id,product='occ-1',definition='def-1')=>({id,name:'Same product name',volumeMm3:10000,bboxMm:[100,10,10],verifiedShapeKey:'same-shape',productIdentityReliable:true,productOccurrenceKey:product,productDefinitionKey:definition,bodyCount:2,stockHint:{kind:'rectangular-bar',lengthMm:100,widthMm:10,heightMm:10,sectionAreaMm2:100}});
 const inv={solids:[solid('a'),solid('b')]};
 const joint={id:'a|b',partA:'a',partB:'b',lengthMm:100};const contacts={complete:true,geometryValid:true,candidates:[joint]};
-test('a hardware-sounding STEP name cannot silently choose purchased routing',()=>{
+test('new XCAF name clues preserve the existing hardware purchase proposal and explicit user override',()=>{
  const item={...solid('named'),name:'Śruba ISO 4017 M10x95',
   nameEvidence:{status:'name-only-unverified',normaliaFamily:'hex-head',nominalDesignation:'M10x95'},
   normaliaHint:{status:'geometry-candidate',families:['hex-head'],catalogCandidates:[{designation:'M10x95'}]}};
- assert.equal(preferenceFor(item).route,'make');
- assert.equal(preferenceFor(item,{named:{route:'purchase'}}).route,'purchase');
- assert.equal(preferenceFor({...item,name:'Nakrętka M12'}).route,'make');
+ assert.equal(preferenceFor(item).route,'purchase'); // Existing suggestion, not certification
+ assert.equal(preferenceFor(item,{named:{route:'make'}}).route,'make'); // Explicit preference wins
+ assert.equal(preferenceFor({...item,name:'Profil 40x40x2'}).route,'make');
 });
+
 test('five bodies of a single STEP product produce one supplier charge',()=>{
  const inventory={solids:['a','b','c','d','e'].map(id=>solid(id))},prefs=Object.fromEntries(inventory.solids.map(s=>[s.id,{route:'purchase',supplierPrice:40}]));
  const rows=evaluateModules({inventory,partMaterials:prefs}).modules.find(m=>m.id==='purchased').rows;
