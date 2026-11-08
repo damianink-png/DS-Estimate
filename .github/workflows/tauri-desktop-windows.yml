@@ -110,7 +110,6 @@ jobs:
       - name: Install Miniforge for OCCT
         uses: conda-incubator/setup-miniconda@v3
         with:
-          miniforge-version: latest
           activate-environment: ds-cad
           python-version: '3.11'
           channels: conda-forge
