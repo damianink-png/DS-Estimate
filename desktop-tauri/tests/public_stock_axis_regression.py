@@ -168,6 +168,22 @@ def check(root):
         "stockAndManufacturingRemainUnknown": True
     }))
 
+    # Whole-assembly unresolved geometry census from the compiled ORIGINAL STEP.
+    # This protects against silently dropping unresolved occurrences while
+    # keeping shape identity separate from volume and from manufacturing.
+    unknown_rows = [row for row in audited["rows"] if row["status"] == "UNKNOWN"]
+    assert len(unknown_rows) == 75, (
+        f"Earthpress: expected 75 unresolved original solids, got {len(unknown_rows)}")
+    unknown_keys = [row["verifiedShapeKey"] for row in unknown_rows]
+    assert all(unknown_keys), "Earthpress: unresolved geometry identity missing"
+    assert len(set(unknown_keys)) == 37, (
+        "Earthpress: original 75 unresolved occurrences no longer form 37 distinct shapes")
+    print("PUBLIC_UNKNOWN_GEOMETRY_CENSUS_PASS", json.dumps({
+        "unresolvedOccurrences": len(unknown_rows),
+        "distinctVerifiedShapes": len(set(unknown_keys)),
+        "manufacturingInferred": False, "cutTimeInferred": False
+    }))
+
     # Real original STEP: correct axis does not imply a constant stock profile.
     # Portal Frame 2-9 have 100x200 ends but 100x10 central sections.
     portal = json.loads((Path(root) / "portal-frame" / "ds_estimate_inventory.json").read_text(encoding="utf-8"))
