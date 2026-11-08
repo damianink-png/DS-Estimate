@@ -128,6 +128,11 @@ jobs:
           $env:DS_CAD_PROFILE = '1'
           python tests/public_fabrication_benchmark.py --engine src-tauri/cad-backend/ds-cad-engine.exe --out public_fabrication_output --timeout 240
           if ($LASTEXITCODE -ne 0) { throw 'Real public STEP benchmark gate failed: all three active genuine CAD models must import successfully' }
+      - name: Round-trip real STEP XCAF with meaningful part names through compiled engine
+        shell: pwsh
+        run: |
+          conda run -n ds-cad python tests/named_step_roundtrip.py --engine src-tauri/cad-backend/ds-cad-engine.exe --out public_fabrication_output/named_step
+          if ($LASTEXITCODE -ne 0) { throw 'Named STEP XCAF roundtrip failed: investigate original product labels, CAD/name corroboration and geometry' }
       - name: Confirm correct local tube axis on the unchanged Earthpress STEP
         shell: pwsh
         run: |
