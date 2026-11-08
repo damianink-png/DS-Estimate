@@ -122,6 +122,43 @@ class Geometry(unittest.TestCase):
   shape=BRepAlgoAPI_Cut(box(40,40,20),box(36,36,20,(2,2,0))).Shape()
   for s in [shape,rotated(shape)]:
    hint=recognize_stock(s,cad.bounds(s));self.assertEqual(hint['kind'],'square-hollow');self.assertAlmostEqual(hint['lengthMm'],20,places=3);self.assertAlmostEqual(hint['wallMm'],2,places=3)
+ def test_real_brep_beveled_plate_preserves_plate_candidate(self):
+  # An actual 100x50x10 STEP-ready prism, with a 5x45 degree
+  # longitudinal chamfer. Top area=95*50; bottom=100*50.
+  # A strict equal-face-area assumption rejects this genuine plate.
+  wire=BRepBuilderAPI_MakePolygon()
+  for x,z in [(0,0),(100,0),(100,10),(5,10),(0,5)]:
+   wire.Add(gp_Pnt(x,0,z))
+  wire.Close()
+  shape=BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(wire.Wire()).Face(),
+                             gp_Vec(0,50,0)).Shape()
+  face_evidence=cad.plate_hint(shape)
+  self.assertIsNotNone(face_evidence)
+  self.assertTrue(face_evidence['asymmetricFaces'])
+  self.assertAlmostEqual(face_evidence['thicknessMm'],10,places=4)
+  hint=recognize_stock(shape,cad.bounds(shape),face_evidence)
+  self.assertEqual(hint['kind'],'plate-candidate',hint)
+  self.assertAlmostEqual(hint['thicknessMm'],10,places=4)
+  self.assertEqual(hint['confidence'],'candidate')
+  self.assertNotIn('manufacturingProcess',hint)
+
+ def test_real_brep_longitudinal_chamfer_has_unverified_blank(self):
+  wire=BRepBuilderAPI_MakePolygon()
+  for x,y in [(0,0),(40,0),(40,40),(5,40),(0,35)]:
+   wire.Add(gp_Pnt(x,y,0))
+  wire.Close()
+  shape=BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(wire.Wire()).Face(),
+                             gp_Vec(0,0,500)).Shape()
+  hint=recognize_stock(shape,cad.bounds(shape))
+  self.assertEqual(hint['kind'],'unknown',hint)
+  self.assertEqual(hint['finishedSectionEvidence']['bevelCount'],1)
+  raw=hint['rawStockCandidate']
+  self.assertEqual(raw['kind'],'square-bar')
+  self.assertEqual(raw['confidence'],'geometric-blank-candidate')
+  self.assertAlmostEqual(raw['widthMm'],40,places=3)
+  self.assertAlmostEqual(raw['heightMm'],40,places=3)
+  self.assertNotIn('cutTimeH',hint)
+
  def test_rounded_rhs_has_area_and_nominal_catalog_candidates(self):
   outer=rounded_box(40,40,1000,4);inner=rounded_box(36,36,1000,2,(2,2,0));shape=BRepAlgoAPI_Cut(outer,inner).Shape()
   hint=recognize_stock(shape,cad.bounds(shape));self.assertEqual(hint['kind'],'square-hollow');self.assertAlmostEqual(hint['wallMm'],2,places=3)
