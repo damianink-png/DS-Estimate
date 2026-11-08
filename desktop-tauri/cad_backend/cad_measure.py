@@ -8,7 +8,7 @@ try:
     from OCC.Core.Bnd import Bnd_Box
     from OCC.Core.GProp import GProp_GProps
     from OCC.Core.BRepAdaptor import BRepAdaptor_Surface,BRepAdaptor_Curve
-    from OCC.Core.GeomAbs import GeomAbs_Plane,GeomAbs_Line,GeomAbs_Circle,GeomAbs_Cylinder
+    from OCC.Core.GeomAbs import GeomAbs_Plane,GeomAbs_Line,GeomAbs_Circle,GeomAbs_Cylinder,GeomAbs_Cone
     from OCC.Core.gp import gp_Pln,gp_Pnt,gp_Dir,gp_Trsf,gp_Ax3
     from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
     from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Common,BRepAlgoAPI_Section
@@ -27,7 +27,7 @@ except ImportError:
     from OCP.Bnd import Bnd_Box
     from OCP.GProp import GProp_GProps
     from OCP.BRepAdaptor import BRepAdaptor_Surface,BRepAdaptor_Curve
-    from OCP.GeomAbs import GeomAbs_Plane,GeomAbs_Line,GeomAbs_Circle,GeomAbs_Cylinder
+    from OCP.GeomAbs import GeomAbs_Plane,GeomAbs_Line,GeomAbs_Circle,GeomAbs_Cylinder,GeomAbs_Cone
     from OCP.gp import gp_Pln,gp_Pnt,gp_Dir,gp_Trsf,gp_Ax3
     from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
     from OCP.BRepAlgoAPI import BRepAlgoAPI_Common,BRepAlgoAPI_Section
