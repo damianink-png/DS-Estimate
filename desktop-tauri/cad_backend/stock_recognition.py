@@ -285,6 +285,26 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None, axis_override=None):
                 **({'rawStockCandidate':raw_blank} if raw_blank else {})}
     raw={**first,'lengthMm':length,'confidence':'raw-stock-candidate','supportingSections':support,
          'sampledSections':5,'removedVolumeMm3':max(0,expected-measured),'source':'repeated B-Rep sections, finished part contains stock removal'} if support>=3 and 0<measured<expected*1.02 else None
+    # A long, locally oriented SHEET may resemble a flat bar in repeated
+    # cross-sections. When the original major planar B-Rep faces independently
+    # prove sheet thickness and the solid has volume REMOVED from that flat
+    # rectangular envelope, keep the sheet candidate instead of losing it.
+    # This is geometry only: stock sourcing, bevels and operations are unknown.
+    # Added volume (Portal Frame end features) cannot pass this safeguard.
+    measured_plate=(isinstance(plate_hint,dict)
+                    and plate_hint.get('kind')=='plate-outline'
+                    and type(plate_hint.get('thicknessMm')) in (int,float)
+                    and math.isfinite(plate_hint['thicknessMm'])
+                    and abs(plate_hint['thicknessMm']-other[0])
+                        <= max(.02,.01*other[0]))
+    if (support==5 and first['kind']=='flat-section' and raw is not None
+            and measured < expected-max(1.,expected*.02)
+            and measured_plate and other[1]/other[0]>=5-1e-5):
+        return {'kind':'plate-candidate','thicknessMm':other[0],
+                'widthMm':other[1],'lengthMm':length,
+                'confidence':'candidate','rawStockCandidate':raw,
+                'source':'original B-Rep major planar faces and five local flat sections',
+                'limitations':'Plate/flat-bar sourcing and removed material/edge treatment require BOM or drawing; no process or cut-time inference'}
     # A verified central section may describe a core, NOT a whole purchasable
     # stock: added end blocks, fittings and bosses can make the solid volume
     # exceed section area times span. Keep the geometric evidence separately.
