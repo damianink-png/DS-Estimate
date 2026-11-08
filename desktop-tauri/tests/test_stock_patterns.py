@@ -23,6 +23,54 @@ class StockPatternTests(unittest.TestCase):
             'i-section': [(0,0),(40,0),(40,5),(23,5),(23,35),(40,35),(40,40),(0,40),(0,35),(17,35),(17,5),(0,5)],
         }
 
+    def test_zee_and_top_hat_section_library_patterns(self):
+        # Closed straight-edge cross-sections: strict topology, not catalogue
+        # procurement. Check rotations/reflections without loosening tolerances.
+        profiles={
+            'zee':[(0,0),(20,0),(20,35),(30,35),(30,40),
+                   (10,40),(10,5),(0,5)],
+            'hat':[(0,0),(10,0),(10,30),(30,30),(30,0),
+                   (40,0),(40,5),(35,5),(35,35),(5,35),(5,5),(0,5)],
+        }
+        for kind,vertices in profiles.items():
+            for angle in (0,math.radians(31),math.radians(90)):
+                for mirrored in (False,True):
+                    points=[((-x if mirrored else x)*math.cos(angle)-y*math.sin(angle),
+                             (-x if mirrored else x)*math.sin(angle)+y*math.cos(angle))
+                            for x,y in vertices]
+                    with self.subTest(kind=kind,angle=angle,mirrored=mirrored):
+                        measured=orthogonal_section_kind(close(points),.002)
+                        self.assertIsNotNone(measured)
+                        self.assertEqual(measured['kind'],kind)
+                        self.assertGreater(measured['sectionAreaMm2'],0)
+
+    def test_corner_bevel_is_blank_candidate_not_certified_bar(self):
+        # A lengthwise 5x5 corner chamfer does not make a 40x40 core an
+        # arbitrary polygon bar. Nor does it prove saw/milling operation.
+        points=close([(0,0),(40,0),(40,40),(5,40),(0,35)])
+        edges=[(points[i:i+2],False,None) for i in range(len(points)-1)]
+        geometry=_classify_section(edges,.002)
+        self.assertEqual(geometry['kind'],'beveled-rectangle')
+        self.assertAlmostEqual(geometry['blankSectionAreaMm2'],1600)
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \\
+             patch('cad_backend.stock_recognition._measured_solid_volume',
+                   return_value=geometry['sectionAreaMm2']*500):
+            result=recognize_stock(None,(0,0,0,40,40,500))
+        self.assertEqual(result['kind'],'unknown')
+        self.assertEqual(result['rawStockCandidate']['kind'],'square-bar')
+        self.assertEqual(result['rawStockCandidate']['confidence'],'geometric-blank-candidate')
+        self.assertEqual(result['finishedSectionEvidence']['bevelCount'],1)
+
+    def test_inner_diagonal_or_large_removed_corner_is_not_ignored(self):
+        from cad_backend.stock_patterns import beveled_rectangle_section_kind
+        invalid=[
+            [(0,0),(40,0),(40,40),(20,35),(0,40)],
+            [(0,0),(40,0),(40,40),(20,40),(0,20)],
+        ]
+        for vertices in invalid:
+            with self.subTest(vertices=vertices):
+                self.assertIsNone(beveled_rectangle_section_kind(close(vertices),.002))
+
     def test_rotated_rhs_sections_and_offset_hole(self):
         # Real OCCT sections may be rotated inside the cutting plane.
         # The outer and inner loops must have a common geometric centre,
