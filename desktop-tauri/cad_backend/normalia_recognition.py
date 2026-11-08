@@ -113,7 +113,7 @@ def _hex_flats(planes,axis,axis_point):
         distance=abs(_dot(normal,delta))
         if distance<=.1:
             continue
-        if all(abs(_dot(normal,existing['normal']))<.99999
+        if all(_dot(normal,existing['normal'])<.99999
                or abs(distance-existing['distance'])>.02
                for existing in sides):
             sides.append({'normal':normal,'distance':distance,'area':plane['area']})
@@ -174,16 +174,19 @@ def recognize_normalia(solid,volume_mm3=None):
                 candidates=match_brep_signature(evidence)
         elif len(radii)==1 and len(cylinders)==1 and other_types==0:
             radius=radii[0]
-            predicted=math.pi*radius*radius*length
-            if abs(predicted-volume_mm3)<=max(.2,predicted*.025):
-                flats=_hex_flats(planes,direction,point)
-                if flats is not None:
-                    # The axial cylinder is the hole through a prismatic
-                    # hexagon, not a hex-headed screw with a long stem.
+            flats=_hex_flats(planes,direction,point)
+            if flats is not None:
+                # A regular hexagonal nut is NOT a solid circular pin:
+                # compare with the HEXAGON minus its cylindrical through bore.
+                hex_area=math.sqrt(3)*flats*flats/2
+                predicted=(hex_area-math.pi*radius*radius)*length
+                if predicted>0 and abs(predicted-volume_mm3)<=max(.2,predicted*.025):
                     evidence={'family':'hex-nut','holeNominal':2*radius,
                               'acrossFlats':flats,'axialLength':length}
                     candidates=match_brep_signature(evidence)
-                elif len(planes)==2:
+            elif len(planes)==2:
+                predicted=math.pi*radius*radius*length
+                if abs(predicted-volume_mm3)<=max(.2,predicted*.025):
                     evidence={'family':'pin','diameter':2*radius,'axialLength':length}
                     candidates=match_brep_signature(evidence)
         if not candidates:
