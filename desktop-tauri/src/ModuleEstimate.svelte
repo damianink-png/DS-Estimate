@@ -302,16 +302,19 @@
    const notice=checked==='conflict'?' · Nazwa STEP niezgodna z B-Rep':checked==='corroborated'?' · Zgodna nazwa STEP':'';
    return 'Normalium — kandydat geometryczny: '+names+' (zakup niepotwierdzony)'+notice;
   }
-  if(nameEvidence?.normaliaFamily||nameEvidence?.stockFamily){
-   const label=nameEvidence.normaliaFamily||nameEvidence.stockFamily;
-   return 'Nazwa STEP sugeruje: '+label+
+  const h=p.solid.stockHint?.kind==='unknown'&&p.solid.stockHint?.rawStockCandidate?p.solid.stockHint.rawStockCandidate:(p.solid.stockHint??{}),kind=p.stockKind||h.kind;
+  const label=sectionCatalog.sections.find(c=>c.id===p.catalogId)?.name||h.catalogDesignation;
+  if(label)return label;
+  if(['plate-candidate','plate','bent-plate'].includes(kind))return (kind==='bent-plate'?'Blacha gięta ':'Płyta ')+number(h.thicknessMm??p.solid.cuttingHint?.thicknessMm??p.dims[2])+' mm';
+  // The name is additional evidence only when stock/normalia geometry has
+  // not already established a more informative description.
+  if((!kind||kind==='unknown')&&(nameEvidence?.normaliaFamily||nameEvidence?.stockFamily)){
+   const suggestion=nameEvidence.normaliaFamily||nameEvidence.stockFamily;
+   return 'Nazwa STEP sugeruje: '+suggestion+
     (nameEvidence.nominalDesignation?' '+nameEvidence.nominalDesignation:'')+
     (nameEvidence.nominalDimensionsMm?' '+nameEvidence.nominalDimensionsMm.join('×')+' mm':'')+
     ' (bez potwierdzenia geometrii)';
   }
-  const h=p.solid.stockHint?.kind==='unknown'&&p.solid.stockHint?.rawStockCandidate?p.solid.stockHint.rawStockCandidate:(p.solid.stockHint??{}),kind=p.stockKind||h.kind;const label=sectionCatalog.sections.find(c=>c.id===p.catalogId)?.name||h.catalogDesignation;
-  if(label)return label;
-  if(['plate-candidate','plate','bent-plate'].includes(kind))return (kind==='bent-plate'?'Blacha gięta ':'Płyta ')+number(h.thicknessMm??p.solid.cuttingHint?.thicknessMm??p.dims[2])+' mm';
   return (stockLabels[kind]||'Detal')+' '+[h.widthMm,h.heightMm,h.wallMm].filter(v=>v!==undefined).map(number).join(' × ');
  }
  const jointName=(id:string)=>detailRows.find(p=>p.id===id)?.name||id;
