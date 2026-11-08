@@ -343,3 +343,12 @@ geometrii/technologii**, nie pewnością zakupu, obróbki lub gatunku.
 - Commit `24a53f4c7bb18a272eaa41e8c8e80c2a55de6d09`: poprawiono test tak, by SHS/RHS o niezgodnym polu pozostały `UNVERIFIED` (0% certyfikacji i jawna przyczyna), a inne przekroje nadal były `INVALID_HINT`. **Nie zmieniono tolerancji, silnika B-Rep ani algorytmu wyceny**.
 - Wynik po zmianie: oczekiwanie na nowe Actions; nie deklarować PASS przed zakończeniem. Ostatnie potwierdzone liczniki cięcia: Earthpress 121/251, Portal Frame 6/15, StepGen 0/1 (bez zmiany algorytmu).
 - Następny etap: odczytać wynik CI dla tego commitu; potem weryfikować promienie SHS na oryginalnym B-Rep i dopiero klasyfikację łączników, zachowując nieustalone półfabrykaty.
+
+## 8.11.2026, 03:14 CET — CI odzyskane, test audytu SHS na oryginalnym STEP
+
+- Wejściowy HEAD PR #7 `b1a2768ba8d0179400cbe8f4d293d27d87802a8b`; otwarty, bez merge.
+- GitHub Actions: benchmark [42433536765](https://github.com/damianink-png/DS-Estimate/actions/runs/42433536765) **PASS**; Windows [42433536780](https://github.com/damianink-png/DS-Estimate/actions/runs/42433536780) **PASS**, oba joby `workspace-ui` i `build-windows`. Wcześniejszy FAIL `42429011757` usunięty.
+- Odczyt z logu bieżącego benchmarku oryginalnych STEP: Earthpress `GEOMETRY_ONLY=84, CANDIDATE=85, UNVERIFIED=6, INVALID_HINT=1, UNKNOWN=75`; Portal `6/15` rozpoznanych czasów, StepGen `0/1`; Earthpress cięcie `121/251`, brak `130`. W porównaniu do starszego audytu 6 SHS zmieniło status `INVALID_HINT→UNVERIFIED` bez fałszywej certyfikacji i bez zmiany czasów cięcia.
+- Zmiana kodu testu `4aaf80711fb6945f42928af5bcfcf7ebef6e4e95`: na **oryginalnym Earthpress** dodatkowo wywołano audyt na wyniku skompilowanego silnika; wymuszono dla wszystkich 6 SHS status `UNVERIFIED`, zachowanie pola B-Rep, brak `GEOMETRY_ONLY`. Nie zmieniono klasyfikatora, tolerancji ani wyceny.
+- Nowy test wymaga osobnego PASS po commicie; nie twierdzić, że nowy HEAD już przeszedł CI. Nie publikowano EXE i nie scalano do main.
+- Dalej: niezależny pomiar promieni naroży bezpośrednio z oryginalnego B-Rep i poprawa rozpoznania 44 obrotowych wystąpień bez zakładania przygotówki, piły ani frezowania.
