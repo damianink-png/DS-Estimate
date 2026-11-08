@@ -79,6 +79,8 @@ jobs:
         run: npm test
       - name: Test nominal normalia library and safeguards
         run: python tests/test_normalia_catalog.py
+      - name: Test STEP XCAF semantic names, not purchasing routes
+        run: python tests/test_part_name_evidence.py
       - name: Guard STEP inventory runtime budget declarations
         run: python tests/test_inventory_source_integrity.py
       - name: Guard partial profiling and failure timing
