@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cad_backend.stock_patterns import orthogonal_section_kind, convex_polygon_section_kind
-from cad_backend.stock_recognition import _classify_section, recognize_stock
+from cad_backend.stock_recognition import _classify_section, _recognize_axis_stock, recognize_stock
 from unittest.mock import patch
 
 
@@ -214,6 +214,29 @@ class StockPatternTests(unittest.TestCase):
              patch('cad_backend.stock_recognition._measured_solid_volume',return_value=1600000):
             result=recognize_stock(object(),(0,0,0,40,40,1000))
         self.assertEqual(result['kind'],'square-bar')
+
+    def test_long_thin_plate_with_removed_volume_keeps_plate_geometry(self):
+        # Measured major B-Rep faces establish the sheet thickness; five
+        # flat cross-sections alone wrongly suggest a raw flat bar when end
+        # cuts remove volume. Do not infer purchased stock or cutting time.
+        rect=[(0,0),(60,0),(60,10),(0,10),(0,0)]
+        edges=[(rect[i:i+2],False,None) for i in range(4)]
+        bounds=(0,0,0,60,10,565)
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',
+                   return_value=320000):
+            plate=_recognize_axis_stock(object(),bounds,{'kind':'plate-outline','thicknessMm':10})
+            not_measured=_recognize_axis_stock(object(),bounds,None)
+            wrong_thickness=_recognize_axis_stock(object(),bounds,{'kind':'plate-outline','thicknessMm':9})
+        self.assertEqual(plate['kind'],'plate-candidate')
+        self.assertEqual(plate['confidence'],'candidate')
+        self.assertAlmostEqual(plate['thicknessMm'],10)
+        self.assertAlmostEqual(plate['widthMm'],60)
+        self.assertAlmostEqual(plate['lengthMm'],565)
+        self.assertEqual(plate['rawStockCandidate']['kind'],'flat-section')
+        self.assertNotIn('cutTimeH',plate)
+        self.assertEqual(not_measured['kind'],'unknown')
+        self.assertEqual(wrong_thickness['kind'],'unknown')
 
     def test_plate_candidate_requires_consistent_measured_thickness(self):
         bounds=(0,0,0,100,50,10)
