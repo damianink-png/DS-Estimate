@@ -232,8 +232,10 @@ def check(root):
     # Bevel faces are geometric evidence, NOT proof of plate stock or milling.
     planar_faces = 0
     planar_solids = 0
-    for row in unknown_rows:
-        evidence = (row.get("stockHint") or {}).get("finishedBrepSurfaceEvidence") or {}
+    for solid, row in zip(solids, audited["rows"]):
+        if row["status"] != "UNKNOWN":
+            continue
+        evidence = (solid.get("stockHint") or {}).get("finishedBrepSurfaceEvidence") or {}
         planes = evidence.get("planes") or []
         assert evidence.get("planeFaceCount", 0) >= len(planes)
         for plane in planes:
