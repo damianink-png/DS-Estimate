@@ -399,10 +399,14 @@ def recognize_stock(solid, bounds, plate_hint=None):
             except ImportError:import cad_measure as api
             cylinders=[]
             cones=[]
+            planes=[]
             for raw_face in api.shapes(solid, api.TopAbs_FACE):
                 surface=api.BRepAdaptor_Surface(api.face_cast(raw_face))
                 kind=surface.GetType()
-                if kind == api.GeomAbs_Cylinder:
+                if kind == api.GeomAbs_Plane:
+                    direction=surface.Plane().Axis().Direction()
+                    planes.append({'normal':[round(float(v),8) for v in direction.Coord()]})
+                elif kind == api.GeomAbs_Cylinder:
                     cyl=surface.Cylinder()
                     direction=cyl.Axis().Direction()
                     cylinders.append({'radiusMm':round(float(cyl.Radius()),6),
@@ -413,11 +417,12 @@ def recognize_stock(solid, bounds, plate_hint=None):
                     cones.append({'referenceRadiusMm':round(float(cone.RefRadius()),6),
                                   'semiAngleRad':round(float(cone.SemiAngle()),8),
                                   'axis':[round(float(v),8) for v in direction.Coord()]})
-            if cylinders or cones:
+            if cylinders or cones or planes:
                 result['finishedBrepSurfaceEvidence']={
                     'source':'original STEP B-Rep face adaptors',
-                    'cylinders':cylinders[:64], 'cones':cones[:64],
+                    'cylinders':cylinders[:64], 'cones':cones[:64], 'planes':planes[:64],
                     'cylinderFaceCount':len(cylinders), 'coneFaceCount':len(cones),
+                    'planeFaceCount':len(planes),
                     'limitations':'Surface axes/radii describe finished geometry, not purchased stock or operations'}
         except Exception:
             pass  # Missing diagnostic evidence must never certify a stock or cost.
