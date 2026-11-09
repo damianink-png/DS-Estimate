@@ -101,6 +101,14 @@ def build_named_step(path):
     return path
 
 def verify(path,engine):
+    # Separate, committed BOM is the oracle; do not derive expected outcomes
+    # from the STEP names or from the engine's own predictions.
+    bom_path=Path(__file__).resolve().parent/'fixtures'/'named_xcaf_reference_bom.json'
+    bom=json.loads(bom_path.read_text(encoding='utf-8'))
+    expected_bom={item['name']:item for item in bom['items']}
+    assert len(expected_bom)==len(FIXTURES)
+    assert set(expected_bom)=={name for name,_,_ in FIXTURES}
+
     # Verify the actual serialized names, *without mocked occurrence objects*.
     occurrences,issues=read_occurrences(path)
     if issues:
@@ -109,7 +117,7 @@ def verify(path,engine):
         f'Expected {len(FIXTURES)} STEP occurrences; received {len(occurrences)}')
     actual_names=[row['name'] for row in occurrences]
     expected_names=[f[0] for f in FIXTURES]
-    assert sorted(actual_names)==sorted(expected_names),(
+    assert sorted(actual_names)==sorted(expected_bom),(
         f'XCAF names failed roundtrip: {actual_names}')
     proc=subprocess.run([str(engine),str(path)],capture_output=True,text=True,timeout=110)
     if proc.returncode:
@@ -118,15 +126,17 @@ def verify(path,engine):
     rows=result.get('solids') or []
     assert len(rows)==len(FIXTURES),f'Packaged engine imported {len(rows)} instead of {len(FIXTURES)}'
     mapped={row['name']:row for row in rows}
-    assert sorted(mapped)==sorted(expected_names)
+    assert sorted(mapped)==sorted(expected_bom)
     # The parent assembly has a deliberately misleading hardware name.
     # Only the product/occurrence name may contribute semantic evidence.
-    assert 'Bolt ISO 4017 M20 assembly' not in mapped
+    assert bom['assemblyName'] not in mapped
     assert all(row.get('nameEvidence',{}).get('rawName')!='Bolt ISO 4017 M20 assembly'
                for row in rows if isinstance(row.get('nameEvidence'),dict))
     assert not result.get('importIssues'),result.get('importIssues')
     truths=[]
     for name,key,expected in FIXTURES:
+        reference=expected_bom[name]
+        assert reference['geometry']==key and reference['nameFamily']==(None if expected=='none' else expected),name
         row=mapped[name]
         hint=row.get('normaliaHint')
         clue=row.get('nameEvidence')
@@ -151,6 +161,8 @@ def verify(path,engine):
             assert not hint,(name,hint)
         assert (row.get('stockHint') or {}).get('kind')!='purchased-component',name
         assert not (hint and ('purchasePrice' in hint or 'cutTimeH' in hint)),name
+        assert (hint or {}).get('families',[None])[0]==reference['normaliaFamily'],name
+        assert (hint or {}).get('nameCorroboration',{}).get('status')==reference['nameStatus'],name
         truths.append({'name':name,'geometry':key,'nameFamily':expected,
                        'normalia':(hint or {}).get('families'),
                        'nameStatus':(hint or {}).get('nameCorroboration',{}).get('status')})
@@ -173,7 +185,8 @@ def verify(path,engine):
         'count':len(FIXTURES),'nameImported':len(FIXTURES),
         'geometryNormalia':sum(bool(r.get('normaliaHint')) for r in rows),
         'nameConflicts':sum(x['nameStatus']=='conflict' for x in truths),
-        'placeholderNamesIgnored':2,'noNameBasedManufacturingRoute':True,
+        'placeholderNamesIgnored':3,'independentBomItems':len(expected_bom),
+        'noNameBasedManufacturingRoute':True,
         'rows':truths},ensure_ascii=False))
     return result
 
