@@ -6,7 +6,11 @@ export const partDefaults=()=>({grade:'',density:7850,price:null,route:'make',su
 const finite=(v,label,min=0)=>{if(typeof v!=='number'||!Number.isFinite(v)||v<min)throw new RangeError(label);return v;};
 export function preferenceFor(s,prefs={}){
  const old=prefs[s.id]??prefs[s.verifiedShapeKey]??{};
- const hardware=/\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack(?:[\s_-]|$)|^electrical[ _-]enclosure(?:[\s:_-]|$)|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b/i.test(s.name??'');
+ const label=s.name??'';
+ // A named HOLE or an assembly reference is not a purchased fastener even if
+ // its name contains ISO 4017, M10, 'bolt', etc. Names never prove purchasing.
+ const featureOrAssembly=/\b(?:hole\w*|bohrung\w*|gewindebohrung\w*|otw[oó]r\w*|gniazdo\w*|pocket\w*|assembly|baugruppe|z[oł]o[zż]eni\w*)\b/i.test(label);
+ const hardware=!featureOrAssembly&&/\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack(?:[\s_-]|$)|^electrical[ _-]enclosure(?:[\s:_-]|$)|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b/i.test(label);
  return {...partDefaults(),...(hardware?{route:'purchase'}:{}),...old,allowances:old.allowances??[old.allowStart??0,old.allowEnd??0,0,0,0,0]};
 }
 export function detailDimensions(s){
