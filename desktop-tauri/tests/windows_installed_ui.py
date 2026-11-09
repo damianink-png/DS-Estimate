@@ -22,7 +22,7 @@ try:
  for _ in range(30):
   if app.poll() is not None:raise RuntimeError('Installed app exited: '+str(app.returncode))
   try:
-   urllib.request.urlopen('http://127.0.0.1:{debug_port}/json/version',timeout=1);ready=True;break
+   urllib.request.urlopen(f'http://127.0.0.1:{debug_port}/json/version',timeout=1);ready=True;break
   except Exception:time.sleep(1)
  if not ready:
   from windows_accessibility_ui import run_accessibility_test
