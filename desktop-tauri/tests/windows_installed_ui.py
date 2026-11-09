@@ -13,20 +13,22 @@ env=dict(os.environ)
 # Match a normal user launch: the installed app must not rely on conda DLLs.
 env['PATH']=';'.join(p for p in env.get('PATH','').split(';') if not any(word in p.lower() for word in ['miniconda','miniforge','\\envs\\ds-cad']))
 for key in ['CONDA_PREFIX','CONDA_DEFAULT_ENV','CONDA_PROMPT_MODIFIER','PYTHONPATH','PYTHONHOME','QT_PLUGIN_PATH']:env.pop(key,None)
-env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']='--remote-debugging-port=9223 --force-renderer-accessibility';env['WEBVIEW2_USER_DATA_FOLDER']=str(out.resolve()/'webview-profile')
+debug_port=9224 if portable else 9223
+# Distinct ports prevent accidentally attaching the portable test to a prior installed app.
+env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']=f'--remote-debugging-port={debug_port} --force-renderer-accessibility';env['WEBVIEW2_USER_DATA_FOLDER']=str(out.resolve()/'webview-profile')
 log=open(out/'app.log','w');app=subprocess.Popen([str(exe)],env=env,stdout=log,stderr=log)
 try:
  ready=False
  for _ in range(30):
   if app.poll() is not None:raise RuntimeError('Installed app exited: '+str(app.returncode))
   try:
-   urllib.request.urlopen('http://127.0.0.1:9223/json/version',timeout=1);ready=True;break
+   urllib.request.urlopen('http://127.0.0.1:{debug_port}/json/version',timeout=1);ready=True;break
   except Exception:time.sleep(1)
  if not ready:
   from windows_accessibility_ui import run_accessibility_test
   run_accessibility_test(app.pid,exe,step,out);sys.exit(0)
  with sync_playwright() as p:
-  browser=p.chromium.connect_over_cdp('http://127.0.0.1:9223');context=browser.contexts[0]
+  browser=p.chromium.connect_over_cdp(f'http://127.0.0.1:{debug_port}');context=browser.contexts[0]
   for _ in range(60):
    pages=context.pages
    if pages:break
