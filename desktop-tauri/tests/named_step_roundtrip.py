@@ -40,6 +40,7 @@ FIXTURES=[
     ('Bolt hole M10','box','none'),
     ('Bohrung für Schraube M12','box','none'),
     ('Otwór pod śrubę M8','box','none'),
+    ('ISO 4017 M10 mounting hole','box','none'),
     ('COMPOUND','box','none'),
     ('Profil 40x40x2x500','profile','profile'),
 ]
@@ -185,7 +186,7 @@ def verify(path,engine):
         'count':len(FIXTURES),'nameImported':len(FIXTURES),
         'geometryNormalia':sum(bool(r.get('normaliaHint')) for r in rows),
         'nameConflicts':sum(x['nameStatus']=='conflict' for x in truths),
-        'placeholderNamesIgnored':3,'independentBomItems':len(expected_bom),
+        'placeholderNamesIgnored':4,'independentBomItems':len(expected_bom),
         'noNameBasedManufacturingRoute':True,
         'rows':truths},ensure_ascii=False))
     return result
