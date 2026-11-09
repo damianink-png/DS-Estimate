@@ -60,7 +60,8 @@ class StepNameEvidenceTests(unittest.TestCase):
     def test_holes_for_fasteners_are_not_named_fasteners(self):
         for name in ("Otwór pod śrubę M10","Bolt hole M10",
                      "Hole for washer M8","Bohrung für Schraube M12",
-                     "Gniazdo nakrętki M6"):
+                     "Gniazdo nakrętki M6", "ISO 4017 M10 mounting hole",
+                     "DIN 933 M8 Bohrung", "Otwór ISO 4017 M12"):
             with self.subTest(name=name):
                 self.assertIsNone(parse_part_name(name,SRC))
 
