@@ -6,7 +6,9 @@ import json,os,subprocess,sys,time,urllib.request,io
 from PIL import Image
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-exe=Path(sys.argv[1]).resolve();step=Path(sys.argv[2]).resolve();out=Path('evidence/windows-native');out.mkdir(parents=True,exist_ok=True)
+exe=Path(sys.argv[1]).resolve();step=Path(sys.argv[2]).resolve()
+portable='--portable' in sys.argv[3:]
+out=Path('evidence/windows-portable' if portable else 'evidence/windows-native');out.mkdir(parents=True,exist_ok=True)
 env=dict(os.environ)
 # Match a normal user launch: the installed app must not rely on conda DLLs.
 env['PATH']=';'.join(p for p in env.get('PATH','').split(';') if not any(word in p.lower() for word in ['miniconda','miniforge','\\envs\\ds-cad']))
@@ -62,7 +64,7 @@ try:
   page.screenshot(path=str(out/'installed-bending.png'))
   assert not errors,errors
   (out/'result.json').write_text(json.dumps({'status':'PASS','installedExecutable':str(exe),'version':'0.7.1','nativeBridgeMocked':False,'checks':['nested names','15mm rotated plate','embedded actual mesh','preview rotation','V groove 64mm2','automatic weld time edits','3mm bent sheet']},indent=2),encoding='utf8')
-  print('INSTALLED_WINDOWS_UI_PASS: actual NSIS application, WebView2 and bundled CAD, no command mocks')
+  print(('PORTABLE_ONEEXE_UI_PASS: extracted Tauri app, WebView2 and bundled CAD' if portable else 'INSTALLED_WINDOWS_UI_PASS: actual NSIS application, WebView2 and bundled CAD') + ', no command mocks')
 except Exception:
  try:
   if 'page' in locals():
@@ -70,7 +72,12 @@ except Exception:
  except Exception:pass
  raise
 finally:
- app.terminate()
+ if portable:
+  # NSIS launches a child and waits for it; terminating only the wrapper
+  # would leave the native app and its temporary extracted CAD engine behind.
+  subprocess.run(['taskkill','/PID',str(app.pid),'/T','/F'],capture_output=True,check=False)
+ else:
+  app.terminate()
  try:app.wait(timeout=10)
  except subprocess.TimeoutExpired:app.kill()
  log.close()
