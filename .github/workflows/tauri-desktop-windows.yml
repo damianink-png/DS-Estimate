@@ -10,6 +10,7 @@ on:
       - 'desktop-tauri/cad_backend/**'
       - 'desktop-tauri/tests/**'
       - 'desktop-tauri/package.json'
+      - 'desktop-tauri/packaging/**'
   push:
     branches: [main, 'codex/manufacturing-planning-07', 'codex/unified-compare-style-ui-20261105', 'codex/part-routing-automatic-fabrication-20261105']
     paths:
@@ -19,6 +20,7 @@ on:
       - 'desktop-tauri/cad_backend/**'
       - 'desktop-tauri/package.json'
       - 'desktop-tauri/tests/**'
+      - 'desktop-tauri/packaging/**'
       - 'desktop-tauri/tests/cutting-plan.test.mjs'
       - 'desktop-tauri/tests/modular-compiled-gate.mjs'
 concurrency:
