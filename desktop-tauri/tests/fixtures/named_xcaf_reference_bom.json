@@ -60,6 +60,13 @@
       "nameStatus": null
     },
     {
+      "name": "ISO 4017 M10 mounting hole",
+      "geometry": "box",
+      "nameFamily": null,
+      "normaliaFamily": null,
+      "nameStatus": null
+    },
+    {
       "name": "COMPOUND",
       "geometry": "box",
       "nameFamily": null,
