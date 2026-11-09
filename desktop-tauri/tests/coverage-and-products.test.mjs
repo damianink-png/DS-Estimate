@@ -47,3 +47,13 @@ test('transport charge is independent of an unknown travel duration',()=>{
  const a=automaticOperations(partsList(inv),contacts,{}, {...NORMS,logistics:{...NORMS.logistics,enabled:true,distanceKm:100}});
  assert.equal(a.modules.logistics.ship,null);assert.equal(a.extraRows.logistics[0].autoAmount,400);
 });
+
+test('a named fastener hole or parent assembly never becomes a purchased product',()=>{
+ for(const name of ['Bolt hole M10','ISO 4017 M10 mounting hole',
+                     'DIN 933 M8 Bohrung','Otwór pod śrubę M8',
+                     'Bolt ISO 4017 M20 assembly']){
+  const item={...solid('feature'),name};
+  assert.equal(preferenceFor(item).route,'make',name);
+  assert.equal(preferenceFor(item,{feature:{route:'purchase'}}).route,'purchase',name);
+ }
+});
