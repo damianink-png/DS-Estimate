@@ -255,6 +255,43 @@ jobs:
             desktop-tauri/evidence/windows-native/*.png
             desktop-tauri/evidence/windows-native/*.json
             desktop-tauri/evidence/windows-native/*.log
+      - name: Build portable OneEXE (no installation, no admin)
+        shell: pwsh
+        run: |
+          $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (!(Test-Path $nsis)) {
+            choco install nsis --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'NSIS compiler installation failed' }
+          }
+          if (!(Test-Path $nsis)) { throw 'NSIS compiler missing' }
+          $tauri = (Resolve-Path 'src-tauri/target/release/ds-estimate.exe').Path
+          $cad = (Resolve-Path 'src-tauri/cad-backend/ds-cad-engine.exe').Path
+          New-Item -ItemType Directory -Path 'build/oneexe' -Force | Out-Null
+          $output = (Join-Path (Resolve-Path 'build/oneexe').Path 'DS-Estimate-0.7.1-OneEXE.exe')
+          & $nsis "/DTAURI_EXE=$tauri" "/DCAD_EXE=$cad" "/DOUTPUT_EXE=$output" 'packaging/DS-Estimate-OneEXE.nsi'
+          if ($LASTEXITCODE -ne 0) { throw 'Portable OneEXE compilation failed' }
+          if (!(Test-Path $output)) { throw 'Portable OneEXE is missing' }
+          $hash = Get-FileHash -Algorithm SHA256 $output
+          Write-Host "ONEEXE_BUILD SHA256=$($hash.Hash) SIZE=$((Get-Item $output).Length)"
+      - name: OneEXE end-to-end native GUI and original STEP smoke test
+        timeout-minutes: 12
+        shell: pwsh
+        run: |
+          $oneexe = (Resolve-Path 'build/oneexe/DS-Estimate-0.7.1-OneEXE.exe').Path
+          $fixture = (Resolve-Path 'build/native-fixture.step').Path
+          conda run -n ds-cad python tests/windows_installed_ui.py $oneexe $fixture --portable
+          if ($LASTEXITCODE -ne 0) { throw 'Portable OneEXE native UI/CAD smoke test failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: DS-Estimate-0.7.1-OneEXE-Evidence
+          path: desktop-tauri/evidence/windows-portable/
+      - name: Upload verified OneEXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: DS-Estimate-0.7.1-OneEXE-Portable
+          path: desktop-tauri/build/oneexe/DS-Estimate-0.7.1-OneEXE.exe
+          if-no-files-found: error
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
