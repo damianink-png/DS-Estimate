@@ -13,6 +13,9 @@
 !ifndef OUTPUT_EXE
   !error "Define OUTPUT_EXE for the portable launcher"
 !endif
+!ifndef SOURCE_ROOT
+  !error "Define SOURCE_ROOT as absolute desktop-tauri project path"
+!endif
 
 Unicode true
 Name "DS Estimate 0.7.1 Portable"
@@ -23,7 +26,7 @@ AutoCloseWindow true
 ShowInstDetails nevershow
 SetCompressor /SOLID lzma
 SetCompressorDictSize 64
-Icon "src-tauri\icons\icon.ico"
+Icon "${SOURCE_ROOT}\src-tauri\icons\icon.ico"
 VIProductVersion "0.7.1.0"
 VIAddVersionKey "ProductName" "DS Estimate"
 VIAddVersionKey "FileDescription" "DS Estimate portable OneEXE (self-extracting)"
@@ -36,9 +39,9 @@ Section "Launch DS Estimate"
   SetOutPath "$PLUGINSDIR\DS-Estimate\cad-backend"
   File /oname=ds-cad-engine.exe "${CAD_EXE}"
   SetOutPath "$PLUGINSDIR\DS-Estimate\licenses"
-  File "licenses\steel-section-database-MIT.txt"
-  File "COPYING"
-  File "THIRD_PARTY_NOTICES.md"
+  File "${SOURCE_ROOT}\licenses\steel-section-database-MIT.txt"
+  File "${SOURCE_ROOT}\COPYING"
+  File "${SOURCE_ROOT}\THIRD_PARTY_NOTICES.md"
   SetOutPath "$PLUGINSDIR\DS-Estimate"
   ; ExecWait keeps the temporary resource folder alive while the Tauri app
   ; runs. NSIS cleans it after normal shutdown (no application installation).
