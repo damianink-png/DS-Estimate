@@ -270,7 +270,8 @@ jobs:
           $cad = (Resolve-Path 'src-tauri/cad-backend/ds-cad-engine.exe').Path
           New-Item -ItemType Directory -Path 'build/oneexe' -Force | Out-Null
           $output = (Join-Path (Resolve-Path 'build/oneexe').Path 'DS-Estimate-0.7.1-OneEXE.exe')
-          & $nsis "/DTAURI_EXE=$tauri" "/DCAD_EXE=$cad" "/DOUTPUT_EXE=$output" 'packaging/DS-Estimate-OneEXE.nsi'
+          $root = (Get-Location).Path
+          & $nsis "/DTAURI_EXE=$tauri" "/DCAD_EXE=$cad" "/DOUTPUT_EXE=$output" "/DSOURCE_ROOT=$root" 'packaging/DS-Estimate-OneEXE.nsi'
           if ($LASTEXITCODE -ne 0) { throw 'Portable OneEXE compilation failed' }
           if (!(Test-Path $output)) { throw 'Portable OneEXE is missing' }
           $hash = Get-FileHash -Algorithm SHA256 $output
