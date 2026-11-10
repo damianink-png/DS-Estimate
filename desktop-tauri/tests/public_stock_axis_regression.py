@@ -320,6 +320,38 @@ def check(root):
         "otherUnmeasuredFaceGraphs":other_aag,
         "blankCertified":False,"manufacturingMethodInferred":False
     }))
+    # Every unresolved original STEP occurrence now carries additional face
+    # pattern observations. These may explain a shaft, hole or conical end,
+    # but MUST NOT change stock status or manufacture/cut times.
+    feature_counts={}
+    feature_geometry_keys=set()
+    feature_instances=0
+    for solid,row in zip(solids,audited["rows"]):
+        if row["status"]!="UNKNOWN":
+            continue
+        graph=solid.get("faceGraphEvidence") or {}
+        pattern=graph.get("featurePatterns") or {}
+        assert pattern.get("status")=="measured", (
+            f"Original STEP {row['id']}: feature topology not measured: {pattern}")
+        assert pattern.get("source")=="original B-Rep face orientation, vertex extents and shared edges"
+        assert not pattern.get("truncated")
+        for feat in pattern.get("candidates",[]):
+            assert feat.get("confidence")=="topology-candidate"
+            assert "price" not in feat and "cutTime" not in feat
+            assert "purchase" not in feat and "machiningMethod" not in feat
+        if pattern["candidates"]:
+            feature_instances+=1
+            feature_geometry_keys.add(row["verifiedShapeKey"])
+        for kind,count in pattern["counts"].items():
+            feature_counts[kind]=feature_counts.get(kind,0)+count
+    print("PUBLIC_EARTHPRESS_FACE_FEATURE_CENSUS_PASS",json.dumps({
+        "unresolvedOccurrences":len(unknown_rows),
+        "unresolvedDistinctGeometries":len(set(unknown_keys)),
+        "occurrencesWithCandidateFeatures":feature_instances,
+        "distinctGeometriesWithFeatures":len(feature_geometry_keys),
+        "candidateCountsByKind":dict(sorted(feature_counts.items())),
+        "autoBlankCertified":0,"autoManufacturingTimeCertified":0
+    }))
     # Inspect actual planar face normals of unresolved finished B-Rep solids.
     # Bevel faces are geometric evidence, NOT proof of plate stock or milling.
     planar_faces = 0
