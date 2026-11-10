@@ -459,11 +459,18 @@ def recognize_stock(solid, bounds, plate_hint=None):
             cylinders=[]
             cones=[]
             planes=[]
+            plane_face_count=0
             other_face_count=0
             for raw_face in api.shapes(solid, api.TopAbs_FACE):
                 surface=api.BRepAdaptor_Surface(api.face_cast(raw_face))
                 kind=surface.GetType()
                 if kind == api.GeomAbs_Plane:
+                    plane_face_count+=1
+                    # Only the first 64 plane measurements are ever exported.
+                    # On large vendor assemblies, GProp surface integration for
+                    # every additional face was wasted CPU and memory.
+                    if len(planes)>=64:
+                        continue
                     plane=surface.Plane()
                     direction=plane.Axis().Direction()
                     origin=plane.Location()
@@ -499,7 +506,7 @@ def recognize_stock(solid, bounds, plate_hint=None):
                     'source':'original STEP B-Rep face adaptors',
                     'cylinders':cylinders[:64], 'cones':cones[:64], 'planes':planes[:64],
                     'cylinderFaceCount':len(cylinders), 'coneFaceCount':len(cones),
-                    'planeFaceCount':len(planes), 'otherFaceCount':other_face_count,
+                    'planeFaceCount':plane_face_count, 'otherFaceCount':other_face_count,
                     'coaxialSurfaceGroups':coaxial_face_groups(cylinders,cones),
                     'limitations':'Position-verified surface axes/radii describe finished geometry, not purchased stock or operations'}
         except Exception:
