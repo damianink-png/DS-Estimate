@@ -326,4 +326,56 @@ class Geometry(unittest.TestCase):
   self.assertEqual(sorted(g['cylinderFaceCount'] for g in groups),[1,2])
   reverse={'axis':[-1,0,0],'axisPointMm':[100,0,0],'radiusMm':2}
   self.assertEqual(len(coaxial_face_groups([cylinder(0),reverse],[])),1)
+ def test_original_brep_face_graph_uses_shared_edges(self):
+  from feature_graph import analyze_face_graph
+  measured=analyze_face_graph(box(10,20,30))
+  self.assertEqual(measured['status'],'measured')
+  self.assertEqual(measured['faceCount'],6)
+  self.assertEqual(measured['sharedFacePairs'],12)
+  self.assertEqual(measured['faceComponents'],1)
+  self.assertEqual(measured['surfaceTypes']['plane'],6)
+  self.assertEqual(measured['axialClusters'],[])
+  self.assertNotIn('stockHint',measured)
+  self.assertNotIn('cuttingTime',measured)
+  # A skipped complex topology cannot become a fabricated manufacturing plan.
+  self.assertEqual(analyze_face_graph(box(10,20,30),max_faces=2)['status'],
+                   'skipped-budget')
+ def test_original_brep_face_graph_rotated_tube_and_offset_holes(self):
+  from feature_graph import analyze_face_graph
+  ring=BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(10,40).Shape(),
+                       BRepPrimAPI_MakeCylinder(6,40).Shape()).Shape()
+  for shape in [ring,rotated(ring)]:
+   measured=analyze_face_graph(shape)
+   self.assertEqual(measured['status'],'measured')
+   self.assertEqual(measured['surfaceTypes']['cylinder'],2)
+   self.assertEqual(len(measured['axialClusters']),1)
+   chain=measured['axialClusters'][0]
+   self.assertEqual(chain['cylinderRadiiMm'],[6.,10.])
+   self.assertGreater(chain['bridgedSurfacePairs'],0)
+   self.assertEqual(chain['status'],'connected-face-evidence')
+  # Two OFFSET holes have parallel axes, but NOT a shared axis or one
+  # rotational feature. The face graph must keep them separate.
+  base=box(60,30,20)
+  a=BRepPrimAPI_MakeCylinder(3,20).Shape()
+  t1=gp_Trsf();t1.SetTranslation(gp_Vec(10,10,0))
+  t2=gp_Trsf();t2.SetTranslation(gp_Vec(45,10,0))
+  holes=BRepAlgoAPI_Cut(
+      BRepAlgoAPI_Cut(base,BRepBuilderAPI_Transform(a,t1,True).Shape()).Shape(),
+      BRepBuilderAPI_Transform(a,t2,True).Shape()).Shape()
+  measured=analyze_face_graph(holes)
+  self.assertEqual(measured['surfaceTypes']['cylinder'],2)
+  self.assertEqual(measured['axialClusters'],[])
+ def test_original_brep_stepped_rotation_is_geometry_only(self):
+  from feature_graph import analyze_face_graph
+  bottom=BRepPrimAPI_MakeCylinder(10,12).Shape()
+  tr=gp_Trsf();tr.SetTranslation(gp_Vec(0,0,12))
+  top=BRepBuilderAPI_Transform(BRepPrimAPI_MakeCylinder(6,23).Shape(),tr,True).Shape()
+  finished=BRepAlgoAPI_Fuse(bottom,top).Shape()
+  measured=analyze_face_graph(finished)
+  self.assertEqual(measured['faceComponents'],1)
+  self.assertTrue(any(
+      row['cylinderRadiiMm']==[6.,10.] and row['bridgedSurfacePairs']>0
+      for row in measured['axialClusters']),measured)
+  for forbidden in ('blank','purchase','machiningTime','cuttingTime','costPln'):
+   self.assertNotIn(forbidden,measured)
 if __name__=='__main__':unittest.main(argv=[sys.argv[0]],verbosity=2)
