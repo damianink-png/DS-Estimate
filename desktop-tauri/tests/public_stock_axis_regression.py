@@ -352,6 +352,66 @@ def check(root):
         "candidateCountsByKind":dict(sorted(feature_counts.items())),
         "autoBlankCertified":0,"autoManufacturingTimeCertified":0
     }))
+    # Independently inspect each finished B-Rep shape family. These hints
+    # must not convert unknown stock into priced fabrication or purchase.
+    expected_families={
+        10:('core-section-body-with-secondary-features','round-tube'),
+        11:('core-section-body-with-secondary-features','round-tube'),
+        15:('extrusion-body-with-secondary-features','channel'),
+        25:('constant-thickness-plate-body',None),
+        26:('constant-thickness-plate-body',None),
+        62:('near-round-cylindrical-body',None),
+        71:('near-round-cylindrical-body',None),
+    }
+    for number,(family,core_kind) in expected_families.items():
+        row=solids[number-1]
+        hint=row.get('finishedGeometryHint') or {}
+        assert hint.get('status')=='finished-geometry-candidate',(
+            f"Original Earthpress {number}: no verified finished family: {hint}")
+        assert hint.get('family')==family,(
+            f"Original Earthpress {number}: wrong family: {hint}")
+        if core_kind:
+            assert hint.get('measurements',{}).get('verifiedCoreKind')==core_kind
+        if number in (25,26):
+            assert math.isclose(hint['measurements']['thicknessMm'],20,abs_tol=.02)
+            assert hint['measurements']['volumeRelativeDeviation']<.01
+        if number in (62,71):
+            assert hint['measurements']['volumeRelativeDeviation']<.01
+        assert hint['blankCertified'] is False
+        assert hint['processCertified'] is False
+        assert hint['cutTimeCertified'] is False
+        assert row['stockHint']['kind']=='unknown'
+        assert 'cutTimeH' not in hint and 'purchasePrice' not in hint
+    # Distinct mixed-polyhedral/complex surfaces are not auto-declared plates.
+    for number in (22,31,245,250):
+        hint=solids[number-1].get('finishedGeometryHint') or {}
+        assert hint.get('family')!='constant-thickness-plate-body',(
+            f"Earthpress {number}: unsupported complex solid misread as plate")
+    unknown_family_rows=[
+        (solid.get('finishedGeometryHint') or {})
+        for solid,row in zip(solids,audited['rows'])
+        if row['status']=='UNKNOWN'
+    ]
+    by_family={}
+    geometry_keys_with_families=set()
+    for solid,row in zip(solids,audited['rows']):
+        if row['status']!='UNKNOWN':continue
+        hint=solid.get('finishedGeometryHint') or {}
+        if hint.get('status')=='finished-geometry-candidate':
+            kind=hint['family']
+            by_family[kind]=by_family.get(kind,0)+1
+            geometry_keys_with_families.add(row['verifiedShapeKey'])
+            assert hint['blankCertified'] is False
+            assert hint['processCertified'] is False
+            assert hint['cutTimeCertified'] is False
+    print('PUBLIC_EARTHPRESS_FINISHED_FAMILY_CENSUS_PASS',json.dumps({
+        'unknownStockOccurrences':len(unknown_family_rows),
+        'finishedFamilyOccurrences':sum(by_family.values()),
+        'distinctGeometriesWithFamily':len(geometry_keys_with_families),
+        'familyCounts':dict(sorted(by_family.items())),
+        'provenOriginalShapes':sorted(expected_families),
+        'certifiedBlankCount':0,'certifiedManufacturingTimeCount':0
+    }))
     # Inspect actual planar face normals of unresolved finished B-Rep solids.
     # Bevel faces are geometric evidence, NOT proof of plate stock or milling.
     planar_faces = 0
