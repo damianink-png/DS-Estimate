@@ -328,7 +328,7 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None, axis_override=None):
             'limitations':'Cannot determine material grade, nominal standard, plate vs flat-bar procurement or end-cut stock length'}
 
 
-def _short_profile(shape,bounds,axis):
+def _short_profile(shape,bounds,axis,face_count_cache=None):
     if shape is None or not hasattr(shape,'ShapeType'):return None
     dims=[bounds[i+3]-bounds[i] for i in range(3)];cross=sorted((dims[i] for i in range(3) if i!=axis),reverse=True)
     if dims[axis]/cross[0]>=3.5:return None
@@ -338,7 +338,17 @@ def _short_profile(shape,bounds,axis):
         # A cheap complexity limit avoids sectioning arbitrary vendor hardware.
         try:from . import cad_measure as api
         except ImportError:import cad_measure as api
-        if sum(1 for _ in api.shapes(shape,api.TopAbs_FACE))>32:return None
+        # A short-part probe may try all three world axes. Enumerating every
+        # OCCT face for each axis is expensive on large STEP assemblies.
+        # Cache only within this solid's recognition call (never across parts).
+        if face_count_cache is None:
+            face_count=sum(1 for _ in api.shapes(shape,api.TopAbs_FACE))
+        elif face_count_cache:
+            face_count=face_count_cache[0]
+        else:
+            face_count=sum(1 for _ in api.shapes(shape,api.TopAbs_FACE))
+            face_count_cache.append(face_count)
+        if face_count>32:return None
         edges=_section_edges(shape,bounds,axis,.5)
         mid=_classify_section(edges,max(.002,min(cross[1]*.0001,.02))) if edges else None
         if not mid or mid.get('kind') not in ('square-hollow','rectangular-hollow','round-tube'):return None
@@ -352,8 +362,9 @@ def recognize_stock(solid, bounds, plate_hint=None):
     """Try the existing world frame, then a frame aligned with the longest straight edge."""
     result=_recognize_axis_stock(solid,bounds,plate_hint)
     if result.get('kind')=='unknown' and solid is not None:
+        face_count_cache=[]
         for axis in range(3):
-            short=_short_profile(solid,bounds,axis)
+            short=_short_profile(solid,bounds,axis,face_count_cache)
             if short:result=short;break
     if result.get('kind') in ('unknown','plate-candidate') and solid is not None:
         try:
