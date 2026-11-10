@@ -493,6 +493,19 @@ def inventory(path, density=7850.0):
                         'status':'unavailable',
                         'reason':type(graph_error).__name__,
                         'limitations':'No manufacturing or purchasing inference'}
+            # Stage 2: recognize a finished BODY family from existing
+            # physically measured surfaces, without another expensive
+            # B-Rep traversal or manufacturing/purchasing inference.
+            if stock_hint.get('kind')=='unknown':
+                try:
+                    try:from .finished_part_recognition import recognize_finished_geometry
+                    except ImportError:from finished_part_recognition import recognize_finished_geometry
+                    features['finishedGeometryHint']=recognize_finished_geometry(
+                        stock_hint,volume,features.get('faceGraphEvidence'))
+                except Exception as family_error:
+                    features['finishedGeometryHint']={
+                        'status':'unknown','reason':type(family_error).__name__,
+                        'limitations':'Original stock, cost and production route unchanged'}
             manufacturing_cache[existing]=copy.deepcopy((cut_hint,stock_hint,features))
         # Enrich EACH XCAF occurrence with its own semantic evidence AFTER
         # copying/storing geometry results. Even when geometrically identical,
