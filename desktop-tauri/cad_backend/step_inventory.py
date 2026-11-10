@@ -480,6 +480,19 @@ def inventory(path, density=7850.0):
                 if normalia:features['normaliaHint']=normalia
             except Exception:
                 pass # Normalia is optional evidence, not an import gate.
+            # Stage 1: independent edge-adjacency evidence for as-yet unknown
+            # finished shapes. Analyze each VERIFIED geometry only once, not
+            # every occurrence. Never alter stock, cut time or supplier route.
+            if stock_hint.get('kind')=='unknown':
+                try:
+                    try:from .feature_graph import analyze_face_graph
+                    except ImportError:from feature_graph import analyze_face_graph
+                    features['faceGraphEvidence']=analyze_face_graph(solid)
+                except Exception as graph_error:
+                    features['faceGraphEvidence']={
+                        'status':'unavailable',
+                        'reason':type(graph_error).__name__,
+                        'limitations':'No manufacturing or purchasing inference'}
             manufacturing_cache[existing]=copy.deepcopy((cut_hint,stock_hint,features))
         # Enrich EACH XCAF occurrence with its own semantic evidence AFTER
         # copying/storing geometry results. Even when geometrically identical,
