@@ -448,6 +448,7 @@ def recognize_stock(solid, bounds, plate_hint=None):
             cylinders=[]
             cones=[]
             planes=[]
+            other_face_count=0
             for raw_face in api.shapes(solid, api.TopAbs_FACE):
                 surface=api.BRepAdaptor_Surface(api.face_cast(raw_face))
                 kind=surface.GetType()
@@ -480,12 +481,14 @@ def recognize_stock(solid, bounds, plate_hint=None):
                                   'semiAngleRad':round(float(cone.SemiAngle()),8),
                                   'axis':[round(float(v),8) for v in direction.Coord()],
                                   'axisPointMm':[round(float(v),6) for v in cone.Axis().Location().Coord()]})
+                else:
+                    other_face_count+=1
             if cylinders or cones or planes:
                 result['finishedBrepSurfaceEvidence']={
                     'source':'original STEP B-Rep face adaptors',
                     'cylinders':cylinders[:64], 'cones':cones[:64], 'planes':planes[:64],
                     'cylinderFaceCount':len(cylinders), 'coneFaceCount':len(cones),
-                    'planeFaceCount':len(planes),
+                    'planeFaceCount':len(planes), 'otherFaceCount':other_face_count,
                     'coaxialSurfaceGroups':coaxial_face_groups(cylinders,cones),
                     'limitations':'Position-verified surface axes/radii describe finished geometry, not purchased stock or operations'}
         except Exception:
