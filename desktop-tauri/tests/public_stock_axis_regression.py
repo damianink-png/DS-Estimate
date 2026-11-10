@@ -304,8 +304,9 @@ def check(root):
         "Earthpress: original 75 unresolved occurrences no longer form 37 distinct shapes")
     # Evidence coverage is measured on the production-imported ORIGINAL STEP.
     # The number of priced parts remains unchanged until separate process proof.
-    aag_rows=[solids[int(row["solid"])-1].get("faceGraphEvidence") or {}
-              for row in unknown_rows]
+    aag_rows=[solid.get("faceGraphEvidence") or {}
+              for solid,row in zip(solids,audited["rows"])
+              if row["status"]=="UNKNOWN"]
     measured_aag=sum(g.get("status")=="measured" for g in aag_rows)
     skipped_aag=sum(g.get("status")=="skipped-budget" for g in aag_rows)
     other_aag=len(aag_rows)-measured_aag-skipped_aag
