@@ -16,6 +16,42 @@ for key in ['CONDA_PREFIX','CONDA_DEFAULT_ENV','CONDA_PROMPT_MODIFIER','PYTHONPA
 debug_port=9224 if portable else 9223
 # Distinct ports prevent accidentally attaching the portable test to a prior installed app.
 env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']=f'--remote-debugging-port={debug_port} --force-renderer-accessibility';env['WEBVIEW2_USER_DATA_FOLDER']=str(out.resolve()/'webview-profile')
+def portable_native_app_pid(launcher_pid,timeout=150):
+ """Find the Tauri child of the self-extracting NSIS launch process.
+ 
+ The portable wrapper itself never creates a GUI window. Resolve the real
+ child by process ancestry (not a global window title or stale app instance).
+ """
+ import psutil
+ deadline=time.monotonic()+timeout
+ seen=[]
+ while time.monotonic()<deadline:
+  try:
+   launcher=psutil.Process(launcher_pid)
+   children=launcher.children(recursive=True)
+   seen=[]
+   for child in children:
+    try:
+     name=child.name().lower()
+     seen.append({'pid':child.pid,'ppid':child.ppid(),'name':name})
+     if name=='ds-estimate.exe':
+      (out/'portable-process-tree.json').write_text(
+       json.dumps({'wrapperPid':launcher_pid,'nativePid':child.pid,
+                   'descendants':seen},indent=2),encoding='utf-8')
+      print(f'PORTABLE_NATIVE_PROCESS: wrapper={launcher_pid} native={child.pid}',flush=True)
+      return child.pid
+    except (psutil.NoSuchProcess,psutil.AccessDenied):
+     continue
+  except (psutil.NoSuchProcess,psutil.AccessDenied):
+   break
+  time.sleep(.5)
+ (out/'portable-process-tree.json').write_text(
+  json.dumps({'wrapperPid':launcher_pid,'nativePid':None,
+              'descendants':seen,'error':'No Tauri child found'},indent=2),
+  encoding='utf-8')
+ raise RuntimeError('Portable launcher did not create a ds-estimate.exe child; see portable-process-tree.json')
+
+
 log=open(out/'app.log','w');app=subprocess.Popen([str(exe)],env=env,stdout=log,stderr=log)
 try:
  ready=False
@@ -26,7 +62,10 @@ try:
   except Exception:time.sleep(1)
  if not ready:
   from windows_accessibility_ui import run_accessibility_test
-  run_accessibility_test(app.pid,exe,step,out);sys.exit(0)
+  # NSIS ExecWait holds a silent wrapper open while running the Tauri GUI
+  # as a CHILD process. UI Automation must attach to that child's PID.
+  native_pid=portable_native_app_pid(app.pid) if portable else app.pid
+  run_accessibility_test(native_pid,exe,step,out);sys.exit(0)
  with sync_playwright() as p:
   browser=p.chromium.connect_over_cdp(f'http://127.0.0.1:{debug_port}');context=browser.contexts[0]
   for _ in range(60):
