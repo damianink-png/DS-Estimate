@@ -378,4 +378,81 @@ class Geometry(unittest.TestCase):
       for row in measured['axialClusters']),measured)
   for forbidden in ('blank','purchase','machiningTime','cuttingTime','costPln'):
    self.assertNotIn(forbidden,measured)
+ def test_finished_geometry_feature_patterns_tube_vs_shaft_and_groove(self):
+  from feature_graph import analyze_face_graph
+  def names(shape):
+   result=analyze_face_graph(shape)
+   self.assertEqual(result['status'],'measured',result)
+   patterns=result['featurePatterns']
+   self.assertEqual(patterns['status'],'measured',patterns)
+   for row in patterns['candidates']:
+    self.assertNotIn('manufacturingTime',row)
+    self.assertNotIn('purchase',row)
+    self.assertNotIn('costPln',row)
+   return patterns['counts']
+  # An annular tube extends over its full length and must NOT look like
+  # two consecutive cylindrical shaft diameters at both annular cap planes.
+  tube=BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(10,40).Shape(),
+                       BRepPrimAPI_MakeCylinder(6,40).Shape()).Shape()
+  for shape in (tube,rotated(tube)):
+   c=names(shape)
+   self.assertEqual(c.get('through-cylindrical-opening'),1,c)
+   self.assertEqual(c.get('coaxial-diameter-shoulder',0),0,c)
+   self.assertEqual(c.get('reduced-diameter-axial-section',0),0,c)
+  # Shoulder planes have genuinely different cylinder extents.
+  def translate(shape,z):
+   t=gp_Trsf();t.SetTranslation(gp_Vec(0,0,z))
+   return BRepBuilderAPI_Transform(shape,t,True).Shape()
+  shaft=BRepAlgoAPI_Fuse(
+      BRepPrimAPI_MakeCylinder(10,12).Shape(),
+      translate(BRepPrimAPI_MakeCylinder(6,23).Shape(),12)).Shape()
+  self.assertEqual(names(shaft).get('coaxial-diameter-shoulder'),1)
+  groove=BRepAlgoAPI_Fuse(
+      BRepAlgoAPI_Fuse(BRepPrimAPI_MakeCylinder(10,10).Shape(),
+                       translate(BRepPrimAPI_MakeCylinder(6,5).Shape(),10)).Shape(),
+      translate(BRepPrimAPI_MakeCylinder(10,25).Shape(),15)).Shape()
+  c=names(groove)
+  self.assertEqual(c.get('coaxial-diameter-shoulder'),2,c)
+  self.assertEqual(c.get('reduced-diameter-axial-section'),1,c)
+ def test_finished_geometry_feature_patterns_separate_holes_and_cones(self):
+  from feature_graph import analyze_face_graph
+  # Parallel, OFFSET through-holes are distinct; not a single rotational axis
+  # and not two intersecting cylinder walls.
+  base=box(60,30,20)
+  core=BRepPrimAPI_MakeCylinder(3,20).Shape()
+  cuts=[]
+  for x in (10,45):
+   t=gp_Trsf();t.SetTranslation(gp_Vec(x,10,0))
+   cuts.append(BRepBuilderAPI_Transform(core,t,True).Shape())
+  drilled=BRepAlgoAPI_Cut(BRepAlgoAPI_Cut(base,cuts[0]).Shape(),cuts[1]).Shape()
+  counts=analyze_face_graph(drilled)['featurePatterns']['counts']
+  self.assertEqual(counts.get('through-cylindrical-opening'),2,counts)
+  self.assertEqual(counts.get('coaxial-diameter-shoulder',0),0,counts)
+  self.assertEqual(counts.get('intersecting-cylinder-axes',0),0,counts)
+  # A cone tangent to the axis of a neighbouring cylinder is a topology
+  # observation, never automatically a chamfer milling cost.
+  try:from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCone
+  except ImportError:from OCP.BRepPrimAPI import BRepPrimAPI_MakeCone
+  t=gp_Trsf();t.SetTranslation(gp_Vec(0,0,20))
+  tapered=BRepAlgoAPI_Fuse(
+      BRepPrimAPI_MakeCylinder(10,20).Shape(),
+      BRepBuilderAPI_Transform(BRepPrimAPI_MakeCone(10,5,6).Shape(),t,True).Shape()).Shape()
+  result=analyze_face_graph(rotated(tapered))
+  self.assertGreaterEqual(result['featurePatterns']['counts'].get('coaxial-conical-transition',0),1,result)
+  self.assertNotIn('machiningMethod',str(result))
+ def test_finished_geometry_patterns_survive_real_step_file_roundtrip(self):
+  from feature_graph import analyze_face_graph
+  t=gp_Trsf();t.SetTranslation(gp_Vec(0,0,10))
+  shaft=BRepAlgoAPI_Fuse(BRepPrimAPI_MakeCylinder(9,10).Shape(),
+                         BRepBuilderAPI_Transform(BRepPrimAPI_MakeCylinder(5,20).Shape(),t,True).Shape()).Shape()
+  with tempfile.TemporaryDirectory() as td:
+   step=Path(td)/'real-stepped-shaft.step'
+   writer=STEPControl_Writer()
+   self.assertEqual(writer.Transfer(shaft,STEPControl_AsIs),1)
+   self.assertEqual(writer.Write(str(step)),1)
+   originals=cad.load_step(step)
+   self.assertEqual(len(originals),1)
+   result=analyze_face_graph(originals[0])
+   self.assertEqual(result['featurePatterns']['status'],'measured',result)
+   self.assertEqual(result['featurePatterns']['counts'].get('coaxial-diameter-shoulder'),1,result)
 if __name__=='__main__':unittest.main(argv=[sys.argv[0]],verbosity=2)
