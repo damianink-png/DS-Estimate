@@ -252,6 +252,20 @@ def check(root):
                    for g in groups), (
             f"Earthpress {number}: 3 cylinders + 2 cones not physically coaxial")
         assert (solids[number-1].get("stockHint") or {}).get("kind")=="unknown"
+        # Original physically imported STEP: analyze shared EDGE connectivity,
+        # not just independently measured cylinders/cones or their bbox.
+        graph=solids[number-1].get("faceGraphEvidence") or {}
+        assert graph.get("status")=="measured", (
+            f"Earthpress {number}: missing original B-Rep adjacency graph: {graph}")
+        assert graph.get("source")=="original B-Rep OCCT edge-face ancestor map"
+        assert graph.get("surfaceTypes",{}).get("cylinder",0)>=3
+        assert graph.get("surfaceTypes",{}).get("cone",0)>=2
+        assert graph.get("sharedFacePairs",0)>0
+        assert any(a.get("cylinderFaceCount",0)>=3 and a.get("coneFaceCount",0)>=2
+                   for a in graph.get("axialClusters",[])), (
+            f"Earthpress {number}: lost coaxial face topology evidence")
+        assert "cuttingTime" not in graph and "purchase" not in graph
+    print("PUBLIC_FASTENER_AAG_BREP_PASS: 88-93 preserve original shared-edge and coaxial topology, without stock/process inference")
     print("PUBLIC_FASTENER_COAXIAL_BREP_PASS: 88-93 share positioned cylinder/cone axes without quote")
     print("PUBLIC_FASTENER_ORIGINAL_BREP_SURFACE_CENSUS", json.dumps({
         "sampleOccurrences": len(face_samples),
@@ -288,6 +302,23 @@ def check(root):
     assert all(unknown_keys), "Earthpress: unresolved geometry identity missing"
     assert len(set(unknown_keys)) == 37, (
         "Earthpress: original 75 unresolved occurrences no longer form 37 distinct shapes")
+    # Evidence coverage is measured on the production-imported ORIGINAL STEP.
+    # The number of priced parts remains unchanged until separate process proof.
+    aag_rows=[solids[int(row["solid"])-1].get("faceGraphEvidence") or {}
+              for row in unknown_rows]
+    measured_aag=sum(g.get("status")=="measured" for g in aag_rows)
+    skipped_aag=sum(g.get("status")=="skipped-budget" for g in aag_rows)
+    other_aag=len(aag_rows)-measured_aag-skipped_aag
+    assert measured_aag >= 6, "Original Earthpress produced no measured B-Rep face adjacency"
+    assert all(g.get("status") in ("measured","skipped-budget","unavailable")
+               for g in aag_rows)
+    print("PUBLIC_EARTHPRESS_AAG_CENSUS",json.dumps({
+        "unknownOccurrences":len(aag_rows),
+        "measuredFaceGraphs":measured_aag,
+        "budgetSkippedFaceGraphs":skipped_aag,
+        "otherUnmeasuredFaceGraphs":other_aag,
+        "blankCertified":False,"manufacturingMethodInferred":False
+    }))
     # Inspect actual planar face normals of unresolved finished B-Rep solids.
     # Bevel faces are geometric evidence, NOT proof of plate stock or milling.
     planar_faces = 0
