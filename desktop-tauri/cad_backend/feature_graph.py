@@ -56,24 +56,34 @@ def analyze_face_graph(solid,max_faces=160,max_edges=1200):
     if nf==0 or nf>max_faces or ne>max_edges:
         return {'status':'skipped-budget','faceCount':nf,'edgeCount':ne,
                 'reason':'topology budget exceeded; no classification made'}
+    try:
+        from OCC.Core.TopAbs import TopAbs_REVERSED
+    except ImportError:
+        from OCP.TopAbs import TopAbs_REVERSED
     kind_counts={'plane':0,'cylinder':0,'cone':0,'other':0}
     info={}
     analytic=[]
     for i in range(1,nf+1):
-        surface=cad.BRepAdaptor_Surface(cad.face_cast(faces.FindKey(i)))
+        face=cad.face_cast(faces.FindKey(i))
+        surface=cad.BRepAdaptor_Surface(face)
         typ=surface.GetType()
-        row={'type':'other'}
+        row={'type':'other','reversed':face.Orientation()==TopAbs_REVERSED}
         if typ==cad.GeomAbs_Plane:
             normal=surface.Plane().Axis().Direction()
-            row={'type':'plane','normal':tuple(map(float,normal.Coord()))}
+            row={'type':'plane','normal':tuple(map(float,normal.Coord())),
+                 'pointMm':tuple(map(float,surface.Plane().Location().Coord())),
+                 'wireCount':sum(1 for _ in cad.shapes(face,cad.TopAbs_WIRE))}
         elif typ in (cad.GeomAbs_Cylinder,cad.GeomAbs_Cone):
             obj=surface.Cylinder() if typ==cad.GeomAbs_Cylinder else surface.Cone()
             axis=obj.Axis()
             row={'type':'cylinder' if typ==cad.GeomAbs_Cylinder else 'cone',
                  'axis':tuple(map(float,axis.Direction().Coord())),
                  'axisPointMm':tuple(map(float,axis.Location().Coord()))}
+            row['reversed']=face.Orientation()==TopAbs_REVERSED
             if row['type']=='cylinder':row['radiusMm']=float(obj.Radius())
-            else:row['referenceRadiusMm']=float(obj.RefRadius())
+            else:
+                row['referenceRadiusMm']=float(obj.RefRadius())
+                row['semiAngleRad']=abs(float(obj.SemiAngle()))
             radius=row.get('radiusMm',row.get('referenceRadiusMm'))
             if math.isfinite(radius) and radius>0:analytic.append((i,row))
         kind_counts[row['type']]+=1
@@ -126,11 +136,21 @@ def analyze_face_graph(solid,max_faces=160,max_edges=1200):
             'bridgedSurfacePairs':len(bridged),
             'status':'connected-face-evidence' if direct or bridged
                      else 'coaxial-only-no-topology-proof'})
+    # Guarded local face patterns are independent *finished-geometry* clues.
+    # A failed descriptor must not change stock, material, times or the graph.
+    try:
+        try:from .feature_patterns import measure_graph_features
+        except ImportError:from feature_patterns import measure_graph_features
+        feature_patterns=measure_graph_features(faces,info,neighbors)
+    except Exception as exc:
+        feature_patterns={'status':'unavailable','reason':type(exc).__name__,
+                          'candidates':[],'counts':{},
+                          'limitations':'No stock or manufacturing inference'}
     return {
         'status':'measured','source':'original B-Rep OCCT edge-face ancestor map',
         'faceCount':nf,'edgeCount':ne,'sharedFacePairs':len(links),
         'singleFaceEdges':singles,'nonManifoldEdges':nonmanifold,
         'faceComponents':components,'surfaceTypes':kind_counts,
-        'axialClusters':chains,
+        'axialClusters':chains,'featurePatterns':feature_patterns,
         'limitations':'Finished geometry only; purchased blank, machining, cutting, time and cost remain unverified'
     }
