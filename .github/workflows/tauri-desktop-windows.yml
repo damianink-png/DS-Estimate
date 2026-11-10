@@ -71,6 +71,7 @@ jobs:
           python tests/test_stock_patterns.py
           python tests/test_normalia_catalog.py
           python tests/test_part_name_evidence.py
+          python tests/test_finished_part_recognition.py
       - run: npm run build
         if: steps.ui-source.outputs.reuse != 'true'
       - run: python -m pip install playwright==1.64.1
