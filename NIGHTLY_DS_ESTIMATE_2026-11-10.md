@@ -56,3 +56,14 @@
 **Poprawka:** `832c0cf3f1cd5f2f1ff9d04dc085d5bd840505ca` dodaje tani test przecięcia nieprzyległych krawędzi dla sekcji mających maksymalnie 12 krawędzi; niepewne niemal styczne/kolinearne przypadki pozostają nieznane. `3a732f382d31c12f9b418ae34f1350d1126693bc` dodaje regresję gwiazdy w obu orientacjach oraz kontrolę, że prosty wypukły wielokąt nadal jest rozpoznawany. Bez zmian w masie, grupowaniu, stawkach, interfejsie, progach tolerancji i certyfikacji czasu.
 
 **Walidacja po zmianach:** nowe workflow benchmark/Windows uruchomione na commitach powyżej; w chwili wpisu ich końcowe wyniki nie są jeszcze potwierdzone. Nie deklarować PASS dla poprawki do czasu ukończenia obu workflow na finalnym SHA. Kolejna iteracja ma sprawdzić logi, szczególnie test `test_self_intersecting_star_is_not_polygon_stock`, liczniki Earthpress i pełne uruchomienie OneEXE.
+
+
+## 2026-11-11, 04:00 Europe/Warsaw — iteracja 6
+
+**Punkt odniesienia zweryfikowany:** SHA `68a64b394cb4d52594284e0f565bdb1e05b41ab1`; Windows/OneEXE run [42942723413](https://github.com/damianink-png/DS-Estimate/actions/runs/42942723413) **PASS**, benchmark rzeczywistych STEP [42942723486](https://github.com/damianink-png/DS-Estimate/actions/runs/42942723486) **PASS**. Earthpress: 75 nierozpoznanych wystąpień / 37 unikalnych geometrii, 62/25 z cechami B-Rep, 13/9 z rodziną gotowego detalu, 48 geometrycznych kandydatów normaliów, 0 nowych certyfikowanych półfabrykatów i 0 nowych czasów. Audyt cięcia: 121/251 znanych, 130/251 do weryfikacji. Masy, grupy i czasy częściowe stabilne, pełna wycena nadal niedostępna.
+
+**Błąd bezpieczeństwa klasyfikacji:** dotychczasowy test samoprzecięć w `convex_polygon_section_kind` wykrywał właściwe przecięcia odcinków, ale nie odrzucał nieprzyległych wierzchołków o identycznych (lub bliższych niż tolerancja) współrzędnych. Taki samodotykający się obrys nie jest jednoznacznym wypukłym przekrojem i nie powinien dawać automatycznie `polygon-bar`.
+
+**Zmiana:** `9093136a165eafb71614203e48f195effe2e67b4` odrzuca powtórzone wierzchołki przed analizą wypukłości; `2e6214c3ec0324b8fc54e75b6993325a28643882` dodaje regresję dokładnego i tolerancyjnego powtórzenia oraz dodatni przypadek prawdziwego wypukłego przekroju. Maksymalnie 12 wierzchołków, więc kontrola O(n²) jest tania. Nie zmienia progów tolerancji, mas, grupowania, wyceny ani UI. To poprawa ochrony przed fałszywymi trafieniami, **nie wzrost liczby potwierdzonych półfabrykatów**.
+
+**Walidacja:** przed zmianą oba workflow były PASS na `68a64b...`. Po zmianie testów należy odczytać finalne run ID dla najnowszego SHA, a nie przenosić PASS z poprzedniego SHA. Dziennik jest celowo oddzielnym commitem; może anulować pośrednie uruchomienia przez politykę concurrency. Kolejna iteracja ma sprawdzić oba finalne CI i regresję `test_repeated_vertex_is_not_convex_stock`, szczególnie prawdziwe STEP.
