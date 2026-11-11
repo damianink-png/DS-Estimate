@@ -45,6 +45,21 @@ class StockPatternTests(unittest.TestCase):
                         self.assertEqual(measured['kind'],kind)
                         self.assertGreater(measured['sectionAreaMm2'],0)
 
+    def test_self_intersecting_star_is_not_polygon_stock(self):
+        # A five-point star has same-sign turns at every vertex, so
+        # cross-product sign checks alone incorrectly infer polygon-bar.
+        vertices=[(40*math.cos(2*math.pi*i/5),
+                   40*math.sin(2*math.pi*i/5))
+                  for i in (0,2,4,1,3)]
+        for shape in (vertices,list(reversed(vertices))):
+            with self.subTest(shape=shape):
+                self.assertIsNone(convex_polygon_section_kind(close(shape),.002))
+        # A simple, genuinely convex non-rectangular section remains valid.
+        convex=[(0,0),(30,0),(40,12),(24,32),(0,20)]
+        measured=convex_polygon_section_kind(close(convex),.002)
+        self.assertIsNotNone(measured)
+        self.assertEqual(measured['kind'],'polygon-bar')
+
     def test_corner_bevel_is_blank_candidate_not_certified_bar(self):
         # A lengthwise 5x5 corner chamfer does not make a 40x40 core an
         # arbitrary polygon bar. Nor does it prove saw/milling operation.
