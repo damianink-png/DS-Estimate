@@ -32,3 +32,14 @@
 **Zmiana:** commit `ea4e0133175705a9392f73908501441bf87e34eb`: przerwij deduplikację po 8 osiach i użyj wcześniej posortowanych krawędzi dla wyboru wektora poprzecznego. Kolejność pierwszych 8 osi, limity, geometria, warunki klasyfikacji, mass/grouping/cost i zasady niecertyfikowania nieznanych brył są niezmienione. Oszczędność CPU zależy od liczby kierunków; nie deklarować liczbowego przyspieszenia bez pomiaru.
 
 **Walidacja po zmianie:** commit dziennika uruchomi ponownie workflow dla finalnego SHA. **Nie oznaczać nowego SHA jako PASS**, dopóki oba runy Windows/OneEXE i benchmark STEP nie zakończą się pomyślnie. Następna iteracja powinna sprawdzić finalne run ID, wyniki rozpoznawania i czasy, szczególnie Earthpress.
+
+
+## 2026-11-11, 02:00 Europe/Warsaw — iteracja 4
+
+**Punkt odniesienia:** PR #7, SHA `decfee8ac12e4d7fb1ba918373831274993e55ee`. Benchmark oryginalnych STEP [42928179352](https://github.com/damianink-png/DS-Estimate/actions/runs/42928179352) **PASS**; Windows/OneEXE [42928179996](https://github.com/damianink-png/DS-Estimate/actions/runs/42928179996) **PASS**. Log Windows potwierdza test prawdziwego zainstalowanego GUI i ponowny test przenośnego EXE z CAD; wynik joba jest success. Benchmark `PUBLIC_PINNED_REGRESSION_PASS` potwierdza niezmienione masy, grupy i częściowe pokrycie cięcia. Wcześniej odnotowane liczby Earthpress pozostają punktem odniesienia: 75/37 nieznanych półfabrykatów, 62/25 cech B-Rep, 13/9 rodzin gotowego detalu, 0 nowych certyfikowanych półfabrykatów i 0 nowych potwierdzonych czasów; 121/251 wystąpień znanych w audycie cięcia. **Nie ma jeszcze wzrostu skuteczności certyfikacji.**
+
+**Problem wydajności:** `_short_profile` sprawdza, czy bryła ma więcej niż 32 ściany, lecz `sum(1 for _ in api.shapes(...))` enumerowało wszystkie ściany, nawet gdy 33. już wykluczała dalszą próbę przekroju. Duże nieregularne detale Earthpress mogły niepotrzebnie wymuszać pełne przejście po B-Rep.
+
+**Poprawka:** `fd9a2f590e7d4183d01cbd721e413d1b53ddb3c7`: zatrzymaj enumerację najpóźniej na 33. ścianie, zachowując identyczny warunek `face_count>32` i ten sam wynik dla wszystkich brył. Cache nadal lokalny dla jednej bryły. Bez zmian tolerancji, sposobu klasyfikacji, masy, grupowania i kosztu. Zysk CPU jest zależny od złożoności ścian; nie deklarować liczbowego przyspieszenia bez pomiaru.
+
+**Walidacja:** końcowy commit dziennika uruchomi benchmark i Windows/OneEXE. Wynik dla nowego SHA **niezweryfikowany** na moment zapisu. Kolejna iteracja powinna odczytać finalne run ID, potwierdzić brak regresji i skupić się na wiarygodnej certyfikacji stock zamiast podnoszenia wskaźników samych cech geometrycznych.
