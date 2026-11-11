@@ -45,6 +45,19 @@ class StockPatternTests(unittest.TestCase):
                         self.assertEqual(measured['kind'],kind)
                         self.assertGreater(measured['sectionAreaMm2'],0)
 
+    def test_self_touching_orthogonal_section_is_not_standard_stock(self):
+        # Re-entering a non-adjacent vertex makes the contour ambiguous.
+        # Do not certify a bought L/U/T/I section from a self-touching grid.
+        angle = self.profiles()['angle']
+        self.assertEqual(orthogonal_section_kind(close(angle), .002)['kind'], 'angle')
+        for repeated in ((40, 5), (40.0005, 5)):
+            with self.subTest(repeated=repeated):
+                self.assertIsNone(orthogonal_section_kind(
+                    close(angle + [repeated]), .002))
+        # Adjacent split-vertex duplication from STEP topology is allowed.
+        split = angle[:3] + [angle[2]] + angle[3:]
+        self.assertEqual(orthogonal_section_kind(close(split), .002)['kind'], 'angle')
+
     def test_self_intersecting_star_is_not_polygon_stock(self):
         # A five-point star has same-sign turns at every vertex, so
         # cross-product sign checks alone incorrectly infer polygon-bar.
