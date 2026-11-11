@@ -341,12 +341,14 @@ def _short_profile(shape,bounds,axis,face_count_cache=None):
         # A short-part probe may try all three world axes. Enumerating every
         # OCCT face for each axis is expensive on large STEP assemblies.
         # Cache only within this solid's recognition call (never across parts).
+        # The only decision is <=32 versus >32 faces; stop after the 33rd
+        # rather than traversing every face of a complex imported part.
         if face_count_cache is None:
-            face_count=sum(1 for _ in api.shapes(shape,api.TopAbs_FACE))
+            face_count=sum(1 for _, face in zip(range(33), api.shapes(shape,api.TopAbs_FACE)))
         elif face_count_cache:
             face_count=face_count_cache[0]
         else:
-            face_count=sum(1 for _ in api.shapes(shape,api.TopAbs_FACE))
+            face_count=sum(1 for _, face in zip(range(33), api.shapes(shape,api.TopAbs_FACE)))
             face_count_cache.append(face_count)
         if face_count>32:return None
         edges=_section_edges(shape,bounds,axis,.5)
