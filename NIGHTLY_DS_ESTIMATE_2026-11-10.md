@@ -78,3 +78,16 @@
 **Zmiany:** `e02fe5b58223a564ce63263fd3bae088c9da9dce` dodaje kontrolę identycznych i tolerancyjnie bliskich nieprzyległych wierzchołków, bez zwiększenia limitu 11 wierzchołków (koszt O(n²), maksymalnie 55 porównań). `5d7f88aa36598dcdbb189161c8b948027bfbbd54` dodaje negatywne przypadki testowe dokładnego i bliskiego powtórzenia oraz pozytywny test prawidłowej fazki. Nie zmieniono progów tolerancji, mas, grupowania, czasu cięcia ani UI.
 
 **Walidacja po zmianach:** uruchomienia GitHub Actions dla najnowszego SHA należy sprawdzić po ukończeniu. PASS na poprzednim `49e3a80...` nie jest dowodem dla nowej poprawki. Cel: brak fałszywego rozpoznania półfabrykatu; nie deklarować wzrostu skuteczności na Earthpress bez nowych liczników. Testy realnego Windows/OneEXE i STEP są obowiązkowe przed wydaniem.
+
+
+## 2026-11-11, 06:05 Europe/Warsaw — iteracja 8
+
+**Zweryfikowany punkt odniesienia:** SHA `c04989fe77fe2fd445325b1f31e7625f175ec29d`; Windows/OneEXE [42956647775](https://github.com/damianink-png/DS-Estimate/actions/runs/42956647775) **PASS**, benchmark rzeczywistych STEP [42956647636](https://github.com/damianink-png/DS-Estimate/actions/runs/42956647636) **PASS**. Test Windows obejmował rzeczywistą zainstalowaną aplikację, OneEXE i silnik CAD. OneEXE: 292268413 B, SHA256 `0F5D918186B8F87322BF06F907ED3016FC8491D2ED76DECA748DB47B5525135D`.
+
+**Rozpoznawanie przed zmianą:** Earthpress: 75 nierozpoznanych wystąpień / 37 geometrii, 62 wystąpienia / 25 geometrii z cechami B-Rep, 13 wystąpień / 9 geometrii z rodziną gotowego detalu, 48 geometrycznych kandydatów normaliów, 0 dodatkowych potwierdzonych półfabrykatów i 0 potwierdzonych czasów. Cięcie: 121/251 znanych, 130/251 oczekujących; pełna wycena niedostępna. Zgodność mas, grupowania i godzin częściowych potwierdzona `PUBLIC_PINNED_REGRESSION_PASS`.
+
+**Luka w klasyfikatorze:** `orthogonal_section_kind` rozpoznaje standardowe przekroje L/U/T/I oraz Z/omega z siatki pól, lecz nie sprawdzał, czy nieprzyległy wierzchołek został ponownie odwiedzony. Samodotykający się obrys może zafałszować topologię mimo pozornie poprawnych osi i pola. To analogiczna ochrona do poprzednio dodanej dla `convex_polygon_section_kind` i `beveled_rectangle_section_kind`.
+
+**Poprawka:** `b671202b76353789b5080306ee1f0cb30bf33fd3` odrzuca nieprzyległe wierzchołki odległe o <= tolerancję przed rozpoznaniem siatki ortogonalnej; sąsiadujące powtórzenia od podziału krawędzi STEP pozostają dozwolone. `65949bd4006a972e411699bbbab1de1342fef52a` dodaje negatywne testy dokładnego i tolerancyjnie bliskiego powtórzenia oraz pozytywny test dopuszczalnego sąsiedniego duplikatu. Brak zmiany progów, cen, masy, grupowania, UI i logiki czasu.
+
+**Walidacja:** oba workflow mają być zweryfikowane dla końcowego SHA z dziennikiem; wcześniejsze PASS nie stanowią dowodu dla nowych zmian. Nie deklarować wzrostu certyfikacji półfabrykatów bez potwierdzonych liczników na oryginalnych STEP. O 07:00 sprawdzić końcowe CI i przedstawić jeden raport bez kolejnych dużych zmian.
