@@ -394,18 +394,25 @@ def recognize_stock(solid, bounds, plate_hint=None):
                                           surface.Cylinder().Axis().Direction()))
                 elif surface.GetType()==api.GeomAbs_Plane:
                     plane_axes.append((0,surface.Plane().Axis().Direction()))
+            # Only the first eight unique candidate axes are ever tested.
+            # Stop deduplication as soon as the budget is filled: on a complex
+            # imported part, scanning hundreds of extra edges/planes performs
+            # unnecessary OCCT direction comparisons without affecting output.
+            sorted_edges=sorted(edge_axes,key=lambda item:-item[0])
             ordered=(sorted(cylinder_axes,key=lambda item:-item[0])+
-                     sorted(edge_axes,key=lambda item:-item[0])+plane_axes)
+                     sorted_edges+plane_axes)
             axes=[]
             for _,d in ordered:
-                if not any(abs(d.Dot(old))>.99999 for old in axes):axes.append(d)
+                if not any(abs(d.Dot(old))>.99999 for old in axes):
+                    axes.append(d)
+                    if len(axes)==8:break
             best_local=None
-            for direction in axes[:8]:
+            for direction in axes:
                 try:
                     # gp_Ax3 requires a truly perpendicular X direction, not
                     # merely abs(dot)<.001. Project the reference edge into
                     # the cutting plane to prevent an OCC constructor error.
-                    cross=next((d for _,d in sorted(edge_axes,key=lambda item:-item[0])
+                    cross=next((d for _,d in sorted_edges
                                 if abs(d.Dot(direction))<.95),None)
                     if cross is None:
                         frame=gp_Ax3(gp_Pnt(0,0,0),direction)
