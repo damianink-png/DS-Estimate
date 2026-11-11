@@ -101,5 +101,25 @@ class FinishedPartFamilyTest(unittest.TestCase):
                 'source':'user supplied name','planes':[]}},100)['status'],'unknown')
 
 
+    def test_existing_aag_evidence_is_diagnostic_only(self):
+        stock={'kind':'unknown','finishedBrepSurfaceEvidence':surfaces([],[])}
+        graph={'status':'measured','nonManifoldEdges':0,
+               'featurePatterns':{'status':'measured','truncated':False,
+                                  'counts':{'through-cylindrical-opening':2,
+                                            'unverified-operation':7}}}
+        result=recognize_finished_geometry(stock,100,graph)
+        self.assertEqual(result['status'],'unknown')
+        self.assertEqual(result['verifiedSecondaryFeatures'],
+                         [{'kind':'through-cylindrical-opening','count':2}])
+        self.assertNotIn('cutTimeCertified',result)
+        graph['featurePatterns']['truncated']=True
+        self.assertNotIn('verifiedSecondaryFeatures',
+                         recognize_finished_geometry(stock,100,graph))
+        graph['featurePatterns']['truncated']=False
+        graph['nonManifoldEdges']=1
+        self.assertNotIn('verifiedSecondaryFeatures',
+                         recognize_finished_geometry(stock,100,graph))
+
+
 if __name__=='__main__':
     unittest.main()
