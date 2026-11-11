@@ -60,6 +60,19 @@ class StockPatternTests(unittest.TestCase):
         self.assertIsNotNone(measured)
         self.assertEqual(measured['kind'],'polygon-bar')
 
+    def test_repeated_vertex_is_not_convex_stock(self):
+        # A non-adjacent repeated/tolerance-close vertex makes a section
+        # self-touching even if no non-adjacent edges cross in their interiors.
+        # Such a boundary must never become an automatically priced bar.
+        base=[(0,0),(30,0),(40,12),(24,32),(0,20)]
+        self.assertEqual(convex_polygon_section_kind(close(base),.002)['kind'],'polygon-bar')
+        for candidate in (
+            [(0,0),(30,0),(40,12),(24,32),(0,20),(40,12)],
+            [(0,0),(30,0),(40,12),(24,32),(0,20),(40.0005,12)],
+        ):
+            with self.subTest(candidate=candidate):
+                self.assertIsNone(convex_polygon_section_kind(close(candidate),.002))
+
     def test_corner_bevel_is_blank_candidate_not_certified_bar(self):
         # A lengthwise 5x5 corner chamfer does not make a 40x40 core an
         # arbitrary polygon bar. Nor does it prove saw/milling operation.
