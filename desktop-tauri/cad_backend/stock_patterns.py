@@ -33,6 +33,18 @@ def orthogonal_section_kind(pts, tol):
             or any(not math.isfinite(v) for p in pts for v in p)
             or math.dist(pts[0], pts[-1]) > tol):
         return None
+    # An orthogonal section must be a simple perimeter. Revisited
+    # non-adjacent vertices can otherwise produce a plausible L/U/I grid
+    # even though the contour self-touches. Adjacent duplicate points
+    # from split STEP edges are harmless and remain permitted.
+    vertices = pts[:-1]
+    for i, a in enumerate(vertices):
+        for j in range(i + 2, len(vertices)):
+            if i == 0 and j == len(vertices) - 1:
+                continue
+            b = vertices[j]
+            if (a[0] - b[0])**2 + (a[1] - b[1])**2 <= tol*tol:
+                return None
     segments = [(math.dist(a, b), a, b) for a, b in zip(pts, pts[1:])
                 if math.dist(a, b) > tol]
     if len(segments) < 6:
