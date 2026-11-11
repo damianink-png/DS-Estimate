@@ -127,6 +127,13 @@ def beveled_rectangle_section_kind(points, tol):
             or any(not all(math.isfinite(v) for v in p) for p in points)):
         return None
     vertices=points[:-1]
+    # A chamfered rectangle must have a simple perimeter. A non-adjacent
+    # repeated/tolerance-close vertex creates a self-touching contour, not
+    # an unambiguous rectangular blank candidate. The maximum is 11 vertices.
+    for i, a in enumerate(vertices):
+        for b in vertices[i+1:]:
+            if (a[0]-b[0])**2 + (a[1]-b[1])**2 <= tol*tol:
+                return None
     segments=[(a,b) for a,b in zip(points,points[1:])]
     lengths=[math.dist(a,b) for a,b in segments]
     if min(lengths)<tol*5:
