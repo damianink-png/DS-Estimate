@@ -67,3 +67,14 @@
 **Zmiana:** `9093136a165eafb71614203e48f195effe2e67b4` odrzuca powtórzone wierzchołki przed analizą wypukłości; `2e6214c3ec0324b8fc54e75b6993325a28643882` dodaje regresję dokładnego i tolerancyjnego powtórzenia oraz dodatni przypadek prawdziwego wypukłego przekroju. Maksymalnie 12 wierzchołków, więc kontrola O(n²) jest tania. Nie zmienia progów tolerancji, mas, grupowania, wyceny ani UI. To poprawa ochrony przed fałszywymi trafieniami, **nie wzrost liczby potwierdzonych półfabrykatów**.
 
 **Walidacja:** przed zmianą oba workflow były PASS na `68a64b...`. Po zmianie testów należy odczytać finalne run ID dla najnowszego SHA, a nie przenosić PASS z poprzedniego SHA. Dziennik jest celowo oddzielnym commitem; może anulować pośrednie uruchomienia przez politykę concurrency. Kolejna iteracja ma sprawdzić oba finalne CI i regresję `test_repeated_vertex_is_not_convex_stock`, szczególnie prawdziwe STEP.
+
+
+## 2026-11-11, 05:00 Europe/Warsaw — iteracja 7
+
+**Punkt odniesienia:** SHA `49e3a80ebf5514712696ee2299a9367f5d67db36`, Windows/OneEXE [42949622120](https://github.com/damianink-png/DS-Estimate/actions/runs/42949622120) **PASS** oraz publiczny benchmark STEP [42949622013](https://github.com/damianink-png/DS-Estimate/actions/runs/42949622013) **PASS**. Potwierdzono stabilność Earthpress: 75 nierozpoznanych wystąpień / 37 unikalnych geometrii, 62 wystąpienia / 25 geometrii z cechami B-Rep, 13 wystąpień / 9 geometrii z rodziną gotowego detalu, 48 kandydatów normaliów, 0 dodatkowo certyfikowanych półfabrykatów i czasów. Cięcie 121/251 znanych, 130/251 niepotwierdzonych; pełna wycena nadal niedostępna.
+
+**Wykryta luka w walidacji:** `beveled_rectangle_section_kind` sprawdzał długości i położenia odcinków fazki, ale nie odrzucał powtórzonego nieprzyległego wierzchołka. Samodotykający się obrys nie stanowi poprawnego prostego przekroju i nie powinien tworzyć nawet sugestii półfabrykatu `square-bar` / `rectangular-bar` z fazką.
+
+**Zmiany:** `e02fe5b58223a564ce63263fd3bae088c9da9dce` dodaje kontrolę identycznych i tolerancyjnie bliskich nieprzyległych wierzchołków, bez zwiększenia limitu 11 wierzchołków (koszt O(n²), maksymalnie 55 porównań). `5d7f88aa36598dcdbb189161c8b948027bfbbd54` dodaje negatywne przypadki testowe dokładnego i bliskiego powtórzenia oraz pozytywny test prawidłowej fazki. Nie zmieniono progów tolerancji, mas, grupowania, czasu cięcia ani UI.
+
+**Walidacja po zmianach:** uruchomienia GitHub Actions dla najnowszego SHA należy sprawdzić po ukończeniu. PASS na poprzednim `49e3a80...` nie jest dowodem dla nowej poprawki. Cel: brak fałszywego rozpoznania półfabrykatu; nie deklarować wzrostu skuteczności na Earthpress bez nowych liczników. Testy realnego Windows/OneEXE i STEP są obowiązkowe przed wydaniem.
