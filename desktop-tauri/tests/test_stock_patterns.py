@@ -90,6 +90,21 @@ class StockPatternTests(unittest.TestCase):
         self.assertEqual(result['rawStockCandidate']['confidence'],'geometric-blank-candidate')
         self.assertEqual(result['finishedSectionEvidence']['bevelCount'],1)
 
+    def test_self_touching_beveled_rectangle_cannot_suggest_blank(self):
+        from cad_backend.stock_patterns import beveled_rectangle_section_kind
+        valid=[(0,0),(40,0),(40,40),(5,40),(0,35)]
+        self.assertEqual(beveled_rectangle_section_kind(close(valid),.002)['kind'],
+                         'beveled-rectangle')
+        # A repeated or tolerance-close non-neighbouring corner is not a
+        # simple section, even if its bounding rectangle and area look valid.
+        for duplicate in ((40,40),(40.0005,40)):
+            points=close(valid+[duplicate])
+            with self.subTest(duplicate=duplicate):
+                self.assertIsNone(beveled_rectangle_section_kind(points,.002))
+                edges=[(points[i:i+2],False,None) for i in range(len(points)-1)]
+                geometry=_classify_section(edges,.002)
+                self.assertFalse(geometry and geometry.get('kind')=='beveled-rectangle')
+
     def test_inner_diagonal_or_large_removed_corner_is_not_ignored(self):
         from cad_backend.stock_patterns import beveled_rectangle_section_kind
         invalid=[
