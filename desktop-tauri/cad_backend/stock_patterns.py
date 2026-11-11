@@ -195,6 +195,14 @@ def convex_polygon_section_kind(points, tol):
             math.dist(points[0], points[-1]) > tol):
         return None
     vertices = points[:-1]
+    # A self-touching loop can revisit a vertex without any proper crossing
+    # of non-neighbouring segments. Such a contour has no unambiguous
+    # manufacturable convex stock section. Compare squared distances to
+    # avoid sqrt and reject even tolerance-close non-adjacent vertices.
+    for i, a in enumerate(vertices):
+        for b in vertices[i+1:]:
+            if (a[0]-b[0])**2 + (a[1]-b[1])**2 <= tol*tol:
+                return None
     edges = [(b[0]-a[0], b[1]-a[1]) for a,b in zip(points, points[1:])]
     lengths = [math.hypot(*e) for e in edges]
     if min(lengths) < tol*5:
