@@ -162,5 +162,24 @@ def recognize_finished_geometry(stock_hint,volume_mm3,graph=None):
                           confidence='measured-core-not-verified-blank')
     # Avoid inventing a family for fully planar polyhedra or mixed spline
     # shapes with no measured manufacturing evidence.
-    return {'status':'unknown','reason':'insufficient original B-Rep family evidence',
-            'limitations':'Do not infer stock or manufacture from surface counts alone'}
+    # Preserve bounded AAG observations for diagnostics even when no stock
+    # family is proven. This does not promote a feature to a raw blank, change
+    # the quote, or trigger another expensive OCCT geometry pass.
+    observations = []
+    if isinstance(graph, dict) and graph.get('status') == 'measured' and graph.get('nonManifoldEdges', 0) == 0:
+        patterns = graph.get('featurePatterns')
+        if isinstance(patterns, dict) and patterns.get('status') == 'measured' and not patterns.get('truncated'):
+            allowed = {'through-cylindrical-opening', 'coaxial-conical-transition',
+                       'coaxial-diameter-shoulder', 'reduced-diameter-axial-section',
+                       'intersecting-cylinder-axes'}
+            counts = patterns.get('counts')
+            if isinstance(counts, dict):
+                observations = [{'kind': key, 'count': count}
+                                for key, count in sorted(counts.items())
+                                if key in allowed and type(count) is int and 0 < count <= 96]
+    result = {'status':'unknown','reason':'insufficient original B-Rep family evidence',
+              'limitations':'Do not infer stock or manufacture from surface counts alone'}
+    if observations:
+        result['verifiedSecondaryFeatures'] = observations
+        result['featureEvidenceSource'] = 'original B-Rep shared-edge adjacency graph'
+    return result
