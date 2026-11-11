@@ -22,3 +22,13 @@
 **Poprawka:** `dd11c102056f79fecbfab7ae7ac7945e2e350f3f`: po zgromadzeniu 64 poprawnych rekordów planarnej diagnostyki pomijane jest dalsze wyliczanie pól powierzchni, lecz zachowana jest pełna liczba `planeFaceCount`. Nie zmienia to logiki rozpoznawania stock, masy, grupowania ani wyceny; dane 64 pierwszych płaszczyzn i pełne liczby ścian pozostają dostępne. Oszczędność CPU zależy od liczby płaskich ścian na bryłę; brak pomiaru czasu na oryginalnym STEP.
 
 **Walidacja:** commity z poprawką i niniejszym dziennikiem uruchamiają CI; wyniku dla nowego SHA jeszcze nie potwierdzono. Kolejna iteracja: sprawdzić PASS/FAIL i porównać pełny benchmark oraz wydajność, nie przedstawiać optymalizacji diagnostyki jako poprawy certyfikacji półfabrykatów.
+
+## 2026-11-11, 01:01 Europe/Warsaw — iteracja 3
+
+**Punkt odniesienia:** PR #7, SHA `fa67e14ce88d5b14b69bd028863dee0a1cc0e9e5`. Windows/OneEXE run [42919026269](https://github.com/damianink-png/DS-Estimate/actions/runs/42919026269) **PASS** (zainstalowany interfejs + portable OneEXE z rzeczywistym STEP); benchmark [42919026307](https://github.com/damianink-png/DS-Estimate/actions/runs/42919026307) **PASS**. Ostatni artefakt OneEXE ID `13812383632`, rozmiar binarki 292260441 B. Earthpress: 251 brył, 96 grup, 333.7932759 kg ekwiwalentu stali przy 7850 kg/m³, 121/251 znanych wystąpień w audycie cięcia, 130 wymagających weryfikacji. Nierozpoznane półfabrykaty: 75 wystąpień / 37 geometrii, 62/25 z cechami B-Rep, 13/9 z rodziną gotowego detalu; certyfikowanych nowych półfabrykatów i czasów nadal **0**. Benchmark nadal nie zapewnia pełnej automatycznej wyceny.
+
+**Analiza wydajności:** w `stock_recognition.recognize_stock` zbierano **wszystkie** unikalne osie z krawędzi i płaszczyzn, mimo że następny etap rozpatrywał tylko `axes[:8]`. Przy dużych detalach powodowało to zbędne porównania kierunków OCCT. Dodatkowo sortowano pełną listę krawędzi ponownie dla każdej próbowanej osi.
+
+**Zmiana:** commit `ea4e0133175705a9392f73908501441bf87e34eb`: przerwij deduplikację po 8 osiach i użyj wcześniej posortowanych krawędzi dla wyboru wektora poprzecznego. Kolejność pierwszych 8 osi, limity, geometria, warunki klasyfikacji, mass/grouping/cost i zasady niecertyfikowania nieznanych brył są niezmienione. Oszczędność CPU zależy od liczby kierunków; nie deklarować liczbowego przyspieszenia bez pomiaru.
+
+**Walidacja po zmianie:** commit dziennika uruchomi ponownie workflow dla finalnego SHA. **Nie oznaczać nowego SHA jako PASS**, dopóki oba runy Windows/OneEXE i benchmark STEP nie zakończą się pomyślnie. Następna iteracja powinna sprawdzić finalne run ID, wyniki rozpoznawania i czasy, szczególnie Earthpress.
