@@ -199,6 +199,28 @@ def convex_polygon_section_kind(points, tol):
     lengths = [math.hypot(*e) for e in edges]
     if min(lengths) < tol*5:
         return None
+    # A regular star polygon can have same-sign turns at every vertex.
+    # Convexity-by-turn-sign alone therefore does NOT prove a simple loop:
+    # reject non-neighbouring crossing edges before proposing any raw stock.
+    # At most 12 segments are accepted above, so the quadratic check is cheap.
+    def proper_cross(a, b, c, d):
+        def side(p, q, r):
+            return (q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0])
+        ab_c, ab_d = side(a,b,c), side(a,b,d)
+        cd_a, cd_b = side(c,d,a), side(c,d,b)
+        # Near-tangent/collinear non-adjacent edges are ambiguous stock
+        # geometry and must not be silently accepted as convex sections.
+        eps = tol * max(math.dist(a,b), math.dist(c,d))
+        if min(abs(ab_c),abs(ab_d),abs(cd_a),abs(cd_b)) <= eps:
+            return True
+        return ((ab_c > 0) != (ab_d > 0)
+                and (cd_a > 0) != (cd_b > 0))
+    for i in range(len(edges)):
+        for j in range(i+1,len(edges)):
+            if j==i+1 or (i==0 and j==len(edges)-1):
+                continue
+            if proper_cross(points[i],points[i+1],points[j],points[j+1]):
+                return None
     orientation = 0
     for e, f in zip(edges, edges[1:] + edges[:1]):
         cross = e[0]*f[1]-e[1]*f[0]
