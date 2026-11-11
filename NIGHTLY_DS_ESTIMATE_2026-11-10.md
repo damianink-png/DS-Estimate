@@ -43,3 +43,16 @@
 **Poprawka:** `fd9a2f590e7d4183d01cbd721e413d1b53ddb3c7`: zatrzymaj enumerację najpóźniej na 33. ścianie, zachowując identyczny warunek `face_count>32` i ten sam wynik dla wszystkich brył. Cache nadal lokalny dla jednej bryły. Bez zmian tolerancji, sposobu klasyfikacji, masy, grupowania i kosztu. Zysk CPU jest zależny od złożoności ścian; nie deklarować liczbowego przyspieszenia bez pomiaru.
 
 **Walidacja:** końcowy commit dziennika uruchomi benchmark i Windows/OneEXE. Wynik dla nowego SHA **niezweryfikowany** na moment zapisu. Kolejna iteracja powinna odczytać finalne run ID, potwierdzić brak regresji i skupić się na wiarygodnej certyfikacji stock zamiast podnoszenia wskaźników samych cech geometrycznych.
+
+
+## 2026-11-11, 03:00 Europe/Warsaw — iteracja 5
+
+**Zweryfikowany punkt odniesienia:** SHA `a5484f3f1afce83b6a7b347d3d716c0a3d44a7d7`; benchmark STEP [42935825245](https://github.com/damianink-png/DS-Estimate/actions/runs/42935825245) **PASS**, Windows/OneEXE [42935825082](https://github.com/damianink-png/DS-Estimate/actions/runs/42935825082) **PASS**. Test Windows uruchomił zainstalowane GUI i przenośny samorozpakowujący EXE na oryginalnym STEP. OneEXE z tego SHA: 292268358 B, SHA256 `0360A8F5928ED0352F9AC0948F5C5DBE6D4214D496D14812576BBB657D21C0C4`.
+
+**Rozpoznanie na baseline:** Earthpress 75 nierozpoznanych wystąpień / 37 geometrii; cechy B-Rep na 62 / 25; 13 wystąpień / 9 geometrii z rodziną gotowego detalu; 48 kandydatów normaliów (42 śruby/nakrętki + 6 smarowniczek), **0** nowych certyfikowanych półfabrykatów i **0** nowych certyfikowanych czasów. Audyt cięcia Earthpress: 121/251 znanych, 130 oczekujących. Nie ma podstaw do deklarowania wzrostu automatycznej wyceny.
+
+**Wykryty błąd poprawności:** `convex_polygon_section_kind` sprawdzało wyłącznie zgodność znaku kolejnych iloczynów wektorowych. Samoprzecinający się pięciokątny gwiazdowy obrys (pentagram) również ma skręty o tym samym znaku, przez co mógł zostać fałszywie rozpoznany jako wypukły `polygon-bar` i zasugerować nieprawidłowy półfabrykat. To błąd niezawodności klasyfikacji, nie problem wydajności.
+
+**Poprawka:** `832c0cf3f1cd5f2f1ff9d04dc085d5bd840505ca` dodaje tani test przecięcia nieprzyległych krawędzi dla sekcji mających maksymalnie 12 krawędzi; niepewne niemal styczne/kolinearne przypadki pozostają nieznane. `3a732f382d31c12f9b418ae34f1350d1126693bc` dodaje regresję gwiazdy w obu orientacjach oraz kontrolę, że prosty wypukły wielokąt nadal jest rozpoznawany. Bez zmian w masie, grupowaniu, stawkach, interfejsie, progach tolerancji i certyfikacji czasu.
+
+**Walidacja po zmianach:** nowe workflow benchmark/Windows uruchomione na commitach powyżej; w chwili wpisu ich końcowe wyniki nie są jeszcze potwierdzone. Nie deklarować PASS dla poprawki do czasu ukończenia obu workflow na finalnym SHA. Kolejna iteracja ma sprawdzić logi, szczególnie test `test_self_intersecting_star_is_not_polygon_stock`, liczniki Earthpress i pełne uruchomienie OneEXE.
