@@ -157,7 +157,9 @@ def _classify_section(edges, tol):
         # A small offset relative to the overall profile size can be a
         # substantial fraction of the wall thickness. Require concentricity
         # relative to the measured wall, not the outside bbox.
-        wall_estimate = (min(outer['w']-inner['w'], outer['h']-inner['h']) / 2)
+        outer_sizes=sorted((outer['w'],outer['h']))
+        inner_sizes=sorted((inner['w'],inner['h']))
+        wall_estimate = min(a-b for a,b in zip(outer_sizes,inner_sizes)) / 2
         if wall_estimate <= tol:
             return None
         if math.dist(outer['center'], inner['center']) > max(tol*5, .05*wall_estimate):
@@ -174,7 +176,11 @@ def _classify_section(edges, tol):
             # Bbox and wall offsets alone incorrectly accept a rotated hole.
             if abs(math.sin(2*(outer['edgeAngleRad'] - inner['edgeAngleRad']))) > 0.02:
                 return None
-            dx,dy=(outer['w']-inner['w'])/2,(outer['h']-inner['h'])/2
+            # Each loop chooses its own edge direction. A split long inner
+            # edge can make that frame perpendicular to the outer frame.
+            perpendicular = abs(math.cos(outer['edgeAngleRad'] - inner['edgeAngleRad'])) < .5
+            iw, ih = (inner['h'], inner['w']) if perpendicular else (inner['w'], inner['h'])
+            dx,dy=(outer['w']-iw)/2,(outer['h']-ih)/2
             if min(dx,dy)<=tol or abs(dx-dy)>max(tol*5,.08*max(dx,dy)):
                 return None
             square=abs(outer['w']-outer['h'])<=.02*max(outer['w'],outer['h'])
