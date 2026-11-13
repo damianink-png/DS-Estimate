@@ -57,3 +57,17 @@ test('a named fastener hole or parent assembly never becomes a purchased product
   assert.equal(preferenceFor(item,{feature:{route:'purchase'}}).route,'purchase',name);
  }
 });
+
+test('partial contacts cannot certify welding setup',()=>{
+ const result=automaticOperations(partsList(inv),{complete:false,candidates:[]});
+ assert.equal(result.modules.welding.setup,null);
+});
+test('known work cannot conceal unknown bending and CNC preparation',()=>{
+ const items={solids:[solid('a'),{...solid('b'),stockHint:{kind:'unknown'}}]};
+ const parts=partsList(items,{a:{bendCount:1,allowances:[1,1,1,1,1,1]}});
+ const result=automaticOperations(parts,{complete:true,candidates:[]});
+ assert.ok(result.bendRows.some(r=>r.count===1));
+ assert.ok(result.machining.length>0);
+ assert.equal(result.modules.bending.setup,null);
+ assert.equal(result.modules.cnc.program,null);
+});
