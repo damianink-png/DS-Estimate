@@ -19,8 +19,19 @@ export function planAutomaticCutting(parts,{machines=MACHINES,laserLimit=10,rate
   const thickness=h.thicknessMm??s.bendHint?.bends?.[0]?.thicknessMm??s.cuttingHint?.thicknessMm??Math.min(...p.dims);
   const isProfile=profiles.has(kind)||(selected&&selected.shape!=='FLAT');
   const plate=kind==='plate-candidate'||kind==='plate'||kind==='bent-plate'||s.cuttingHint?.kind==='plate-outline';
-  let method=p.cutMethod!=='auto'?p.cutMethod:isProfile?'saw':plate?(thickness<=laserLimit?'laser':thickness<=35?'plasma':['steel','assumed-steel'].includes(family)?'oxy':'plasma'):null;
+  // A measured non-rectangular polygon proves the FINISHED geometry, not
+  // that an identical special-section bar was bought and sawn to length.
+  // Keep existing manual saw override optional; no new input is required.
+  if(kind==='polygon-bar'&&p.cutMethod==='auto')
+   notes.push('Przekrój specjalny potwierdzony geometrycznie; przygotówka i proces cięcia nieustalone.');
+  let method=p.cutMethod!=='auto'?p.cutMethod:kind==='polygon-bar'?null:isProfile?'saw':plate?(thickness<=laserLimit?'laser':thickness<=35?'plasma':['steel','assumed-steel'].includes(family)?'oxy':'plasma'):null;
   if(family==='unknown'&&p.cutMethod==='auto'&&method!=='saw'){method=null;notes.push('Nieznany materiał: wybierz technologię.');}
+  if(p.cutMethod==='auto'&&plate&&!isProfile&&method){
+   const alternatives=[method,...['laser','plasma','oxy'].filter(x=>x!==method)];
+   const available=alternatives.find(x=>machines[x]?.enabled&&thickness<=machines[x].maxThickness&&(x!=='oxy'||['steel','assumed-steel'].includes(family)));
+   if(available&&available!==method)notes.push('Wybrano dostępną maszynę w zakresie grubości: '+METHOD_LABELS[available]+'.');
+   method=available??method;
+  }
   let m=machines[method],minutes=null,runMin=null,setupMin=0,feed=null;
   let contour=p.contourMm??s.cuttingHint?.contourMm??null,pierces=p.pierces??s.cuttingHint?.pierces??null;
   let sectionArea=p.cutAreaMm2??selected?.areaMm2??h.sectionAreaMm2??null;

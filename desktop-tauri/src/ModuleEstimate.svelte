@@ -7,6 +7,7 @@
  import {MATERIALS,ROUTES,partDefaults,partsList,partValues,preferenceFor,commercialUnits} from './lib/parts.mjs';
  import sectionCatalog from './lib/data/steel-sections.json';
  import {MACHINES,METHOD_LABELS,planAutomaticCutting} from './lib/automatic-cutting.mjs';
+ import {auditCutting} from './lib/cutting-audit.mjs';
  import {NORMS,NORM_CHOICES,automaticOperations,partBends,bendEstimate} from './lib/fabrication.mjs';
  import {createCadSession} from './lib/cad-session.mjs';
  import {validateStepBom} from './lib/inventory-validate.mjs';
@@ -27,6 +28,7 @@
   'flat-section':'Przekrój płaskownika (kandydat)',
   'square-bar':'Pręt kwadratowy',
   'rectangular-bar':'Pręt prostokątny',
+  'polygon-bar':'Profil specjalny (przekrój mierzony)',
   'round-bar':'Pręt okrągły',
   'round-tube':'Rura okrągła',
   'square-hollow':'Profil zamknięty kwadratowy',
@@ -84,9 +86,10 @@
  let catalogOptions=$derived(sectionCatalog.sections.filter(c=>!catalogQuery||(c.name+' '+c.series).toLowerCase().includes(catalogQuery.toLowerCase())).slice(0,100));
  let partsResult=$derived.by(()=>{try{return {parts:inventory?partsList(inventory,partMaterials,materialPrices):[],error:''};}catch(e){return {parts:[],error:String(e)};}});
  let detailRows=$derived(partsResult.parts);
- let cutPlan=$derived.by(()=>{try{return planAutomaticCutting(detailRows,{machines,laserLimit,rate:rates.cutting,catalog:sectionCatalog.sections});}catch(e){return {rows:[],batches:[],missing:0,error:String(e)};}});
+ let cutPlan=$derived.by(()=>{try{if(partsResult.error)throw new Error(partsResult.error);return planAutomaticCutting(detailRows,{machines,laserLimit,rate:rates.cutting,catalog:sectionCatalog.sections});}catch(e){return {rows:[],batches:[],missing:0,error:String(e)};}});
+ let cuttingAudit=$derived.by(()=>inventory&&!partsResult.error?auditCutting(detailRows,cutPlan):null);
  let automatic=$derived.by(()=>{try{return automaticOperations(detailRows,contacts,jointEdits,norms);}catch(e){return {modules:{},welds:null,areaM2:0,jointCount:0,error:String(e)};}});
- let visibleParts=$derived(detailRows.filter(p=>(p.name+' '+p.id+' '+p.geometryKey+' '+(p.solid.stockHint?.catalogDesignation||'')).toLowerCase().includes(materialQuery.toLowerCase())));
+ let visibleParts=$derived(detailRows.filter(p=>(p.name+' '+p.id+' '+p.geometryKey+' '+(p.solid.stockHint?.catalogDesignation||'')+' '+(p.solid.normaliaHint?.catalogCandidates??[]).map((n:any)=>n.designation+' '+n.standard).join(' ')).toLowerCase().includes(materialQuery.toLowerCase())));
 
  let materialPrices=$state<Record<string,number|null>>(Object.fromEntries(MATERIALS.map(m=>[m.grade,m.density<3000?22:m.grade.startsWith('1.')?18:m.grade.startsWith('Cu')?40:m.grade.startsWith('Ti')?150:5])));
  let materialApproved=$state(false);
@@ -253,7 +256,7 @@
  function toggleTheme(){theme=theme==='dark'?'light':'dark';try{localStorage.setItem('ds-estimate-theme',theme);}catch{}}
  function autoText(row:any){const value=row.kind==='time'?row.autoHours:row.autoAmount;return typeof value==='number'?number(value):'—';}
  async function exportStatus(format:'json'|'csv'){
-  try{const data=moduleReport(report,{step:selectedStep,files,productCount:inventory?.productCount??inventory?.count??0,commercialProducts:commercialUnits(detailRows).map(u=>({id:u.id,name:u.name,route:u.route,bodyCount:u.bodyCount,supplierCost:u.supplierCost,conflict:u.conflict})),inspection:automatic.inspection,coverage:{unknownMachiningPartIds:automatic.unknownMachiningPartIds,contacts:contacts?{complete:contacts.complete,geometryValid:contacts.geometryValid,pendingPairs:contacts.pendingPairs}:null},solidCount:inventory?.count??0,totalMassKg:totalMass,stockMassKg:stockMass,parts:detailRows.map(p=>({id:p.id,productOccurrenceKey:p.solid.productOccurrenceKey,bodyIndex:p.solid.bodyIndex,bodyCount:p.solid.bodyCount,priceScope:'STEP product occurrence',name:p.name,grade:p.grade,density:p.density,dims:p.dims,massKg:p.massKg,stockMassKg:p.stockMassKg,allowances:p.allowances,route:p.route,catalogId:p.catalogId,supplierPrice:p.supplierPrice,includesMaterial:p.includesMaterial})),weldCandidates:automatic.welds?.rows??[]});
+  try{const data=moduleReport(report,{step:selectedStep,files,productCount:inventory?.productCount??inventory?.count??0,commercialProducts:commercialUnits(detailRows).map(u=>({id:u.id,name:u.name,route:u.route,bodyCount:u.bodyCount,supplierCost:u.supplierCost,conflict:u.conflict})),inspection:automatic.inspection,cuttingAudit:cuttingAudit??{error:cutPlan.error??partsResult.error??'Audyt niedostępny'},coverage:{unknownMachiningPartIds:automatic.unknownMachiningPartIds,contacts:contacts?{complete:contacts.complete,geometryValid:contacts.geometryValid,pendingPairs:contacts.pendingPairs}:null},solidCount:inventory?.count??0,totalMassKg:totalMass,stockMassKg:stockMass,parts:detailRows.map(p=>({id:p.id,productOccurrenceKey:p.solid.productOccurrenceKey,bodyIndex:p.solid.bodyIndex,bodyCount:p.solid.bodyCount,priceScope:'STEP product occurrence',name:p.name,grade:p.grade,density:p.density,dims:p.dims,massKg:p.massKg,stockMassKg:p.stockMassKg,allowances:p.allowances,route:p.route,catalogId:p.catalogId,supplierPrice:p.supplierPrice,includesMaterial:p.includesMaterial})),weldCandidates:automatic.welds?.rows??[]});
    const text=format==='json'?JSON.stringify(data,null,2):'\uFEFF'+[
     ['Moduł','Stan','Brakujące pozycje','Znany koszt PLN'],
     ...data.modules.map(m=>[m.name,statusName(m.status),m.missing,m.costPln]),[],
@@ -262,7 +265,9 @@
     ['Produkt STEP','Id wystąpienia','Realizacja','Liczba brył','Cena dostawcy PLN za cały produkt'],
     ...commercialUnits(detailRows).filter(u=>u.route!=='make').map(u=>[u.name,u.id,ROUTES[u.route]??'Sprzeczna realizacja',u.bodyCount,u.supplierCost]),[],
     ['Detal','Realizacja','Gatunek','Gęstość kg/m³','Wymiary mm','Masa kg','Półfabrykat kg','Naddatki mm','Id produktu STEP'],
-    ...detailRows.map(p=>[p.name,ROUTES[p.route],p.grade,p.density,p.dims.join(' x '),p.massKg,p.stockMassKg,p.allowances.join(' / '),p.solid.productOccurrenceKey??p.id])
+    ...detailRows.map(p=>[p.name,ROUTES[p.route],p.grade,p.density,p.dims.join(' x '),p.massKg,p.stockMassKg,p.allowances.join(' / '),p.solid.productOccurrenceKey??p.id]),[],
+    ['AUDYT CIĘCIA — wystąpienie STEP','Produkt STEP','Grupa geometrii','Nazwa detalu','Realizacja','Półfabrykat','Stan czasu','Kod braku','Opis braku','Kod CAD','Powód CAD','Technologia','Czas auto [min]','Grubość [mm]','Przekrój [mm²]','Kontur [mm]','Przebicia','Gatunek','Gęstość kg/m³'],
+    ...(cuttingAudit?.rows??[]).map(x=>[x.occurrenceId,x.productOccurrenceKey,x.geometryGroupId,x.name,x.route,x.stockKind,x.status,x.reasonCode,x.reasonText,x.stockFailureCode,x.nativeStockReason,x.method,x.automaticMinutes,x.thicknessMm,x.sectionAreaMm2,x.contourMm,x.pierces,x.grade,x.densityKgM3])
    ].map(row=>row.map(csvCell).join(';')).join('\r\n');
    if(await saveReport(text,format))notice='Zapisano zestawienie '+format.toUpperCase()+'.';
   }catch(e){error=String(e);}
@@ -290,9 +295,26 @@
  }
  function changeJoint(id:string,field:string,value:any){jointEdits={...jointEdits,[id]:{...jointEdits[id],[field]:value}};confirmed={...confirmed,welding:false,assembly:false,quality:false,postweld:false};saveProject();}
  function materialPrice(grade:string,raw:string){const value=raw===''?null:Number(raw);if(value!==null&&(!Number.isFinite(value)||value<0))return;materialPrices={...materialPrices,[grade]:value};try{localStorage.setItem('ds-estimate-material-prices-v1',JSON.stringify(materialPrices));}catch{}confirmed={};saveProject();}
- function partDescription(p:any){const h=p.solid.stockHint?.kind==='unknown'&&p.solid.stockHint?.rawStockCandidate?p.solid.stockHint.rawStockCandidate:(p.solid.stockHint??{}),kind=p.stockKind||h.kind;const label=sectionCatalog.sections.find(c=>c.id===p.catalogId)?.name||h.catalogDesignation;
+ function partDescription(p:any){const normalia=p.solid.normaliaHint,nameEvidence=p.solid.nameEvidence;
+  if(normalia?.status==='geometry-candidate'&&normalia.catalogCandidates?.length){
+   const names=normalia.catalogCandidates.slice(0,2).map((n:any)=>n.standard+' '+n.designation).join(', ');
+   const checked=normalia.nameCorroboration?.status;
+   const notice=checked==='conflict'?' · Nazwa STEP niezgodna z B-Rep':checked==='corroborated'?' · Zgodna nazwa STEP':'';
+   return 'Normalium — kandydat geometryczny: '+names+' (zakup niepotwierdzony)'+notice;
+  }
+  const h=p.solid.stockHint?.kind==='unknown'&&p.solid.stockHint?.rawStockCandidate?p.solid.stockHint.rawStockCandidate:(p.solid.stockHint??{}),kind=p.stockKind||h.kind;
+  const label=sectionCatalog.sections.find(c=>c.id===p.catalogId)?.name||h.catalogDesignation;
   if(label)return label;
   if(['plate-candidate','plate','bent-plate'].includes(kind))return (kind==='bent-plate'?'Blacha gięta ':'Płyta ')+number(h.thicknessMm??p.solid.cuttingHint?.thicknessMm??p.dims[2])+' mm';
+  // The name is additional evidence only when stock/normalia geometry has
+  // not already established a more informative description.
+  if((!kind||kind==='unknown')&&(nameEvidence?.normaliaFamily||nameEvidence?.stockFamily)){
+   const suggestion=nameEvidence.normaliaFamily||nameEvidence.stockFamily;
+   return 'Nazwa STEP sugeruje: '+suggestion+
+    (nameEvidence.nominalDesignation?' '+nameEvidence.nominalDesignation:'')+
+    (nameEvidence.nominalDimensionsMm?' '+nameEvidence.nominalDimensionsMm.join('×')+' mm':'')+
+    ' (bez potwierdzenia geometrii)';
+  }
   return (stockLabels[kind]||'Detal')+' '+[h.widthMm,h.heightMm,h.wallMm].filter(v=>v!==undefined).map(number).join(' × ');
  }
  const jointName=(id:string)=>detailRows.find(p=>p.id===id)?.name||id;
@@ -310,6 +332,9 @@
    {#if draft.route==='cooperate'}<label class="check"><input type="checkbox" bind:checked={draft.includesMaterial}/>Cena kooperacji obejmuje materiał</label>{/if}
    <p class="hint">Realizacja i cena dostawcy dotyczą całego wystąpienia produktu STEP. Materiał i naddatki dotyczą tej bryły. Produkt STEP nie zawsze odpowiada jednostce handlowej.</p><h3>Naddatki na sześciu stronach [mm]</h3><div class="form-grid">{#each ['Długość — początek','Długość — koniec','Szerokość — strona 1','Szerokość — strona 2','Grubość / wysokość — strona 1','Grubość / wysokość — strona 2'] as label,i}<label>{label}<input type="number" min="0" step=".1" bind:value={draft.allowances[i]} required/></label>{/each}</div>
    <label class="stacked">Znana masa półfabrykatu [kg] — puste = automatyczny półfabrykat i naddatki<input type="number" min="0" step=".001" value={draft.stockMassKg??''} onchange={e=>draft.stockMassKg=e.currentTarget.value===''?null:Number(e.currentTarget.value)}/></label>
+   {#each inventory?.solids.find(s=>s.id===editingPart)?.stockHint?.blankAlternatives??[] as blank}
+    <div class="hint"><strong>Propozycja przygotówki prostokątnej do sprawdzenia</strong><p>{blank.dimensionsMm.map(number).join(' × ')} mm · wykorzystanie objętości {number(blank.utilization*100)}%</p><p>Gabaryty obejmują gotową bryłę. Sprawdź, czy wykonanie z pełnego materiału jest właściwe; propozycja nie ustala technologii ani gatunku.</p></div>
+   {/each}
    <h3>Biblioteka przekrojów · {sectionCatalog.sections.length} pozycji</h3>
    <p>Dopasowanie wymiarów nie potwierdza gatunku ani normy dostawy. Wybierz oznaczenie, gdy kilka pozycji pasuje do geometrii.</p>
    <div class="form-grid"><label>Szukaj przekroju<input bind:value={catalogQuery} placeholder="np. IPE 200, SHS 40x40x2"/></label><label>Pasujące pozycje<select aria-label="Przekrój katalogowy" value={draft.catalogId} onchange={e=>setDraftCatalog(e.currentTarget.value)}><option value="">Bez przypisania katalogowego</option>{#if draft.catalogId&&!catalogOptions.some(c=>c.id===draft.catalogId)}<option value={draft.catalogId}>{sectionCatalog.sections.find(c=>c.id===draft.catalogId)?.name||draft.catalogId}</option>{/if}{#each catalogOptions as c}<option value={c.id}>{c.name} · {c.series}</option>{/each}</select></label>
@@ -450,7 +475,10 @@
       <div class="table-scroll"><table><thead><tr><th>Detal / partia</th><th>Technologia</th><th>Podstawa geometryczna</th><th>Praca [min]</th><th>Przezbrojenie [min]</th><th>Razem [min]</th><th></th></tr></thead><tbody>
        {#each cutPlan.rows as row}<tr><td><strong>{row.name}</strong><small class="cell-note">{row.batchKey}</small></td><td>{METHOD_LABELS[row.method]||'Do ustalenia'}</td><td>{row.method==='saw'?(row.sectionArea===null?'Brak pola przekroju':number(row.sectionArea)+' mm²'):(row.contour===null?'Brak konturu':number(row.contour)+' mm · '+row.pierces+' przebić')}<small class="cell-note">{row.notes.join(' ')}</small></td><td>{row.runMin===null?'—':number(row.runMin)}</td><td>{number(row.setupMin)}</td><td>{row.minutes===null?'—':number(row.minutes)}</td><td><button class="tiny" onclick={()=>editPart(row.id)}>Parametry</button></td></tr>{/each}
       </tbody></table></div>
-      <div class="panel-actions"><span class="muted">Posortowano według maszyny, materiału i przekroju / grubości. Zakup i kooperacja pominięte.</span></div>
+      {#if cuttingAudit}<div class="panel-actions"><strong>Policzone: {cuttingAudit.knownTimeOccurrences} / {cuttingAudit.ownCutOccurrences} wystąpień własnych · {number(cuttingAudit.knownTimeMin)} min znanego czasu</strong><span class="muted">{cuttingAudit.unresolvedOwnOccurrences} bez czasu · {cuttingAudit.statusCounts.PURCHASED_NO_INTERNAL_CUT??0} zakup · {cuttingAudit.statusCounts.SUBCONTRACTED??0} kooperacja. To nie jest potwierdzenie pełnej wyceny.</span></div>
+       {#if cuttingAudit.unresolvedOwnOccurrences>0}<details class="machine-editor"><summary>Przyczyny brakujących czasów ({cuttingAudit.unresolvedOwnOccurrences})</summary><div class="table-scroll"><table><thead><tr><th>Detal STEP</th><th>Półfabrykat</th><th>Przyczyna</th><th></th></tr></thead><tbody>{#each cuttingAudit.rows.filter(x=>x.status==='PENDING') as x (x.occurrenceId)}<tr><td>{x.name}<small class="cell-note">{x.occurrenceId}</small></td><td>{stockLabels[x.stockKind]||x.stockKind}</td><td>{x.reasonText}</td><td><button class="tiny" onclick={()=>editPart(x.occurrenceId)}>Parametry</button></td></tr>{/each}</tbody></table></div></details>{/if}
+      {/if}
+      <div class="panel-actions"><span class="muted">Posortowano według maszyny, materiału i przekroju / grubości. Zakup i kooperacja pominięte. Eksport CSV/JSON zawiera pełny audyt wystąpień.</span></div>
      </section>
     {/if}
     {#if active==='bending'}

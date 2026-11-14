@@ -11,6 +11,8 @@ from manufacturing_features import feature_hints,sheet_hints
 from part_preview import mesh_part
 from assembly_names import assembly_names,signature,extended_text,read_occurrences
 from section_catalog import catalog
+from normalia_recognition import recognize_normalia
+from normalia_catalog import catalog_summary
 try:
  from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox,BRepPrimAPI_MakeCylinder,BRepPrimAPI_MakePrism
  from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform,BRepBuilderAPI_MakePolygon,BRepBuilderAPI_MakeFace
@@ -55,6 +57,86 @@ class Geometry(unittest.TestCase):
   with patch.object(weld_preparation,'primary_skin',wraps=weld_preparation.primary_skin) as fn:
    data=detect_contacts([box(100,100,10,(x,0,0)) for x in [0,100,200]])
   self.assertTrue(data['complete']);self.assertEqual(fn.call_count,3);self.assertEqual(data['skinCacheEntries'],3)
+ def test_normalia_from_original_brep_washer_and_bearing(self):
+  # Real analytic B-Rep rings can resemble nominal hardware, but the result
+  # is a dimensional candidate, never purchase or process certification.
+  washer=BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(8,1.6).Shape(),
+                        BRepPrimAPI_MakeCylinder(4.2,1.6).Shape()).Shape()
+  bearing_like=BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(17.5,11).Shape(),
+                              BRepPrimAPI_MakeCylinder(7.5,11).Shape()).Shape()
+  for shape,family,designation in [(washer,'washer','M8'),
+                                    (bearing_like,'bearing','6202'),
+                                    (rotated(washer),'washer','M8')]:
+   hint=recognize_normalia(shape,cad.volume(shape))
+   self.assertIsNotNone(hint, family)
+   self.assertEqual(hint['status'],'geometry-candidate')
+   self.assertEqual(hint['families'],[family])
+   self.assertIn(designation,[r['designation'] for r in hint['catalogCandidates']])
+   self.assertNotIn('price',hint)
+   self.assertNotIn('cutTimeH',hint)
+   self.assertNotIn('purchased',hint)
+
+ def test_normalia_from_original_brep_pin_and_offset_hole_guard(self):
+  pin=BRepPrimAPI_MakeCylinder(3,30).Shape()
+  hint=recognize_normalia(rotated(pin),cad.volume(pin))
+  self.assertIsNotNone(hint)
+  self.assertEqual(hint['families'],['dowel-pin'])
+  self.assertEqual(hint['catalogCandidates'][0]['designation'],'6x30')
+  # Eccentric bore is NOT a nominal plain washer, even if both cylinders
+  # have the correct diameters and annular mass is very similar.
+  shifted=gp_Trsf();shifted.SetTranslation(gp_Vec(1,0,0))
+  offset=BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(8,1.6).Shape(),
+                         BRepBuilderAPI_Transform(
+                            BRepPrimAPI_MakeCylinder(4.2,1.6).Shape(),
+                            shifted,True).Shape()).Shape()
+  self.assertIsNone(recognize_normalia(offset,cad.volume(offset)))
+
+ def test_normalia_hex_nut_is_verified_as_hexagon_not_round_bar(self):
+  af=10.;height=5.2;radius=af/math.sqrt(3)
+  polygon=BRepBuilderAPI_MakePolygon()
+  for i in range(6):
+   angle=i*math.pi/3
+   polygon.Add(gp_Pnt(radius*math.cos(angle),radius*math.sin(angle),0))
+  polygon.Close()
+  prism=BRepPrimAPI_MakePrism(
+      BRepBuilderAPI_MakeFace(polygon.Wire()).Face(),
+      gp_Vec(0,0,height)).Shape()
+  nut=BRepAlgoAPI_Cut(prism,BRepPrimAPI_MakeCylinder(3,height).Shape()).Shape()
+  hint=recognize_normalia(nut,cad.volume(nut))
+  self.assertIsNotNone(hint)
+  self.assertEqual(hint['families'],['hex-nut'])
+  self.assertEqual(hint['catalogCandidates'][0]['designation'],'M6')
+  self.assertGreater(catalog_summary()['entries'],550)
+
+ def test_original_xcaf_names_are_per_occurrence_and_never_override_brep(self):
+  # One verified TShape with three different names: no name hint may be
+  # copied from the first occurrence into the geometry cache of the next.
+  from step_inventory import inventory
+  pin=BRepPrimAPI_MakeCylinder(3,30).Shape()
+  names=('Kołek walcowy Ø6x30 ISO 2338','Nakrętka M12','COMPOUND')
+  occurrences=[{'shape':pin,'name':name,
+                'nameSource':'XCAF occurrence/product',
+                'assemblyPath':[name],
+                'bodyIndex':0,'bodyCount':1,
+                'productIdentityReliable':True,
+                'productDefinitionKey':'def-'+str(i),
+                'productOccurrenceKey':'occ-'+str(i)}
+               for i,name in enumerate(names)]
+  with patch('assembly_names.read_occurrences',return_value=(occurrences,[])):
+   result=inventory('virtual-fixture.step')
+  solids=result['solids']
+  self.assertEqual(result['count'],3)
+  self.assertEqual(len({s['verifiedShapeKey'] for s in solids}),1)
+  self.assertEqual(solids[0]['nameEvidence']['normaliaFamily'],'dowel-pin')
+  self.assertEqual(solids[1]['nameEvidence']['normaliaFamily'],'hex-nut')
+  self.assertNotIn('nameEvidence',solids[2])
+  for solid in solids:
+   self.assertEqual(solid['normaliaHint']['families'],['dowel-pin'])
+   self.assertNotEqual(solid['stockHint'].get('kind'),'purchased-component')
+  self.assertEqual(solids[0]['normaliaHint']['nameCorroboration']['status'],'family-compatible')
+  self.assertEqual(solids[1]['normaliaHint']['nameCorroboration']['status'],'conflict')
+  self.assertNotIn('nameCorroboration',solids[2]['normaliaHint'])
+
  def test_short_imperial_hollow_is_not_four_sheet_bends(self):
   outer=rounded_box(25.4,25.4,25.4,6.35)
   inner=rounded_box(19.05,19.05,25.4,3.175,(3.175,3.175,0))
@@ -122,6 +204,43 @@ class Geometry(unittest.TestCase):
   shape=BRepAlgoAPI_Cut(box(40,40,20),box(36,36,20,(2,2,0))).Shape()
   for s in [shape,rotated(shape)]:
    hint=recognize_stock(s,cad.bounds(s));self.assertEqual(hint['kind'],'square-hollow');self.assertAlmostEqual(hint['lengthMm'],20,places=3);self.assertAlmostEqual(hint['wallMm'],2,places=3)
+ def test_real_brep_beveled_plate_preserves_plate_candidate(self):
+  # An actual 100x50x10 STEP-ready prism, with a 5x45 degree
+  # longitudinal chamfer. Top area=95*50; bottom=100*50.
+  # A strict equal-face-area assumption rejects this genuine plate.
+  wire=BRepBuilderAPI_MakePolygon()
+  for x,z in [(0,0),(100,0),(100,10),(5,10),(0,5)]:
+   wire.Add(gp_Pnt(x,0,z))
+  wire.Close()
+  shape=BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(wire.Wire()).Face(),
+                             gp_Vec(0,50,0)).Shape()
+  face_evidence=cad.plate_hint(shape)
+  self.assertIsNotNone(face_evidence)
+  self.assertTrue(face_evidence['asymmetricFaces'])
+  self.assertAlmostEqual(face_evidence['thicknessMm'],10,places=4)
+  hint=recognize_stock(shape,cad.bounds(shape),face_evidence)
+  self.assertEqual(hint['kind'],'plate-candidate',hint)
+  self.assertAlmostEqual(hint['thicknessMm'],10,places=4)
+  self.assertEqual(hint['confidence'],'candidate')
+  self.assertNotIn('manufacturingProcess',hint)
+
+ def test_real_brep_longitudinal_chamfer_has_unverified_blank(self):
+  wire=BRepBuilderAPI_MakePolygon()
+  for x,y in [(0,0),(40,0),(40,40),(5,40),(0,35)]:
+   wire.Add(gp_Pnt(x,y,0))
+  wire.Close()
+  shape=BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(wire.Wire()).Face(),
+                             gp_Vec(0,0,500)).Shape()
+  hint=recognize_stock(shape,cad.bounds(shape))
+  self.assertEqual(hint['kind'],'unknown',hint)
+  self.assertEqual(hint['finishedSectionEvidence']['bevelCount'],1)
+  raw=hint['rawStockCandidate']
+  self.assertEqual(raw['kind'],'square-bar')
+  self.assertEqual(raw['confidence'],'geometric-blank-candidate')
+  self.assertAlmostEqual(raw['widthMm'],40,places=3)
+  self.assertAlmostEqual(raw['heightMm'],40,places=3)
+  self.assertNotIn('cutTimeH',hint)
+
  def test_rounded_rhs_has_area_and_nominal_catalog_candidates(self):
   outer=rounded_box(40,40,1000,4);inner=rounded_box(36,36,1000,2,(2,2,0));shape=BRepAlgoAPI_Cut(outer,inner).Shape()
   hint=recognize_stock(shape,cad.bounds(shape));self.assertEqual(hint['kind'],'square-hollow');self.assertAlmostEqual(hint['wallMm'],2,places=3)
@@ -199,4 +318,141 @@ class Geometry(unittest.TestCase):
    writer=STEPControl_Writer();writer.Transfer(compound,STEPControl_AsIs);path=Path(td)/'joint.step';writer.Write(str(path))
    exe=Path('src-tauri/cad-backend/ds-cad-engine.exe').resolve();p=subprocess.run([str(exe),str(path),'--joints'],capture_output=True,text=True,timeout=120);self.assertEqual(p.returncode,0,p.stderr);data=json.loads(p.stdout);self.assertAlmostEqual(data['candidates'][0]['lengthMm'],90)
    preview=subprocess.run([str(exe),str(path),'--preview','0'],capture_output=True,text=True,timeout=120);self.assertEqual(preview.returncode,0,preview.stderr);self.assertGreaterEqual(len(json.loads(preview.stdout)['triangles']),12)
+ def test_rotational_axes_do_not_chain_offset_holes(self):
+  from rotational_features import coaxial_face_groups
+  def cylinder(y):return {'axis':[1,0,0],'axisPointMm':[0,y,0],'radiusMm':3}
+  groups=coaxial_face_groups([cylinder(0),cylinder(0.015),cylinder(0.030)],[])
+  self.assertEqual(len(groups),2)
+  self.assertEqual(sorted(g['cylinderFaceCount'] for g in groups),[1,2])
+  reverse={'axis':[-1,0,0],'axisPointMm':[100,0,0],'radiusMm':2}
+  self.assertEqual(len(coaxial_face_groups([cylinder(0),reverse],[])),1)
+ def test_original_brep_face_graph_uses_shared_edges(self):
+  from feature_graph import analyze_face_graph
+  measured=analyze_face_graph(box(10,20,30))
+  self.assertEqual(measured['status'],'measured')
+  self.assertEqual(measured['faceCount'],6)
+  self.assertEqual(measured['sharedFacePairs'],12)
+  self.assertEqual(measured['faceComponents'],1)
+  self.assertEqual(measured['surfaceTypes']['plane'],6)
+  self.assertEqual(measured['axialClusters'],[])
+  self.assertNotIn('stockHint',measured)
+  self.assertNotIn('cuttingTime',measured)
+  # A skipped complex topology cannot become a fabricated manufacturing plan.
+  self.assertEqual(analyze_face_graph(box(10,20,30),max_faces=2)['status'],
+                   'skipped-budget')
+ def test_original_brep_face_graph_rotated_tube_and_offset_holes(self):
+  from feature_graph import analyze_face_graph
+  ring=BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(10,40).Shape(),
+                       BRepPrimAPI_MakeCylinder(6,40).Shape()).Shape()
+  for shape in [ring,rotated(ring)]:
+   measured=analyze_face_graph(shape)
+   self.assertEqual(measured['status'],'measured')
+   self.assertEqual(measured['surfaceTypes']['cylinder'],2)
+   self.assertEqual(len(measured['axialClusters']),1)
+   chain=measured['axialClusters'][0]
+   self.assertEqual(chain['cylinderRadiiMm'],[6.,10.])
+   self.assertGreater(chain['bridgedSurfacePairs'],0)
+   self.assertEqual(chain['status'],'connected-face-evidence')
+  # Two OFFSET holes have parallel axes, but NOT a shared axis or one
+  # rotational feature. The face graph must keep them separate.
+  base=box(60,30,20)
+  a=BRepPrimAPI_MakeCylinder(3,20).Shape()
+  t1=gp_Trsf();t1.SetTranslation(gp_Vec(10,10,0))
+  t2=gp_Trsf();t2.SetTranslation(gp_Vec(45,10,0))
+  holes=BRepAlgoAPI_Cut(
+      BRepAlgoAPI_Cut(base,BRepBuilderAPI_Transform(a,t1,True).Shape()).Shape(),
+      BRepBuilderAPI_Transform(a,t2,True).Shape()).Shape()
+  measured=analyze_face_graph(holes)
+  self.assertEqual(measured['surfaceTypes']['cylinder'],2)
+  self.assertEqual(measured['axialClusters'],[])
+ def test_original_brep_stepped_rotation_is_geometry_only(self):
+  from feature_graph import analyze_face_graph
+  bottom=BRepPrimAPI_MakeCylinder(10,12).Shape()
+  tr=gp_Trsf();tr.SetTranslation(gp_Vec(0,0,12))
+  top=BRepBuilderAPI_Transform(BRepPrimAPI_MakeCylinder(6,23).Shape(),tr,True).Shape()
+  finished=BRepAlgoAPI_Fuse(bottom,top).Shape()
+  measured=analyze_face_graph(finished)
+  self.assertEqual(measured['faceComponents'],1)
+  self.assertTrue(any(
+      row['cylinderRadiiMm']==[6.,10.] and row['bridgedSurfacePairs']>0
+      for row in measured['axialClusters']),measured)
+  for forbidden in ('blank','purchase','machiningTime','cuttingTime','costPln'):
+   self.assertNotIn(forbidden,measured)
+ def test_finished_geometry_feature_patterns_tube_vs_shaft_and_groove(self):
+  from feature_graph import analyze_face_graph
+  def names(shape):
+   result=analyze_face_graph(shape)
+   self.assertEqual(result['status'],'measured',result)
+   patterns=result['featurePatterns']
+   self.assertEqual(patterns['status'],'measured',patterns)
+   for row in patterns['candidates']:
+    self.assertNotIn('manufacturingTime',row)
+    self.assertNotIn('purchase',row)
+    self.assertNotIn('costPln',row)
+   return patterns['counts']
+  # An annular tube extends over its full length and must NOT look like
+  # two consecutive cylindrical shaft diameters at both annular cap planes.
+  tube=BRepAlgoAPI_Cut(BRepPrimAPI_MakeCylinder(10,40).Shape(),
+                       BRepPrimAPI_MakeCylinder(6,40).Shape()).Shape()
+  for shape in (tube,rotated(tube)):
+   c=names(shape)
+   self.assertEqual(c.get('through-cylindrical-opening'),1,c)
+   self.assertEqual(c.get('coaxial-diameter-shoulder',0),0,c)
+   self.assertEqual(c.get('reduced-diameter-axial-section',0),0,c)
+  # Shoulder planes have genuinely different cylinder extents.
+  def translate(shape,z):
+   t=gp_Trsf();t.SetTranslation(gp_Vec(0,0,z))
+   return BRepBuilderAPI_Transform(shape,t,True).Shape()
+  shaft=BRepAlgoAPI_Fuse(
+      BRepPrimAPI_MakeCylinder(10,12).Shape(),
+      translate(BRepPrimAPI_MakeCylinder(6,23).Shape(),12)).Shape()
+  self.assertEqual(names(shaft).get('coaxial-diameter-shoulder'),1)
+  groove=BRepAlgoAPI_Fuse(
+      BRepAlgoAPI_Fuse(BRepPrimAPI_MakeCylinder(10,10).Shape(),
+                       translate(BRepPrimAPI_MakeCylinder(6,5).Shape(),10)).Shape(),
+      translate(BRepPrimAPI_MakeCylinder(10,25).Shape(),15)).Shape()
+  c=names(groove)
+  self.assertEqual(c.get('coaxial-diameter-shoulder'),2,c)
+  self.assertEqual(c.get('reduced-diameter-axial-section'),1,c)
+ def test_finished_geometry_feature_patterns_separate_holes_and_cones(self):
+  from feature_graph import analyze_face_graph
+  # Parallel, OFFSET through-holes are distinct; not a single rotational axis
+  # and not two intersecting cylinder walls.
+  base=box(60,30,20)
+  core=BRepPrimAPI_MakeCylinder(3,20).Shape()
+  cuts=[]
+  for x in (10,45):
+   t=gp_Trsf();t.SetTranslation(gp_Vec(x,10,0))
+   cuts.append(BRepBuilderAPI_Transform(core,t,True).Shape())
+  drilled=BRepAlgoAPI_Cut(BRepAlgoAPI_Cut(base,cuts[0]).Shape(),cuts[1]).Shape()
+  counts=analyze_face_graph(drilled)['featurePatterns']['counts']
+  self.assertEqual(counts.get('through-cylindrical-opening'),2,counts)
+  self.assertEqual(counts.get('coaxial-diameter-shoulder',0),0,counts)
+  self.assertEqual(counts.get('intersecting-cylinder-axes',0),0,counts)
+  # A cone tangent to the axis of a neighbouring cylinder is a topology
+  # observation, never automatically a chamfer milling cost.
+  try:from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCone
+  except ImportError:from OCP.BRepPrimAPI import BRepPrimAPI_MakeCone
+  t=gp_Trsf();t.SetTranslation(gp_Vec(0,0,20))
+  tapered=BRepAlgoAPI_Fuse(
+      BRepPrimAPI_MakeCylinder(10,20).Shape(),
+      BRepBuilderAPI_Transform(BRepPrimAPI_MakeCone(10,5,6).Shape(),t,True).Shape()).Shape()
+  result=analyze_face_graph(rotated(tapered))
+  self.assertGreaterEqual(result['featurePatterns']['counts'].get('coaxial-conical-transition',0),1,result)
+  self.assertNotIn('machiningMethod',str(result))
+ def test_finished_geometry_patterns_survive_real_step_file_roundtrip(self):
+  from feature_graph import analyze_face_graph
+  t=gp_Trsf();t.SetTranslation(gp_Vec(0,0,10))
+  shaft=BRepAlgoAPI_Fuse(BRepPrimAPI_MakeCylinder(9,10).Shape(),
+                         BRepBuilderAPI_Transform(BRepPrimAPI_MakeCylinder(5,20).Shape(),t,True).Shape()).Shape()
+  with tempfile.TemporaryDirectory() as td:
+   step=Path(td)/'real-stepped-shaft.step'
+   writer=STEPControl_Writer()
+   self.assertEqual(writer.Transfer(shaft,STEPControl_AsIs),1)
+   self.assertEqual(writer.Write(str(step)),1)
+   originals=cad.load_step(step)
+   self.assertEqual(len(originals),1)
+   result=analyze_face_graph(originals[0])
+   self.assertEqual(result['featurePatterns']['status'],'measured',result)
+   self.assertEqual(result['featurePatterns']['counts'].get('coaxial-diameter-shoulder'),1,result)
 if __name__=='__main__':unittest.main(argv=[sys.argv[0]],verbosity=2)

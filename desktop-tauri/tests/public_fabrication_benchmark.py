@@ -9,7 +9,7 @@ A timeout/segfault is a test finding, never silently a PASS. An unreadable PDF
 or missing STEP is reported. Downloaded models stay local to the CI runner;
 artifact includes source hashes, extracted evidence, results and logs.
 """
-import argparse, csv, hashlib, io, json, os, subprocess, sys, time, urllib.request
+import argparse, csv, hashlib, io, json, os, subprocess, sys, time, urllib.request, urllib.error
 from pathlib import Path
 from urllib.parse import quote
 from public_stock_audit import stock_audit, write_stock_csv
@@ -21,11 +21,25 @@ SOURCES = ROOT / 'public_fabrication_projects.json'
 
 def download(repo, rev, path, output, max_size=MAX_BYTES):
     url=f'https://raw.githubusercontent.com/{repo}/{rev}/{quote(path, safe="/")}'
-    request=urllib.request.Request(url, headers={'User-Agent':UA, 'Accept':'application/octet-stream'})
-    with urllib.request.urlopen(request,timeout=75) as response:
-        content_length=int(response.headers.get('Content-Length','0'))
-        if content_length>max_size: raise ValueError(f'Oversized upstream file {content_length} bytes')
-        data=response.read(max_size+1)
+    # Retry only transient upstream failures; invalid/missing source files remain hard failures.
+    retryable_http = {429, 500, 502, 503, 504}
+    for attempt in range(4):
+        request=urllib.request.Request(url, headers={'User-Agent':UA, 'Accept':'application/octet-stream'})
+        try:
+            with urllib.request.urlopen(request,timeout=75) as response:
+                content_length=int(response.headers.get('Content-Length','0'))
+                if content_length>max_size: raise ValueError(f'Oversized upstream file {content_length} bytes')
+                data=response.read(max_size+1)
+            break
+        except urllib.error.HTTPError as exc:
+            if exc.code not in retryable_http or attempt == 3:
+                raise
+            print('RETRY_TRANSIENT_SOURCE_HTTP', exc.code, attempt+1, url, flush=True)
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            if attempt == 3:
+                raise
+            print('RETRY_TRANSIENT_SOURCE_NETWORK', type(exc).__name__, attempt+1, url, flush=True)
+        time.sleep(2 ** attempt)
     if len(data)>max_size:raise ValueError(f'Upstream exceeds {max_size} bytes')
     output.parent.mkdir(parents=True,exist_ok=True)
     output.write_bytes(data)

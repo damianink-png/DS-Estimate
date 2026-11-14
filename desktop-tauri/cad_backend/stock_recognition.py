@@ -10,9 +10,9 @@ try:
 except ImportError:
     from section_catalog import match_hint,match_open_loop
 try:
-    from .stock_patterns import orthogonal_section_kind
+    from .stock_patterns import orthogonal_section_kind, convex_polygon_section_kind, beveled_rectangle_section_kind
 except ImportError:
-    from stock_patterns import orthogonal_section_kind
+    from stock_patterns import orthogonal_section_kind, convex_polygon_section_kind, beveled_rectangle_section_kind
 
 
 def _section_edges(shape, bounds, axis, fraction):
@@ -157,7 +157,9 @@ def _classify_section(edges, tol):
         # A small offset relative to the overall profile size can be a
         # substantial fraction of the wall thickness. Require concentricity
         # relative to the measured wall, not the outside bbox.
-        wall_estimate = (min(outer['w']-inner['w'], outer['h']-inner['h']) / 2)
+        outer_sizes=sorted((outer['w'],outer['h']))
+        inner_sizes=sorted((inner['w'],inner['h']))
+        wall_estimate = min(a-b for a,b in zip(outer_sizes,inner_sizes)) / 2
         if wall_estimate <= tol:
             return None
         if math.dist(outer['center'], inner['center']) > max(tol*5, .05*wall_estimate):
@@ -174,7 +176,11 @@ def _classify_section(edges, tol):
             # Bbox and wall offsets alone incorrectly accept a rotated hole.
             if abs(math.sin(2*(outer['edgeAngleRad'] - inner['edgeAngleRad']))) > 0.02:
                 return None
-            dx,dy=(outer['w']-inner['w'])/2,(outer['h']-inner['h'])/2
+            # Each loop chooses its own edge direction. A split long inner
+            # edge can make that frame perpendicular to the outer frame.
+            perpendicular = abs(math.cos(outer['edgeAngleRad'] - inner['edgeAngleRad'])) < .5
+            iw, ih = (inner['h'], inner['w']) if perpendicular else (inner['w'], inner['h'])
+            dx,dy=(outer['w']-iw)/2,(outer['h']-ih)/2
             if min(dx,dy)<=tol or abs(dx-dy)>max(tol*5,.08*max(dx,dy)):
                 return None
             square=abs(outer['w']-outer['h'])<=.02*max(outer['w'],outer['h'])
@@ -192,7 +198,10 @@ def _classify_section(edges, tol):
     if inner is None and not any(loops[0][1]):
         # Unmodified one-loop orthogonal sections only. Rounded corners or
         # unexpected transitions stay unclassified, not catalogued by bbox.
-        return orthogonal_section_kind(loops[0][0], tol) or match_open_loop(loops[0][0],loops[0][3])
+        return (orthogonal_section_kind(loops[0][0], tol) or
+                match_open_loop(loops[0][0],loops[0][3]) or
+                beveled_rectangle_section_kind(loops[0][0], tol) or
+                convex_polygon_section_kind(loops[0][0], tol))
     return match_open_loop(loops[0][0],loops[0][3]) if inner is None else None
 
 
@@ -249,30 +258,83 @@ def _recognize_axis_stock(solid, bounds, plate_hint=None, axis_override=None):
         return a['kind']==b['kind'] and all(abs(v-b.get(k,float('inf')))<=max(tol*10,.02*max(abs(v),abs(b.get(k,0)))) for k,v in a.items() if k!='kind')
     first=max(valid,key=lambda p:sum(alike(p,q) for q in valid));support=sum(alike(first,p) for p in valid)
     expected=first['sectionAreaMm2']*length
-    measured=_measured_solid_volume(solid) if solid is not None else expected
+    if not math.isfinite(expected) or expected <= 0:
+        return {'kind':'unknown','reason':'Invalid predicted extrusion volume'}
+    # One independent OCCT volume evaluation is enough for both the raw-stock
+    # candidate and the final prism check. It is expensive on large STEP parts.
+    # Failure must be explicit, not swallowed by the orientation fallback.
+    try:
+        measured=_measured_solid_volume(solid) if solid is not None else expected
+    except Exception as exc:
+        return {'kind':'unknown','reason':'Independent volume check unavailable: '+type(exc).__name__}
+    # A chamfer running along a bar is a feature of the FINISHED section,
+    # not proof that the purchased raw section has the same missing corner.
+    # Recover only a conservative rectangular blank candidate. Keep kind
+    # UNKNOWN so no existing cutting/production cost route treats it as a
+    # certified prismatic product; the user still sees its measured core.
+    if first['kind']=='beveled-rectangle':
+        blank_kind=('flat-section' if first['widthMm']/first['heightMm']>=4
+                    else 'square-bar' if first['widthMm']/first['heightMm']<=1.02
+                    else 'rectangular-bar')
+        verified=(support==5 and abs(measured-expected)<=max(1.,expected*.02))
+        raw_blank=({'kind':blank_kind,'widthMm':first['widthMm'],
+                    'heightMm':first['heightMm'],'lengthMm':length,
+                    'sectionAreaMm2':first['blankSectionAreaMm2'],
+                    'confidence':'geometric-blank-candidate',
+                    'source':'five original B-Rep cross-sections with small corner bevels',
+                    'limitations':'Rectangular envelope, not proof of purchased blank or chamfer operation'}
+                   if verified else None)
+        return {'kind':'unknown','reason':'Finished section contains longitudinal corner bevels',
+                'finishedSectionEvidence':{**first,'supportingSections':support,
+                                           'sampledSections':5,'finishedVolumeMm3':measured,
+                                           'sectionPrismVolumeMm3':expected},
+                **({'rawStockCandidate':raw_blank} if raw_blank else {})}
     raw={**first,'lengthMm':length,'confidence':'raw-stock-candidate','supportingSections':support,
          'sampledSections':5,'removedVolumeMm3':max(0,expected-measured),'source':'repeated B-Rep sections, finished part contains stock removal'} if support>=3 and 0<measured<expected*1.02 else None
+    # A long, locally oriented SHEET may resemble a flat bar in repeated
+    # cross-sections. When the original major planar B-Rep faces independently
+    # prove sheet thickness and the solid has volume REMOVED from that flat
+    # rectangular envelope, keep the sheet candidate instead of losing it.
+    # This is geometry only: stock sourcing, bevels and operations are unknown.
+    # Added volume (Portal Frame end features) cannot pass this safeguard.
+    measured_plate=(isinstance(plate_hint,dict)
+                    and plate_hint.get('kind')=='plate-outline'
+                    and type(plate_hint.get('thicknessMm')) in (int,float)
+                    and math.isfinite(plate_hint['thicknessMm'])
+                    and abs(plate_hint['thicknessMm']-other[0])
+                        <= max(.02,.01*other[0]))
+    if (support==5 and first['kind']=='flat-section' and raw is not None
+            and measured < expected-max(1.,expected*.02)
+            and measured_plate and other[1]/other[0]>=5-1e-5):
+        return {'kind':'plate-candidate','thicknessMm':other[0],
+                'widthMm':other[1],'lengthMm':length,
+                'confidence':'candidate','rawStockCandidate':raw,
+                'source':'original B-Rep major planar faces and five local flat sections',
+                'limitations':'Plate/flat-bar sourcing and removed material/edge treatment require BOM or drawing; no process or cut-time inference'}
+    # A verified central section may describe a core, NOT a whole purchasable
+    # stock: added end blocks, fittings and bosses can make the solid volume
+    # exceed section area times span. Keep the geometric evidence separately.
+    # Never feed this field into the cutting or CNC stock calculators.
+    core=({**first,'lengthMm':length,'confidence':'geometric-core-only',
+           'supportingSections':support,'sampledSections':5,
+           'sectionPrismVolumeMm3':expected,'finishedVolumeMm3':measured,
+           'source':'five measured B-Rep cross-sections; larger finished volume forbids a stock inference'}
+          if support==5 and measured>expected*1.02 else None)
     if support<5:
         return {'kind':'unknown','reason':'Section changes along finished part',**({'rawStockCandidate':raw} if raw else {})}
     # Cross-sections can all match while a pocket or notch exists between
     # sampling planes. Compare independent B-Rep volume against the prism
     # implied by the measured section and its full bounding length.
-    if solid is not None:
-        try:
-            measured_volume = _measured_solid_volume(solid)
-        except Exception as exc:
-            return {'kind':'unknown','reason':'Independent volume check unavailable: '+type(exc).__name__}
-        expected_volume = first['sectionAreaMm2'] * length
-        if not math.isfinite(expected_volume) or expected_volume <= 0:
-            return {'kind':'unknown','reason':'Invalid predicted extrusion volume'}
-        if abs(measured_volume-expected_volume) > max(1.0, expected_volume*.02):
-            return {'kind':'unknown','reason':'3-D volume inconsistent with constant stock section (possible pocket, notch or end machining)',**({'rawStockCandidate':raw} if raw else {})}
+    if abs(measured-expected) > max(1.0, expected*.02):
+        return {'kind':'unknown','reason':'3-D volume inconsistent with constant stock section (possible pocket, notch or end machining)',
+                **({'rawStockCandidate':raw} if raw else {}),
+                **({'coreSectionCandidate':core} if core else {})}
     return {**first,'lengthMm':length,'confidence':'cross-section-consistent',
             'source':'OCCT sections at 10/25/50/75/90% length',
             'limitations':'Cannot determine material grade, nominal standard, plate vs flat-bar procurement or end-cut stock length'}
 
 
-def _short_profile(shape,bounds,axis):
+def _short_profile(shape,bounds,axis,face_count_cache=None):
     if shape is None or not hasattr(shape,'ShapeType'):return None
     dims=[bounds[i+3]-bounds[i] for i in range(3)];cross=sorted((dims[i] for i in range(3) if i!=axis),reverse=True)
     if dims[axis]/cross[0]>=3.5:return None
@@ -282,7 +344,19 @@ def _short_profile(shape,bounds,axis):
         # A cheap complexity limit avoids sectioning arbitrary vendor hardware.
         try:from . import cad_measure as api
         except ImportError:import cad_measure as api
-        if sum(1 for _ in api.shapes(shape,api.TopAbs_FACE))>32:return None
+        # A short-part probe may try all three world axes. Enumerating every
+        # OCCT face for each axis is expensive on large STEP assemblies.
+        # Cache only within this solid's recognition call (never across parts).
+        # The only decision is <=32 versus >32 faces; stop after the 33rd
+        # rather than traversing every face of a complex imported part.
+        if face_count_cache is None:
+            face_count=sum(1 for _, face in zip(range(33), api.shapes(shape,api.TopAbs_FACE)))
+        elif face_count_cache:
+            face_count=face_count_cache[0]
+        else:
+            face_count=sum(1 for _, face in zip(range(33), api.shapes(shape,api.TopAbs_FACE)))
+            face_count_cache.append(face_count)
+        if face_count>32:return None
         edges=_section_edges(shape,bounds,axis,.5)
         mid=_classify_section(edges,max(.002,min(cross[1]*.0001,.02))) if edges else None
         if not mid or mid.get('kind') not in ('square-hollow','rectangular-hollow','round-tube'):return None
@@ -296,8 +370,9 @@ def recognize_stock(solid, bounds, plate_hint=None):
     """Try the existing world frame, then a frame aligned with the longest straight edge."""
     result=_recognize_axis_stock(solid,bounds,plate_hint)
     if result.get('kind')=='unknown' and solid is not None:
+        face_count_cache=[]
         for axis in range(3):
-            short=_short_profile(solid,bounds,axis)
+            short=_short_profile(solid,bounds,axis,face_count_cache)
             if short:result=short;break
     if result.get('kind') in ('unknown','plate-candidate') and solid is not None:
         try:
@@ -307,46 +382,150 @@ def recognize_stock(solid, bounds, plate_hint=None):
             BRepAdaptor_Curve=api.BRepAdaptor_Curve;GeomAbs_Line=api.GeomAbs_Line
             gp_Trsf=api.gp_Trsf;gp_Ax3=api.gp_Ax3;gp_Pnt=api.gp_Pnt;gp_Dir=api.gp_Dir
             BRepBuilderAPI_Transform=api.BRepBuilderAPI_Transform;Bnd_Box=api.Bnd_Box
-            edges=TopExp_Explorer(solid,TopAbs_EDGE);best=None;directions=[]
+            edges=TopExp_Explorer(solid,TopAbs_EDGE)
+            edge_axes=[];cylinder_axes=[];plane_axes=[]
             while edges.More():
                 curve=BRepAdaptor_Curve(api.edge_cast(edges.Current()))
                 if curve.GetType()==GeomAbs_Line:
-                    a=curve.Value(curve.FirstParameter());b=curve.Value(curve.LastParameter());length=a.Distance(b)
-                    if best is None or length>best[0]:best=(length,a,b)
-                    if length>1e-6:directions.append((length,gp_Dir(b.X()-a.X(),b.Y()-a.Y(),b.Z()-a.Z())))
+                    a=curve.Value(curve.FirstParameter());b=curve.Value(curve.LastParameter())
+                    length=a.Distance(b)
+                    if length>1e-6:
+                        edge_axes.append((length,gp_Dir(b.X()-a.X(),b.Y()-a.Y(),b.Z()-a.Z())))
                 edges.Next()
-            # Try independent edge axes and cylindrical axes. The longest edge
-            # can belong to a bevel or flange rather than the extrusion axis.
+            # A long tube tilted by even 1 degree produces ellipses in a world
+            # section. Prefer the actual cylindrical-face axis, not just the
+            # longest edge (which may be part of a welded end plate).
             for raw in api.shapes(solid,api.TopAbs_FACE):
                 surface=api.BRepAdaptor_Surface(api.face_cast(raw))
                 if surface.GetType()==api.GeomAbs_Cylinder:
-                    directions.append((max((v[0] for v in directions),default=1),surface.Cylinder().Axis().Direction()))
+                    cylinder_axes.append((surface.Cylinder().Radius(),
+                                          surface.Cylinder().Axis().Direction()))
                 elif surface.GetType()==api.GeomAbs_Plane:
-                    directions.append((0,surface.Plane().Axis().Direction()))
+                    plane_axes.append((0,surface.Plane().Axis().Direction()))
+            # Only the first eight unique candidate axes are ever tested.
+            # Stop deduplication as soon as the budget is filled: on a complex
+            # imported part, scanning hundreds of extra edges/planes performs
+            # unnecessary OCCT direction comparisons without affecting output.
+            sorted_edges=sorted(edge_axes,key=lambda item:-item[0])
+            ordered=(sorted(cylinder_axes,key=lambda item:-item[0])+
+                     sorted_edges+plane_axes)
             axes=[]
-            for length,d in sorted(directions,key=lambda item:-item[0]):
-                if not any(abs(d.Dot(old))>.99999 for old in axes):axes.append(d)
+            for _,d in ordered:
+                if not any(abs(d.Dot(old))>.99999 for old in axes):
+                    axes.append(d)
+                    if len(axes)==8:break
             best_local=None
-            for direction in axes[:8]:
-                cross=next((d for _,d in sorted(directions,key=lambda item:-item[0]) if abs(d.Dot(direction))<.001),None)
-                frame=gp_Ax3(gp_Pnt(0,0,0),direction,cross) if cross is not None else gp_Ax3(gp_Pnt(0,0,0),direction)
-                tr=gp_Trsf();tr.SetTransformation(frame)
-                local=BRepBuilderAPI_Transform(solid,tr,True).Shape();box=Bnd_Box();api.add_bounds(local,box)
-                local_hint=api.plate_hint(local)
-                candidate=_recognize_axis_stock(local,box.Get(),local_hint)
-                if candidate.get('kind')=='unknown':candidate=_short_profile(local,box.Get(),2) or candidate
-                local_dims=sorted((b-a for a,b in zip(box.Get()[:3],box.Get()[3:])),reverse=True)
-                if best_local is None or math.prod(local_dims)<math.prod(best_local):best_local=local_dims
-                if candidate.get('kind')!='unknown':
-                    result={**candidate,'localFrame':'B-Rep edge/face axis','localDimsMm':local_dims}
-                    if local_hint:result['localCuttingHint']=local_hint
-                    break
-                if candidate.get('rawStockCandidate'):
-                    result={**result,'rawStockCandidate':{**candidate['rawStockCandidate'],'localDimsMm':local_dims}}
-                if local_hint:result={**result,'localCuttingHint':local_hint}
+            for direction in axes:
+                try:
+                    # gp_Ax3 requires a truly perpendicular X direction, not
+                    # merely abs(dot)<.001. Project the reference edge into
+                    # the cutting plane to prevent an OCC constructor error.
+                    cross=next((d for _,d in sorted_edges
+                                if abs(d.Dot(direction))<.95),None)
+                    if cross is None:
+                        frame=gp_Ax3(gp_Pnt(0,0,0),direction)
+                    else:
+                        dot=cross.Dot(direction)
+                        x=(cross.X()-dot*direction.X(),
+                           cross.Y()-dot*direction.Y(),
+                           cross.Z()-dot*direction.Z())
+                        frame=gp_Ax3(gp_Pnt(0,0,0),direction,gp_Dir(*x))
+                    tr=gp_Trsf();tr.SetTransformation(frame)
+                    local=BRepBuilderAPI_Transform(solid,tr,True).Shape()
+                    box=Bnd_Box();api.add_bounds(local,box)
+                    local_hint=api.plate_hint(local)
+                    candidate=_recognize_axis_stock(local,box.Get(),local_hint)
+                    if candidate.get('kind')=='unknown':
+                        candidate=_short_profile(local,box.Get(),2) or candidate
+                    local_dims=sorted((b-a for a,b in zip(box.Get()[:3],box.Get()[3:])),reverse=True)
+                    if best_local is None or math.prod(local_dims)<math.prod(best_local):
+                        best_local=local_dims
+                    if candidate.get('kind')!='unknown':
+                        result={**candidate,'localFrame':'B-Rep edge/face axis','localDimsMm':local_dims}
+                        if local_hint:result['localCuttingHint']=local_hint
+                        break
+                    if candidate.get('rawStockCandidate'):
+                        result={**result,'rawStockCandidate':{**candidate['rawStockCandidate'],
+                                                               'localDimsMm':local_dims}}
+                    if candidate.get('coreSectionCandidate'):
+                        result={**result,'coreSectionCandidate':{**candidate['coreSectionCandidate'],
+                                                                  'localDimsMm':local_dims,
+                                                                  'axisEvidence':'B-Rep cylinder/edge axis'}}
+                    if local_hint:result={**result,'localCuttingHint':local_hint}
+                except Exception:
+                    # One malformed edge/reference frame must not disable all
+                    # other axis proposals for this solid.
+                    continue
             if best_local and 'localDimsMm' not in result:result['localDimsMm']=best_local
         except Exception:
             pass # An unsupported orientation stays unknown; never a bbox-only match.
+    # Capture coaxiality from axis LOCATIONS, not just their directions.
+    try:
+        from .rotational_features import coaxial_face_groups
+    except ImportError:
+        from rotational_features import coaxial_face_groups
+    # Diagnostic evidence measured on the ORIGINAL imported B-Rep, never on
+    # a bounding-box proxy. It is deliberately not used for stock/cost decisions.
+    # Expose only unresolved solids to keep the STEP inventory reasonably small.
+    if result.get('kind') == 'unknown' and solid is not None:
+        try:
+            try:from . import cad_measure as api
+            except ImportError:import cad_measure as api
+            cylinders=[]
+            cones=[]
+            planes=[]
+            plane_face_count=0
+            other_face_count=0
+            for raw_face in api.shapes(solid, api.TopAbs_FACE):
+                surface=api.BRepAdaptor_Surface(api.face_cast(raw_face))
+                kind=surface.GetType()
+                if kind == api.GeomAbs_Plane:
+                    plane_face_count+=1
+                    # Only the first 64 plane measurements are ever exported.
+                    # On large vendor assemblies, GProp surface integration for
+                    # every additional face was wasted CPU and memory.
+                    if len(planes)>=64:
+                        continue
+                    plane=surface.Plane()
+                    direction=plane.Axis().Direction()
+                    origin=plane.Location()
+                    normal=tuple(float(v) for v in direction.Coord())
+                    # The signed plane offset is orientation-dependent. Together
+                    # with face area it permits future parallel-face/thickness
+                    # audits without mistaking a small bevel for a plate face.
+                    props=api.GProp_GProps()
+                    api.surface_props(api.face_cast(raw_face), props)
+                    face_area=abs(float(props.Mass()))
+                    offset=sum(normal[i]*float(origin.Coord()[i]) for i in range(3))
+                    if math.isfinite(face_area) and math.isfinite(offset):
+                        planes.append({'normal':[round(v,8) for v in normal],
+                                       'areaMm2':round(face_area,6),
+                                       'signedOffsetMm':round(offset,6)})
+                elif kind == api.GeomAbs_Cylinder:
+                    cyl=surface.Cylinder()
+                    direction=cyl.Axis().Direction()
+                    cylinders.append({'radiusMm':round(float(cyl.Radius()),6),
+                                      'axis':[round(float(v),8) for v in direction.Coord()],
+                                      'axisPointMm':[round(float(v),6) for v in cyl.Axis().Location().Coord()]})
+                elif kind == api.GeomAbs_Cone:
+                    cone=surface.Cone()
+                    direction=cone.Axis().Direction()
+                    cones.append({'referenceRadiusMm':round(float(cone.RefRadius()),6),
+                                  'semiAngleRad':round(float(cone.SemiAngle()),8),
+                                  'axis':[round(float(v),8) for v in direction.Coord()],
+                                  'axisPointMm':[round(float(v),6) for v in cone.Axis().Location().Coord()]})
+                else:
+                    other_face_count+=1
+            if cylinders or cones or planes:
+                result['finishedBrepSurfaceEvidence']={
+                    'source':'original STEP B-Rep face adaptors',
+                    'cylinders':cylinders[:64], 'cones':cones[:64], 'planes':planes[:64],
+                    'cylinderFaceCount':len(cylinders), 'coneFaceCount':len(cones),
+                    'planeFaceCount':plane_face_count, 'otherFaceCount':other_face_count,
+                    'coaxialSurfaceGroups':coaxial_face_groups(cylinders,cones),
+                    'limitations':'Position-verified surface axes/radii describe finished geometry, not purchased stock or operations'}
+        except Exception:
+            pass  # Missing diagnostic evidence must never certify a stock or cost.
     if result.get('kind')!='unknown':
         candidates=match_hint(result)
         result={**result,'catalogCandidates':candidates,'catalogStatus':'unique-fit' if len(candidates)==1 else 'multiple-fits' if candidates else 'no-catalog-fit'}
@@ -354,4 +533,13 @@ def recognize_stock(solid, bounds, plate_hint=None):
     if result.get('rawStockCandidate'):
         raw=result['rawStockCandidate'];candidates=match_hint(raw);raw['catalogCandidates']=candidates
         if len(candidates)==1:raw['catalogDesignation']=candidates[0]['name']
+    if result.get('kind') in ('unknown','polygon-bar') and solid is not None and hasattr(solid,'ShapeType'):
+        try:
+            try:from .blank_candidates import envelope_candidate
+            except ImportError:from blank_candidates import envelope_candidate
+            dimensions=result.get('localDimsMm') or [bounds[i+3]-bounds[i] for i in range(3)]
+            blank=envelope_candidate(dimensions,_measured_solid_volume(solid))
+            if blank:result['blankAlternatives']=[blank]
+        except Exception:
+            pass
     return result

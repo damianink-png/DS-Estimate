@@ -444,8 +444,6 @@ def inventory(path, density=7850.0):
         stage_start=time.perf_counter()
         if existing in manufacturing_cache:
             cut_hint,stock_hint,features=copy.deepcopy(manufacturing_cache[existing])
-        elif re.search(r'\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack(?:[\s_-]|$)|^electrical[ _-]enclosure(?:[\s:_-]|$)|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b',occurrence.get('name',''),re.I):
-            cut_hint=None;stock_hint={'kind':'purchased-component','source':'standard component name; routing can be overridden'};features={'bendHint':None}
         else:
             if profile:print('[DS-CAD-DETAIL] '+json.dumps({'solid':len(solids)+1,'name':occurrence.get('name',''),'stage':'manufacturing'}),file=sys.stderr,flush=True)
             cut_hint = planar_plate_cutting_hint(solid, dims)
@@ -469,7 +467,64 @@ def inventory(path, density=7850.0):
                                   'contourMm':sheet['estimatedContourMm'],'pierces':1,
                                   'source':sheet['source'],'estimated':True}
             except Exception:pass
+
+        # Independent standard-part detection reads the ORIGINAL B-Rep and
+        # reuses the already measured volume. It never changes stockHint,
+        # cuttingHint, rates, costs, or the source occurrence's geometry.
+        # Cache only after this step so identical verified shapes share results.
+        if existing not in manufacturing_cache:
+            try:
+                try:from .normalia_recognition import recognize_normalia
+                except ImportError:from normalia_recognition import recognize_normalia
+                normalia=recognize_normalia(solid,volume_mm3=volume)
+                if normalia:features['normaliaHint']=normalia
+            except Exception:
+                pass # Normalia is optional evidence, not an import gate.
+            # Stage 1: independent edge-adjacency evidence for as-yet unknown
+            # finished shapes. Analyze each VERIFIED geometry only once, not
+            # every occurrence. Never alter stock, cut time or supplier route.
+            if stock_hint.get('kind')=='unknown':
+                try:
+                    try:from .feature_graph import analyze_face_graph
+                    except ImportError:from feature_graph import analyze_face_graph
+                    features['faceGraphEvidence']=analyze_face_graph(solid)
+                except Exception as graph_error:
+                    features['faceGraphEvidence']={
+                        'status':'unavailable',
+                        'reason':type(graph_error).__name__,
+                        'limitations':'No manufacturing or purchasing inference'}
+            # Stage 2: recognize a finished BODY family from existing
+            # physically measured surfaces, without another expensive
+            # B-Rep traversal or manufacturing/purchasing inference.
+            if stock_hint.get('kind')=='unknown':
+                try:
+                    try:from .finished_part_recognition import recognize_finished_geometry
+                    except ImportError:from finished_part_recognition import recognize_finished_geometry
+                    features['finishedGeometryHint']=recognize_finished_geometry(
+                        stock_hint,volume,features.get('faceGraphEvidence'))
+                except Exception as family_error:
+                    features['finishedGeometryHint']={
+                        'status':'unknown','reason':type(family_error).__name__,
+                        'limitations':'Original stock, cost and production route unchanged'}
             manufacturing_cache[existing]=copy.deepcopy((cut_hint,stock_hint,features))
+        # Enrich EACH XCAF occurrence with its own semantic evidence AFTER
+        # copying/storing geometry results. Even when geometrically identical,
+        # parts can have different names: never leak one name into the cache.
+        try:
+            try:
+                from .part_name_evidence import parse_part_name, compare_name_to_geometry
+            except ImportError:
+                from part_name_evidence import parse_part_name, compare_name_to_geometry
+            label_evidence=parse_part_name(
+                occurrence.get('name'),occurrence.get('nameSource','missing'))
+            if label_evidence:
+                features['nameEvidence']=label_evidence
+                if isinstance(features.get('normaliaHint'),dict):
+                    comparison=compare_name_to_geometry(label_evidence,features['normaliaHint'])
+                    if comparison:
+                        features['normaliaHint']['nameCorroboration']=comparison
+        except Exception:
+            pass  # Names must never break CAD import or a measured cost.
         cutting_hint_seconds+=time.perf_counter()-stage_start
         preview_key=f'shared-tshape-{existing}'
         if preview_key not in previews:

@@ -1,6 +1,20 @@
 name: DS Estimate public steel frames vs manual estimates
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/public-steel-fabrication.yml'
+      - 'desktop-tauri/src/lib/cutting-audit.mjs'
+      - 'desktop-tauri/src/lib/automatic-cutting.mjs'
+      - 'desktop-tauri/src/lib/parts.mjs'
+      - 'desktop-tauri/src/lib/cutting-plan.mjs'
+      - 'desktop-tauri/src/lib/cutting-batch.mjs'
+      - 'desktop-tauri/tests/cutting-audit.test.mjs'
+      - 'desktop-tauri/tests/public_cutting_occurrence_audit.mjs'
+      - 'desktop-tauri/cad_backend/**'
+      - 'desktop-tauri/tests/test_stock_patterns.py'
+      - 'desktop-tauri/tests/public_stock_axis_regression.py'
   push:
     branches: [main]
     paths:
@@ -9,6 +23,10 @@ on:
       - 'desktop-tauri/tests/public_fabrication_benchmark.py'
       - 'desktop-tauri/tests/public_fabrication_compare.mjs'
       - 'desktop-tauri/tests/public_fabrication_geometry_audit.py'
+      - 'desktop-tauri/src/lib/cutting-audit.mjs'
+      - 'desktop-tauri/src/lib/automatic-cutting.mjs'
+      - 'desktop-tauri/src/lib/parts.mjs'
+      - 'desktop-tauri/tests/public_cutting_occurrence_audit.mjs'
       - 'desktop-tauri/src/lib/cutting-plan.mjs'
       - 'desktop-tauri/src/lib/geometry.mjs'
       - 'desktop-tauri/tests/geometry.test.mjs'
@@ -21,6 +39,8 @@ on:
       - 'desktop-tauri/cad_backend/step_inventory.py'
       - 'desktop-tauri/cad_backend/section_catalog.py'
       - 'desktop-tauri/cad_backend/stock_recognition.py'
+      - 'desktop-tauri/cad_backend/stock_patterns.py'
+      - 'desktop-tauri/tests/public_stock_axis_regression.py'
       - 'desktop-tauri/src/lib/data/steel-sections.json'
       - 'desktop-tauri/licenses/steel-section-database-MIT.txt'
       - 'desktop-tauri/tests/manufacturing_geometry_test.py'
@@ -57,6 +77,12 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Existing quote and cutting regression tests
         run: npm test
+      - name: Test nominal normalia library and safeguards
+        run: python tests/test_normalia_catalog.py
+      - name: Test STEP XCAF semantic names, not purchasing routes
+        run: |
+          python tests/test_part_name_evidence.py
+          python tests/test_finished_part_recognition.py
       - name: Guard STEP inventory runtime budget declarations
         run: python tests/test_inventory_source_integrity.py
       - name: Guard partial profiling and failure timing
@@ -65,7 +91,6 @@ jobs:
         run: python tests/test_shape_index.py
       - uses: conda-incubator/setup-miniconda@v3
         with:
-          miniforge-version: latest
           activate-environment: ds-cad
           python-version: '3.11'
           channels: conda-forge
@@ -105,6 +130,16 @@ jobs:
           $env:DS_CAD_PROFILE = '1'
           python tests/public_fabrication_benchmark.py --engine src-tauri/cad-backend/ds-cad-engine.exe --out public_fabrication_output --timeout 240
           if ($LASTEXITCODE -ne 0) { throw 'Real public STEP benchmark gate failed: all three active genuine CAD models must import successfully' }
+      - name: Round-trip real STEP XCAF with meaningful part names through compiled engine
+        shell: pwsh
+        run: |
+          conda run -n ds-cad python tests/named_step_roundtrip.py --engine src-tauri/cad-backend/ds-cad-engine.exe --out public_fabrication_output/named_step
+          if ($LASTEXITCODE -ne 0) { throw 'Named STEP XCAF roundtrip failed: investigate original product labels, CAD/name corroboration and geometry' }
+      - name: Confirm correct local tube axis on the unchanged Earthpress STEP
+        shell: pwsh
+        run: |
+          python tests/public_stock_axis_regression.py public_fabrication_output
+          if ($LASTEXITCODE -ne 0) { throw 'Earthpress oblique-section geometric-core regression' }
       - name: Run DS Estimate automatic cutting-time planner and compare independent manual time ranges
         if: always()
         shell: pwsh
@@ -114,6 +149,16 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'DS Estimate public reference comparison failed' }
           } else {
             Write-Host 'No result JSON: previous setup failed. Check the logged reason.'
+          }
+      - name: Audit every public STEP body with production desktop cutting planner
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path public_fabrication_output/public_cases.json) {
+            node tests/public_cutting_occurrence_audit.mjs public_fabrication_output
+            if ($LASTEXITCODE -ne 0) { throw 'Per-occurrence cutting audit did not cover every imported STEP body' }
+          } else {
+            throw 'Missing public STEP inventory: per-occurrence audit cannot run'
           }
       - name: Independent StepGen mass and EarthPress grouped-occurrence Boolean audit
         shell: pwsh

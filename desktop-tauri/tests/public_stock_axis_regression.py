@@ -1,0 +1,558 @@
+"""Compiled-CAD evidence from ORIGINAL public STEP: axis, not a projection guess.
+
+Do not confuse a measured cylindrical core with a purchasable raw stock tube.
+The complete solid has extra end geometry; neither saw time nor raw mass may
+be inferred solely from the 40/34 mm coaxial section.
+"""
+import json
+import math
+import sys
+from pathlib import Path
+
+
+def check(root):
+    source = Path(root) / "earthpress" / "ds_estimate_inventory.json"
+    inventory = json.loads(source.read_text(encoding="utf-8"))
+    solids = inventory["solids"]
+    assert len(solids) == 251, "Earthpress STEP solids lost"
+    # The ORIGINAL three public STEP files contain only exporter-generated
+    # names. Parsing these as real engineering parts would be a false positive.
+    # BOM names are NOT joined to solids by row order or coincident volume.
+    generic_counts={}
+    for key in ("earthpress","portal-frame","stepgen-frame"):
+        path=Path(root)/key/"ds_estimate_inventory.json"
+        rows=json.loads(path.read_text(encoding="utf-8"))["solids"]
+        assert not any("nameEvidence" in row for row in rows), (
+            f"{key}: generic STEP exporter labels became false semantic evidence")
+        generic_counts[key]=len(rows)
+    assert generic_counts=={"earthpress":251,"portal-frame":15,"stepgen-frame":1}
+    print("PUBLIC_GENERIC_XCAF_NAMES_IGNORED_PASS",json.dumps({
+        "models":generic_counts,"nameOnlyClassifications":0,
+        "bomMappingByRowOrder":False,"automaticPurchaseFromNames":False}))
+
+    for number in (10, 11):
+        s = solids[number - 1]
+        hint = s.get("stockHint") or {}
+        core = hint.get("coreSectionCandidate") or {}
+        assert hint.get("kind") == "unknown", (
+            f"Earthpress {number}: finished part must not become ready-made raw stock")
+        assert not hint.get("rawStockCandidate"), (
+            f"Earthpress {number}: detected extra volume is not material removal")
+        assert core.get("kind") == "round-tube", (
+            f"Earthpress {number}: oblique 40/34 tube axis not recovered: {hint}")
+        assert core.get("confidence") == "geometric-core-only", (
+            f"Earthpress {number}: unsupported procurement confidence")
+        assert math.isclose(core["diameterMm"], 40, abs_tol=.02)
+        assert math.isclose(core["wallMm"], 3, abs_tol=.02)
+        assert core.get("supportingSections") == 5
+        assert core["finishedVolumeMm3"] > core["sectionPrismVolumeMm3"] * 1.02
+        assert core.get("axisEvidence") == "B-Rep cylinder/edge axis"
+        surfaces = hint.get("finishedBrepSurfaceEvidence") or {}
+        assert surfaces.get("source") == "original STEP B-Rep face adaptors", (
+            f"Earthpress {number}: no original-face surface evidence")
+        assert surfaces.get("cylinderFaceCount", 0) >= 2, (
+            f"Earthpress {number}: missing measured inner/outer cylinders")
+        radii = [face["radiusMm"] for face in surfaces["cylinders"]]
+        assert any(math.isclose(r, 20, abs_tol=.02) for r in radii)
+        assert any(math.isclose(r, 17, abs_tol=.02) for r in radii)
+        assert all(len(face["axis"]) == 3 for face in surfaces["cylinders"])
+        # Both measured cylinders on an oblique Earthpress tube must share
+        # a physical 3-D axis, not merely a direction. Still UNKNOWN stock.
+        groups=surfaces.get("coaxialSurfaceGroups") or []
+        assert any(group.get("cylinderFaceCount",0)>=2
+                   and math.isclose(group["cylinderRadiiMm"][0],17,abs_tol=.02)
+                   and math.isclose(group["cylinderRadiiMm"][-1],20,abs_tol=.02)
+                   for group in groups), (
+            f"Earthpress {number}: missing position-verified 40/34 mm axis")
+        for face in surfaces["cylinders"]:
+            assert len(face.get("axisPointMm",[]))==3, (
+                f"Earthpress {number}: original STEP cylinder axis point lost")
+        print("PUBLIC_ORIGINAL_BREP_CYLINDER_PASS", json.dumps({
+            "solid": number, "radiiMm": radii, "axes": [f["axis"] for f in surfaces["cylinders"]]}))
+        print("PUBLIC_STOCK_AXIS_PASS", json.dumps({
+            "solid": number, "finishVolumeMm3": round(s["volumeMm3"], 2),
+            "coreSection": "round-tube", "diameterMm": core["diameterMm"],
+            "wallMm": core["wallMm"],
+            "blankClassification": hint["kind"],
+            "cutTimeCertified": False
+        }))
+
+    # Six genuine rounded-corner SHS members are currently rejected by the
+    # audit's sharp-corner area formula. Record exact original STEP evidence;
+    # do not weaken the global 2% geometric tolerance to mask this.
+    shs = []
+    for number in range(1, 7):
+        solid = solids[number - 1]
+        hint = solid.get("stockHint") or {}
+        shs.append({
+            "solid": number,
+            "status": hint.get("kind"),
+            "section": hint.get("section") or hint.get("coreSectionCandidate"),
+            "reason": hint.get("reason"),
+        })
+    print("PUBLIC_ROUNDED_SHS_EVIDENCE", json.dumps(shs, ensure_ascii=False))
+    assert len(shs) == 6
+    # Independent strict numerical evidence from the ORIGINAL STEP.
+    # Never increase the generic 2% tolerance to hide rounded corners.
+    for number in range(1, 7):
+        hint = solids[number - 1].get("stockHint") or {}
+        assert hint.get("kind") == "square-hollow", (
+            f"Earthpress {number}: SHS detection regressed")
+        assert hint.get("confidence") == "cross-section-consistent"
+        width, height, wall = hint["widthMm"], hint["heightMm"], hint["wallMm"]
+        measured = hint["sectionAreaMm2"]
+        assert math.isclose(width, height, abs_tol=0.02)
+        assert math.isclose(wall, 3, abs_tol=0.02)
+        assert any(math.isclose(width, w, abs_tol=0.02) for w in (50, 60))
+        sharp = width * height - (width - 2 * wall) * (height - 2 * wall)
+        difference = (sharp - measured) / sharp
+        assert 0.03 < difference < 0.05, (
+            f"Earthpress {number}: B-Rep rounded area changed: "
+            f"measured={measured}, sharp={sharp}")
+        assert not hint.get("rawStockCandidate"), (
+            f"Earthpress {number}: measured section cannot certify procurement")
+        print("PUBLIC_ROUNDED_SHS_AREA_PASS", json.dumps({
+            "solid": number, "widthMm": width, "wallMm": wall,
+            "measuredAreaMm2": measured, "sharpCornerAreaMm2": sharp,
+            "relativeDifferencePct": round(difference * 100, 3),
+            "procurementCertified": False
+        }))
+
+    # Verify the AUDIT outcome on the same compiled original STEP inventory,
+    # not merely the raw engine hints. Rounded corners must not be treated as
+    # malformed, nor may a geometry-only result certify purchasable stock.
+    from public_stock_audit import stock_audit
+    audited = stock_audit(inventory)
+    # Earthpress 12/13: real ORIGINAL STEP proves a thin plate along its
+    # measured local frame. Five flat sections plus end removal must not
+    # demote it to an invalid unquoted bar. No saw/milling assumption.
+    for number in (12,13):
+        hint=solids[number-1].get('stockHint') or {}
+        row=audited['rows'][number-1]
+        assert hint.get('kind')=='plate-candidate', (
+            f'Earthpress {number}: elongated finished plate lost after face evidence')
+        assert hint.get('confidence')=='candidate'
+        assert row['status']=='CANDIDATE', (
+            f'Earthpress {number}: malformed plate hint after local frame recovery: {row}')
+        assert math.isclose(hint['thicknessMm'],10,abs_tol=.02)
+        assert math.isclose(hint['widthMm'],60,abs_tol=.02)
+        assert math.isclose(hint['lengthMm'],565.0857866,abs_tol=.03)
+        assert (hint.get('rawStockCandidate') or {}).get('kind')=='flat-section'
+        assert hint['rawStockCandidate']['removedVolumeMm3']>0
+        assert 'cutTimeH' not in hint
+    print('PUBLIC_END_TRIMMED_PLATE_PASS: Earthpress 12/13 remain plate candidates in measured local frame; no machining quote')
+
+    for number in range(1, 7):
+        row = audited["rows"][number - 1]
+        assert row["status"] == "UNVERIFIED", (
+            f"Earthpress {number}: rounded SHS audit status {row['status']}")
+        assert row["kind"] == "square-hollow"
+        assert "rounded corners" in row["reason"]
+        assert math.isclose(row["sectionAreaMm2"],
+                            solids[number - 1]["stockHint"]["sectionAreaMm2"],
+                            abs_tol=1e-6)
+    assert audited["statusCounts"].get("GEOMETRY_ONLY", 0) <= 84, (
+        "Unverified rounded sections must not increase certified geometry")
+    print("PUBLIC_ROUNDED_SHS_AUDIT_PASS: six original SHS remain UNVERIFIED, not INVALID or certified")
+
+    # Independent occurrence-to-occurrence consistency on original rounded SHS:
+    # the same physical section measured at different assembly placements must
+    # retain its area. This is not a sharp-corner formula or procurement proof.
+    shs_areas = {}
+    for number in range(1, 7):
+        hint = solids[number - 1]["stockHint"]
+        width = round(hint["widthMm"])
+        shs_areas.setdefault(width, []).append(hint["sectionAreaMm2"])
+    assert set(shs_areas) == {50, 60}
+    assert len(shs_areas[50]) == 4 and len(shs_areas[60]) == 2
+    for width, areas in shs_areas.items():
+        assert max(areas) - min(areas) < 1e-5, (
+            f"Earthpress SHS {width}: identical section areas disagree across placements")
+    print("PUBLIC_ROUNDED_SHS_REPEATABILITY_PASS", json.dumps({
+        "sections": {str(k): {"occurrences": len(v), "measuredAreaMm2": round(v[0], 6)}
+                     for k, v in sorted(shs_areas.items())},
+        "toleranceRelaxed": False, "procurementCertified": False
+    }))
+
+    # Repeatable geometric identity is not manufacturing evidence. Check the
+    # original compiled STEP occurrence keys for the unresolved fastener-like
+    # solids, without inferring purchase stock, saw time, or milling time.
+    fastener_occurrences = (88, 89, 90, 91, 92, 93, 99, 106, 109, 122, 125, 131, 135, 141)
+    unresolved = []
+    for number in fastener_occurrences:
+        solid = solids[number - 1]
+        hint = solid.get("stockHint") or {}
+        assert math.isfinite(solid["volumeMm3"]) and solid["volumeMm3"] > 0, (
+            f"Earthpress {number}: invalid B-Rep volume")
+        assert hint.get("kind") == "unknown", (
+            f"Earthpress {number}: unexpected stock classification requires review")
+        assert not hint.get("rawStockCandidate"), (
+            f"Earthpress {number}: unproven purchasable blank")
+        # The independent diagnostic must preserve unresolved status for each
+        # original STEP occurrence, not silently promote rotational features
+        # to a stock type merely because a cylindrical surface was detected.
+        audit_row = audited["rows"][number - 1]
+        assert audit_row["status"] == "UNKNOWN", (
+            f"Earthpress {number}: fastener geometry incorrectly certified: {audit_row}")
+        assert audit_row["kind"] == "unknown", (
+            f"Earthpress {number}: unsupported procurement geometry")
+        assert audit_row["verifiedShapeKey"] == solid.get("verifiedShapeKey", ""), (
+            f"Earthpress {number}: occurrence geometry key lost in audit")
+        unresolved.append({"solid": number, "volumeMm3": round(solid["volumeMm3"], 4),
+                           "shapeKey": solid.get("verifiedShapeKey", ""),
+                           "stock": "unknown"})
+    print("PUBLIC_FASTENER_GEOMETRY_GUARD_PASS", json.dumps({
+        "sampleOccurrences": len(unresolved), "solids": unresolved,
+        "cuttingTimeInferred": False, "manufacturingProcessInferred": False
+    }))
+
+    # Original B-Rep face measurements for fastener-like occurrences.  This is
+    # a diagnostic census, not a fastener catalogue or an operation classifier.
+    # Keep identity and measurements separate: equal volume is not proof of
+    # identical geometry, and a cylinder is not proof of purchased hardware.
+    face_samples = []
+    for item in unresolved:
+        number = item["solid"]
+        hint = solids[number - 1].get("stockHint") or {}
+        evidence = hint.get("finishedBrepSurfaceEvidence") or {}
+        cylinders = evidence.get("cylinders") or []
+        cones = evidence.get("cones") or []
+        if evidence:
+            assert evidence.get("source") == "original STEP B-Rep face adaptors", (
+                f"Earthpress {number}: surface data must originate in STEP faces")
+            assert evidence.get("cylinderFaceCount", 0) >= len(cylinders)
+            assert evidence.get("coneFaceCount", 0) >= len(cones)
+            for face in cylinders:
+                assert math.isfinite(face["radiusMm"]) and face["radiusMm"] > 0
+                assert len(face["axis"]) == 3
+                assert math.isclose(sum(v * v for v in face["axis"]), 1, abs_tol=1e-5)
+            for face in cones:
+                assert math.isfinite(face["referenceRadiusMm"])
+                assert math.isfinite(face["semiAngleRad"])
+                assert len(face["axis"]) == 3
+        face_samples.append({
+            "solid": number, "shapeKey": item["shapeKey"],
+            "evidencePresent": bool(evidence),
+            "cylinderFaceCount": evidence.get("cylinderFaceCount", 0),
+            "coneFaceCount": evidence.get("coneFaceCount", 0),
+            "cylinders": cylinders, "cones": cones,
+            "blankCertified": False, "manufacturingCertified": False,
+        })
+    # Six original equal-volume, differently oriented B-Rep hardware-like
+    # occurrences must reveal true surface coaxiality without acquiring
+    # any purchased fastener designation or cutting/milling hours.
+    for number in (88,89,90,91,92,93):
+        evidence=(solids[number-1].get("stockHint") or {}).get("finishedBrepSurfaceEvidence") or {}
+        groups=evidence.get("coaxialSurfaceGroups") or []
+        assert any(g.get("cylinderFaceCount",0)>=3 and g.get("coneFaceCount",0)>=2
+                   and any(math.isclose(r,2.2,abs_tol=.02)
+                           for r in g.get("cylinderRadiiMm",[]))
+                   and any(math.isclose(r,3.,abs_tol=.02)
+                           for r in g.get("cylinderRadiiMm",[]))
+                   for g in groups), (
+            f"Earthpress {number}: 3 cylinders + 2 cones not physically coaxial")
+        assert (solids[number-1].get("stockHint") or {}).get("kind")=="unknown"
+        # Original physically imported STEP: analyze shared EDGE connectivity,
+        # not just independently measured cylinders/cones or their bbox.
+        graph=solids[number-1].get("faceGraphEvidence") or {}
+        assert graph.get("status")=="measured", (
+            f"Earthpress {number}: missing original B-Rep adjacency graph: {graph}")
+        assert graph.get("source")=="original B-Rep OCCT edge-face ancestor map"
+        assert graph.get("surfaceTypes",{}).get("cylinder",0)>=3
+        assert graph.get("surfaceTypes",{}).get("cone",0)>=2
+        assert graph.get("sharedFacePairs",0)>0
+        assert any(a.get("cylinderFaceCount",0)>=3 and a.get("coneFaceCount",0)>=2
+                   for a in graph.get("axialClusters",[])), (
+            f"Earthpress {number}: lost coaxial face topology evidence")
+        assert "cuttingTime" not in graph and "purchase" not in graph
+    print("PUBLIC_FASTENER_AAG_BREP_PASS: 88-93 preserve original shared-edge and coaxial topology, without stock/process inference")
+    print("PUBLIC_FASTENER_COAXIAL_BREP_PASS: 88-93 share positioned cylinder/cone axes without quote")
+    print("PUBLIC_FASTENER_ORIGINAL_BREP_SURFACE_CENSUS", json.dumps({
+        "sampleOccurrences": len(face_samples),
+        "distinctGeometryKeys": len({item["shapeKey"] for item in face_samples}),
+        "withMeasuredSurfaces": sum(item["evidencePresent"] for item in face_samples),
+        "samples": face_samples,
+    }))
+
+    # Three equal-volume fastener-like geometries repeat in two placements.
+    # Equal B-Rep volume alone MUST NOT merge different shape identities.
+    # This checks original compiled STEP occurrence keys, not a guessed BOM.
+    repeat_keys = [solids[n - 1].get("verifiedShapeKey") for n in (88, 89, 90, 91, 92, 93)]
+    repeat_volumes = [solids[n - 1]["volumeMm3"] for n in (88, 89, 90, 91, 92, 93)]
+    assert all(repeat_keys), "Earthpress 88-93: missing verified geometry identity"
+    assert repeat_keys[:3] == repeat_keys[3:], (
+        "Earthpress 88-93: repeated original B-Rep identities changed")
+    assert len(set(repeat_keys[:3])) == 3, (
+        "Earthpress 88-90: distinct equal-volume geometries were merged")
+    assert max(repeat_volumes) - min(repeat_volumes) < 1e-3, (
+        "Earthpress 88-93: original B-Rep volumes unexpectedly changed")
+    print("PUBLIC_EQUAL_VOLUME_DISTINCT_GEOMETRY_PASS", json.dumps({
+        "occurrences": 6, "distinctGeometryKeys": 3,
+        "sameVolumeDoesNotImplySameShape": True,
+        "stockAndManufacturingRemainUnknown": True
+    }))
+
+    # Whole-assembly unresolved geometry census from the compiled ORIGINAL STEP.
+    # This protects against silently dropping unresolved occurrences while
+    # keeping shape identity separate from volume and from manufacturing.
+    unknown_rows = [row for row in audited["rows"] if row["status"] == "UNKNOWN"]
+    assert len(unknown_rows) == 75, (
+        f"Earthpress: expected 75 unresolved original solids, got {len(unknown_rows)}")
+    unknown_keys = [row["verifiedShapeKey"] for row in unknown_rows]
+    assert all(unknown_keys), "Earthpress: unresolved geometry identity missing"
+    assert len(set(unknown_keys)) == 37, (
+        "Earthpress: original 75 unresolved occurrences no longer form 37 distinct shapes")
+    # Evidence coverage is measured on the production-imported ORIGINAL STEP.
+    # The number of priced parts remains unchanged until separate process proof.
+    aag_rows=[solid.get("faceGraphEvidence") or {}
+              for solid,row in zip(solids,audited["rows"])
+              if row["status"]=="UNKNOWN"]
+    measured_aag=sum(g.get("status")=="measured" for g in aag_rows)
+    skipped_aag=sum(g.get("status")=="skipped-budget" for g in aag_rows)
+    other_aag=len(aag_rows)-measured_aag-skipped_aag
+    assert measured_aag >= 6, "Original Earthpress produced no measured B-Rep face adjacency"
+    assert all(g.get("status") in ("measured","skipped-budget","unavailable")
+               for g in aag_rows)
+    print("PUBLIC_EARTHPRESS_AAG_CENSUS",json.dumps({
+        "unknownOccurrences":len(aag_rows),
+        "measuredFaceGraphs":measured_aag,
+        "budgetSkippedFaceGraphs":skipped_aag,
+        "otherUnmeasuredFaceGraphs":other_aag,
+        "blankCertified":False,"manufacturingMethodInferred":False
+    }))
+    # Every unresolved original STEP occurrence now carries additional face
+    # pattern observations. These may explain a shaft, hole or conical end,
+    # but MUST NOT change stock status or manufacture/cut times.
+    feature_counts={}
+    feature_geometry_keys=set()
+    feature_instances=0
+    for solid,row in zip(solids,audited["rows"]):
+        if row["status"]!="UNKNOWN":
+            continue
+        graph=solid.get("faceGraphEvidence") or {}
+        pattern=graph.get("featurePatterns") or {}
+        assert pattern.get("status")=="measured", (
+            f"Original STEP {row['id']}: feature topology not measured: {pattern}")
+        assert pattern.get("source")=="original B-Rep face orientation, vertex extents and shared edges"
+        assert not pattern.get("truncated")
+        for feat in pattern.get("candidates",[]):
+            assert feat.get("confidence")=="topology-candidate"
+            assert "price" not in feat and "cutTime" not in feat
+            assert "purchase" not in feat and "machiningMethod" not in feat
+        if pattern["candidates"]:
+            feature_instances+=1
+            feature_geometry_keys.add(row["verifiedShapeKey"])
+        for kind,count in pattern["counts"].items():
+            feature_counts[kind]=feature_counts.get(kind,0)+count
+    print("PUBLIC_EARTHPRESS_FACE_FEATURE_CENSUS_PASS",json.dumps({
+        "unresolvedOccurrences":len(unknown_rows),
+        "unresolvedDistinctGeometries":len(set(unknown_keys)),
+        "occurrencesWithCandidateFeatures":feature_instances,
+        "distinctGeometriesWithFeatures":len(feature_geometry_keys),
+        "candidateCountsByKind":dict(sorted(feature_counts.items())),
+        "autoBlankCertified":0,"autoManufacturingTimeCertified":0
+    }))
+    # Independently inspect each finished B-Rep shape family. These hints
+    # must not convert unknown stock into priced fabrication or purchase.
+    expected_families={
+        10:('core-section-body-with-secondary-features','round-tube'),
+        11:('core-section-body-with-secondary-features','round-tube'),
+        15:('extrusion-body-with-secondary-features','channel'),
+        25:('constant-thickness-plate-body',None),
+        26:('constant-thickness-plate-body',None),
+        62:('near-round-cylindrical-body',None),
+        71:('near-round-cylindrical-body',None),
+    }
+    for number,(family,core_kind) in expected_families.items():
+        row=solids[number-1]
+        hint=row.get('finishedGeometryHint') or {}
+        assert hint.get('status')=='finished-geometry-candidate',(
+            f"Original Earthpress {number}: no verified finished family: {hint}")
+        assert hint.get('family')==family,(
+            f"Original Earthpress {number}: wrong family: {hint}")
+        if core_kind:
+            assert hint.get('measurements',{}).get('verifiedCoreKind')==core_kind
+        if number in (25,26):
+            assert math.isclose(hint['measurements']['thicknessMm'],20,abs_tol=.02)
+            assert hint['measurements']['volumeRelativeDeviation']<.01
+        if number in (62,71):
+            assert hint['measurements']['volumeRelativeDeviation']<.01
+        assert hint['blankCertified'] is False
+        assert hint['processCertified'] is False
+        assert hint['cutTimeCertified'] is False
+        assert row['stockHint']['kind']=='unknown'
+        assert 'cutTimeH' not in hint and 'purchasePrice' not in hint
+    # Distinct mixed-polyhedral/complex surfaces are not auto-declared plates.
+    for number in (22,31,245,250):
+        hint=solids[number-1].get('finishedGeometryHint') or {}
+        assert hint.get('family')!='constant-thickness-plate-body',(
+            f"Earthpress {number}: unsupported complex solid misread as plate")
+    unknown_family_rows=[
+        (solid.get('finishedGeometryHint') or {})
+        for solid,row in zip(solids,audited['rows'])
+        if row['status']=='UNKNOWN'
+    ]
+    by_family={}
+    geometry_keys_with_families=set()
+    for solid,row in zip(solids,audited['rows']):
+        if row['status']!='UNKNOWN':continue
+        hint=solid.get('finishedGeometryHint') or {}
+        if hint.get('status')=='finished-geometry-candidate':
+            kind=hint['family']
+            by_family[kind]=by_family.get(kind,0)+1
+            geometry_keys_with_families.add(row['verifiedShapeKey'])
+            assert hint['blankCertified'] is False
+            assert hint['processCertified'] is False
+            assert hint['cutTimeCertified'] is False
+    print('PUBLIC_EARTHPRESS_FINISHED_FAMILY_CENSUS_PASS',json.dumps({
+        'unknownStockOccurrences':len(unknown_family_rows),
+        'finishedFamilyOccurrences':sum(by_family.values()),
+        'distinctGeometriesWithFamily':len(geometry_keys_with_families),
+        'familyCounts':dict(sorted(by_family.items())),
+        'provenOriginalShapes':sorted(expected_families),
+        'certifiedBlankCount':0,'certifiedManufacturingTimeCount':0
+    }))
+    # Inspect actual planar face normals of unresolved finished B-Rep solids.
+    # Bevel faces are geometric evidence, NOT proof of plate stock or milling.
+    planar_faces = 0
+    planar_solids = 0
+    for solid, row in zip(solids, audited["rows"]):
+        if row["status"] != "UNKNOWN":
+            continue
+        evidence = (solid.get("stockHint") or {}).get("finishedBrepSurfaceEvidence") or {}
+        planes = evidence.get("planes") or []
+        assert evidence.get("planeFaceCount", 0) >= len(planes)
+        for plane in planes:
+            normal = plane["normal"]
+            assert len(normal) == 3 and all(math.isfinite(v) for v in normal)
+            assert math.isclose(sum(v*v for v in normal), 1.0, abs_tol=2e-6)
+            assert math.isfinite(plane["areaMm2"]) and plane["areaMm2"] > 0, (
+                "Original B-Rep planar face must have a positive measured area")
+            assert math.isfinite(plane["signedOffsetMm"]), (
+                "Original B-Rep planar face must have a finite signed offset")
+        planar_faces += evidence.get("planeFaceCount", 0)
+        planar_solids += bool(planes)
+    assert planar_solids > 0, "Original STEP unresolved solids have no planar B-Rep evidence"
+    print("PUBLIC_ORIGINAL_BREP_PLANE_CENSUS_PASS", json.dumps({
+        "unresolvedSolidsWithPlaneEvidence": planar_solids,
+        "measuredPlaneFaces": planar_faces,
+        "stockCertified": False, "bevelMachiningInferred": False
+    }))
+
+    # ORIGINAL Earthpress STEP/BOM cross-check: these are real, fully
+    # assembled B-Rep hex bolts/nuts, not synthetic CAD examples. Threads
+    # are modelled as smooth cylinders; end/head chamfers are real cones.
+    # Distinct verified occurrence keys remain independent; no cost/route.
+    proven_hardware={
+        'M16x25':{'family':'hex-head','numbers':(99,101,103,105,141,143,145,147)},
+        'M12x50':{'family':'hex-head','numbers':(106,110,114,118,148,152,156,160)},
+        'M12x60':{'family':'hex-head','numbers':(122,126,164,168)},
+        'M10x16':{'family':'hex-head','numbers':(131,173)},
+        'M10x95':{'family':'hex-head','numbers':(132,136,174,178)},
+        'M12-nut':{'family':'hex-nut','designation':'M12',
+                   'numbers':(109,113,117,121,125,129,151,155,159,163,167,171)},
+        'M10-nut':{'family':'hex-nut','designation':'M10',
+                   'numbers':(135,139,177,181)},
+    }
+    expected_hex=0
+    for label,case in proven_hardware.items():
+        for number in case['numbers']:
+            row=solids[number-1]
+            hint=row.get('normaliaHint') or {}
+            wanted=case.get('designation',label)
+            assert hint.get('status')=='geometry-candidate',(
+                f'Earthpress {number} ({label}): original B-Rep not recognized')
+            assert hint.get('families')==[case['family']], (
+                f'Earthpress {number}: wrong hardware family {hint.get("families")}')
+            assert any(c.get('designation')==wanted
+                       for c in hint.get('catalogCandidates',[])), (
+                f'Earthpress {number}: wrong catalogue dimensions {hint}')
+            assert (row.get('stockHint') or {}).get('kind')=='unknown'
+            assert 'cutTimeH' not in hint and 'purchasePrice' not in hint
+            assert 'not modelled' in hint.get('threadEvidence',''), (
+                f'Earthpress {number}: fake thread certification')
+            expected_hex+=1
+    assert expected_hex==42
+    grease=[]
+    for number in (88,89,90,91,92,93):
+        hint=solids[number-1].get('normaliaHint') or {}
+        assert hint.get('families')==['grease-nipple'], (
+            f'Earthpress {number}: missing real M6 grease-fitting geometry')
+        assert 'not certified' in hint.get('matchQuality',''), (
+            f'Earthpress {number}: 17 mm STEP must not certify DIN 71412 16 mm')
+        assert (solids[number-1].get('stockHint') or {}).get('kind')=='unknown'
+        grease.append(number)
+    print('PUBLIC_ORIGINAL_NORMALIA_BREP_PASS',json.dumps({
+        'hexBoltNutOccurrences':expected_hex,
+        'greaseNippleFamilyOccurrences':len(grease),
+        'totalGeometricCandidates':expected_hex+len(grease),
+        'modelledThreadHelices':0,
+        'exactGreaseDINMatch':False,'purchasedCertified':False,
+        'cuttingTimeInferred':False,
+    }))
+
+    # Normalia are an independent B-Rep *candidate* only. They must never
+    # silently change stockHint, counts of unresolved parts or quote routes.
+    normalia_hits=[]
+    for number, solid in enumerate(solids,1):
+        hint=solid.get('normaliaHint')
+        if not hint:
+            continue
+        assert hint['status']=='geometry-candidate'
+        assert hint['candidateCount']>=len(hint['catalogCandidates'])>=1
+        assert all('standard' in x and 'designation' in x
+                   for x in hint['catalogCandidates'])
+        assert 'purchasePrice' not in hint and 'manufacturingProcess' not in hint
+        normalia_hits.append({'solid':number,
+                             'families':hint['families'],
+                             'examples':[r['designation']
+                                         for r in hint['catalogCandidates'][:3]]})
+    print("PUBLIC_NORMALIA_CANDIDATE_CENSUS",json.dumps({
+        'occurrences':len(normalia_hits),
+        'examples':normalia_hits[:20],
+        'cutHoursInferred':False,'purchasedCertified':False,
+    }))
+
+    print("PUBLIC_UNKNOWN_GEOMETRY_CENSUS_PASS", json.dumps({
+        "unresolvedOccurrences": len(unknown_rows),
+        "distinctVerifiedShapes": len(set(unknown_keys)),
+        "manufacturingInferred": False, "cutTimeInferred": False
+    }))
+
+    # Real original STEP: correct axis does not imply a constant stock profile.
+    # Portal Frame 2-9 have 100x200 ends but 100x10 central sections.
+    portal = json.loads((Path(root) / "portal-frame" / "ds_estimate_inventory.json").read_text(encoding="utf-8"))
+    assert len(portal["solids"]) == 15
+    for number in range(2, 10):
+        solid = portal["solids"][number - 1]
+        hint = solid.get("stockHint") or {}
+        core = hint.get("coreSectionCandidate") or {}
+        assert hint.get("kind") == "unknown", f"Portal Frame {number}: false finished stock"
+        assert not hint.get("rawStockCandidate"), f"Portal Frame {number}: false purchasable flat bar"
+        assert core.get("kind") == "flat-section", f"Portal Frame {number}: missing measured central section"
+        assert core.get("confidence") == "geometric-core-only"
+        assert math.isclose(core["widthMm"], 100, abs_tol=.02)
+        assert math.isclose(core["heightMm"], 10, abs_tol=.02)
+        assert math.isclose(core["lengthMm"], 4000, abs_tol=.02)
+        assert math.isclose(solid["volumeMm3"], 11600000, rel_tol=1e-5)
+        assert solid["volumeMm3"] > 2.8 * core["sectionPrismVolumeMm3"]
+    print("PUBLIC_VARIABLE_SECTION_PASS: Portal Frame 2-9 retain unknown stock despite correct central section")
+
+    # Earthpress 132 has a true round core but conical end material.
+    s = solids[131]
+    hint = s.get("stockHint") or {}
+    core = hint.get("coreSectionCandidate") or {}
+    assert hint.get("kind") == "unknown", "Earthpress 132: conical ends must not be auto-quoted"
+    assert not hint.get("rawStockCandidate")
+    assert core.get("kind") == "round-bar"
+    assert core.get("confidence") == "geometric-core-only"
+    assert math.isclose(core["diameterMm"], 10, abs_tol=.02)
+    assert core.get("axisEvidence") == "B-Rep cylinder/edge axis"
+    assert core["finishedVolumeMm3"] > core["sectionPrismVolumeMm3"] * 1.05
+    print("PUBLIC_CONICAL_END_PASS: Earthpress 132 remains unknown despite measured round core")
+
+    print("PUBLIC_STOCK_AXIS_PASS: both rotated tube cores recovered without false stock or cut time")
+
+
+if __name__ == "__main__":
+    check(sys.argv[1] if len(sys.argv) > 1 else "public_fabrication_output")
