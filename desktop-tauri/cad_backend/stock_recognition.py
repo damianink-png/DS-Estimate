@@ -533,4 +533,13 @@ def recognize_stock(solid, bounds, plate_hint=None):
     if result.get('rawStockCandidate'):
         raw=result['rawStockCandidate'];candidates=match_hint(raw);raw['catalogCandidates']=candidates
         if len(candidates)==1:raw['catalogDesignation']=candidates[0]['name']
+    if result.get('kind') in ('unknown','polygon-bar') and solid is not None and hasattr(solid,'ShapeType'):
+        try:
+            try:from .blank_candidates import envelope_candidate
+            except ImportError:from blank_candidates import envelope_candidate
+            dimensions=result.get('localDimsMm') or [bounds[i+3]-bounds[i] for i in range(3)]
+            blank=envelope_candidate(dimensions,_measured_solid_volume(solid))
+            if blank:result['blankAlternatives']=[blank]
+        except Exception:
+            pass
     return result

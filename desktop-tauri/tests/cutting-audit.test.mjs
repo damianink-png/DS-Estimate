@@ -104,3 +104,10 @@ test('machine unavailable stays distinct from missing geometry for recognized st
  assert.equal(audit.rows[0].reasonCode,'UNSUPPORTED_MACHINE_RANGE');
  assert.equal(audit.rows[0].stockFailureCode,null);
 });
+
+test('special finished section has explicit missing stock reason',()=>{
+ const part={id:'poly',name:'Detal',route:'make',solid:{stockHint:{kind:'polygon-bar'}}};
+ const audit=auditCutting([part],{rows:[{id:'poly',method:null,minutes:null,notes:[]}]});
+ assert.equal(audit.rows[0].reasonCode,'SPECIAL_SECTION_STOCK_UNKNOWN');
+ assert.equal(audit.knownTimeOccurrences,0);
+});

@@ -12,6 +12,7 @@ export const CUTTING_MISSING_REASONS = Object.freeze({
  UNKNOWN_CUT_PATH:'Brak wiarygodnej długości konturu lub liczby przebić',
  BENT_BLANK_UNRESOLVED:'Brak potwierdzonego rozwinięcia blachy giętej',
  FUSED_ASSEMBLY:'Możliwa konstrukcja scalona; brak rozbicia technologicznego',
+ SPECIAL_SECTION_STOCK_UNKNOWN:'Rozpoznano przekrój wielokątny detalu; nie ustalono półfabrykatu ani technologii',
  INVALID_GEOMETRY:'Geometria uniemożliwia wiarygodny pomiar',
  UNSUPPORTED_MACHINE_RANGE:'Brak dostępnej maszyny w wymaganym zakresie',
  MATERIAL_TECHNOLOGY_UNKNOWN:'Brak potwierdzonych danych do doboru technologii',
@@ -47,6 +48,7 @@ function classifyMissing(part,cut){
  if(s.fusedAssembly===true||hint.reasonCode==='FUSED_ASSEMBLY')return 'FUSED_ASSEMBLY';
  if(s.geometryValid===false||hint.reasonCode==='INVALID_GEOMETRY')return 'INVALID_GEOMETRY';
  if(kind==='bent-plate'&&s.cuttingHint?.estimated)return 'BENT_BLANK_UNRESOLVED';
+ if(kind==='polygon-bar'&&!cut?.method)return 'SPECIAL_SECTION_STOCK_UNKNOWN';
  // An assumed steel family is reported in machine notes for every blank
  // material grade. It must not replace the native stock-recognition failure.
  if(kind==='unknown'||kind==='unclassified')return 'UNKNOWN_STOCK';

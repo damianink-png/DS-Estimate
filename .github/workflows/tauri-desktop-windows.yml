@@ -69,6 +69,8 @@ jobs:
         run: |
           python tests/test_public_stock_audit.py
           python tests/test_stock_patterns.py
+          python tests/test_blank_candidates.py
+          python tests/test_review_section_frames.py
           python tests/test_normalia_catalog.py
           python tests/test_part_name_evidence.py
           python tests/test_finished_part_recognition.py
