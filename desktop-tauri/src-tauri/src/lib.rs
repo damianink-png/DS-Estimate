@@ -1,5 +1,7 @@
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader};
+use tauri::Emitter;
 
 #[tauri::command]
 async fn analyze_step(app: tauri::AppHandle, path: String) -> Result<String, String> {
@@ -39,10 +41,29 @@ fn analyze_step_blocking(app: tauri::AppHandle, path: String, mode: Option<Strin
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000); // CREATE_NO_WINDOW: CAD never opens a second console/UI.
     }
-    let result = command.output()
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command.spawn()
         .map_err(|e| format!("Nie można uruchomić silnika CAD: {e}"))?;
+    let stderr = child.stderr.take().ok_or("Brak strumienia diagnostycznego CAD")?;
+    // Drain stderr concurrently with stdout to avoid pipe deadlocks on large models.
+    let reader = std::thread::spawn(move || {
+        let mut tail = std::collections::VecDeque::new();
+        for line in BufReader::new(stderr).lines() {
+            let Ok(line) = line else { break; };
+            if let Some(payload) = line.strip_prefix("DS-CAD-UI ") {
+                let _ = app.emit("cad-progress", (&path, payload));
+            } else {
+                tail.push_back(line.chars().take(2000).collect::<String>());
+                if tail.len() > 12 { tail.pop_front(); }
+            }
+        }
+        tail.into_iter().collect::<Vec<_>>().join("\n")
+    });
+    let result = child.wait_with_output();
+    let diagnostic = reader.join().unwrap_or_else(|_| "Błąd odczytu diagnostyki CAD".into());
+    let result = result.map_err(|e| format!("Błąd procesu CAD: {e}"))?;
     if !result.status.success() {
-        return Err(format!("Błąd analizy STEP: {}", String::from_utf8_lossy(&result.stderr)));
+        return Err(format!("Błąd analizy STEP ({}): {}", result.status, diagnostic));
     }
     String::from_utf8(result.stdout).map_err(|e| e.to_string())
 }

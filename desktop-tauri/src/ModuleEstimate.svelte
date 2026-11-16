@@ -1,5 +1,6 @@
 <script lang="ts">
  import {onMount} from 'svelte';
+ import {listen} from '@tauri-apps/api/event';
  import PartPreview from './PartPreview.svelte';
  import {call as invoke,native,pickInputs,watchDrops,saveReport} from './lib/desktop-api';
  import {Layers3,FolderOpen,FilePlus2,Plus,Upload,Scale,Settings2,Sun,Moon,Download,Check,ChevronRight,X,Files,RotateCcw,ClipboardList,Search} from 'lucide-svelte';
@@ -63,6 +64,7 @@
  let pdfText=$state('');
  let notes=$state<string[]>([]);
  let busy=$state(false);
+ let analysisProgress=$state<{stage:string;current:number;total:number;name:string}|null>(null);
  let status=$state('Wybierz folder lub plik STEP');
  let error=$state('');
  let active=$state('material');
@@ -155,8 +157,10 @@
  }
  async function analyzeSelected(){
   if(!selectedStep)return;
-  busy=true;error='';status='Analiza B-Rep / STEP…';
+  busy=true;analysisProgress=null;error='';status='Analiza B-Rep / STEP…';
+  let stopProgress:(()=>void)|undefined;
   try{
+   if(native)stopProgress=await listen<[string,string]>('cad-progress',e=>{if(e.payload[0]===selectedStep){try{analysisProgress=JSON.parse(e.payload[1]);}catch{}}});
    const rev=await invoke<string>('step_fingerprint',{path:selectedStep});
    const key=JSON.stringify([selectedStep,rev]);
    const data=await cad.analyze(selectedStep);
@@ -166,6 +170,7 @@
    const migrating=data.solids.some(s=>!Object.hasOwn(partMaterials,s.id)&&Object.hasOwn(partMaterials,s.verifiedShapeKey));
    partMaterials=Object.fromEntries(data.solids.map(s=>[s.id,{...preferenceFor(s,partMaterials),catalogId:preferenceFor(s,partMaterials).catalogId||(s.stockHint?.catalogCandidates?.length===1?s.stockHint.catalogCandidates[0].id:'')} ]));
    if(migrating){confirmed={};materialApproved=false;saveProject();notice='Przeniesiono ustawienia grup na detale. Sprawdź ceny i potwierdzenia.';}
+   analysisProgress=null;status='Odczytywanie dokumentacji PDF…';
    const documents=files.filter(isPdf);
    const texts:string[]=[];
    notes=[];
@@ -184,7 +189,7 @@
    active='material';
    status='Analiza zakończona · wycena przeliczona automatycznie';
   }catch(e){inventory=null;error=String(e);status='Analiza nieudana';}
-  finally{busy=false;}
+  finally{stopProgress?.();analysisProgress=null;busy=false;}
  }
  async function openInputs(paths:string[]){
   if(busy||!paths.length)return;
@@ -284,7 +289,7 @@
  }catch(e){error=String(e);}}
  function setDraftCatalog(id:string){draft.catalogId=id;const c=sectionCatalog.sections.find(c=>c.id===id);if(c){draft.stockKind=({SHS:'square-hollow',RHS:'rectangular-hollow',CHS:'round-tube',I:'i-section',I_TAPERED:'i-section',U:'channel',U_TAPERED:'channel',L:'angle',L_EQ:'angle',FLAT:'flat-section'} as any)[c.shape]||'';}}
  async function detectJoints(inAnalysis=false,force=false){
-  if(!inventory||jointBusy||(busy&&!inAnalysis)||(contacts&&!force))return;if(force){contacts=null;confirmed={};}jointBusy=true;busy=true;error='';status='Analiza styków B-Rep i kandydatów spoin…';
+  if(!inventory||jointBusy||(busy&&!inAnalysis)||(contacts&&!force))return;if(force){contacts=null;confirmed={};}jointBusy=true;busy=true;analysisProgress=null;error='';status='Analiza styków B-Rep i kandydatów spoin…';
   try{const source=selectedStep,expected=JSON.parse(projectKey)[1];
    if(await invoke<string>('step_fingerprint',{path:source})!==expected)throw Error('Model zmienił się. Wczytaj ponownie STEP przed analizą spoin.');
    const data=JSON.parse(await invoke<string>('analyze_joints',{path:source,maxSeconds:jointSeconds}));
@@ -399,7 +404,10 @@
      <button class="subtle" onclick={()=>showFiles=!showFiles} aria-expanded={showFiles}>{files.length} plików <ChevronRight size={15}/></button>
     </div>
     {#if !busy}<details class="manual-path"><summary>Otwórz plik przez ścieżkę</summary><div class="input-action"><input aria-label="Ścieżka modelu STEP" bind:value={inputPath} placeholder="C:\modele\zlozenie.step"/><button disabled={!inputPath.trim()} onclick={()=>openInputs([inputPath.trim()])}>Analizuj ścieżkę</button></div></details>{/if}
-    {#if busy}<div class="analysis-progress" role="status"><span class="spinner"></span>{status}<span>Nie zamykaj programu.</span></div>{/if}
+    {#if busy}<div class="analysis-progress" role="status"><span class="spinner"></span><div style="flex:1;min-width:0"><strong>{analysisProgress?.stage??status}</strong>
+     {#if analysisProgress?.total}<progress style="display:block;width:100%;margin:10px 0" max={analysisProgress.total} value={analysisProgress.current}></progress><span>Ukończono {analysisProgress.current} z {analysisProgress.total} detali · {Math.floor(100*analysisProgress.current/analysisProgress.total)}% analizy geometrii</span>
+     {:else}<progress style="display:block;width:100%;margin:10px 0" aria-label={status}></progress>{/if}
+     {#if analysisProgress?.name}<p>Teraz: {analysisProgress.name}</p>{/if}<p>Nie zamykaj programu. Czas zależy od złożoności geometrii.</p></div></div>{/if}
     {#if files.length&&showFiles}
      <section class="panel files-panel" aria-label="Pliki projektu">
       <div class="panel-title"><h2>Pliki projektu</h2><span class="muted">Jeden wybrany STEP stanowi zakres wyceny.</span></div>

@@ -1,8 +1,12 @@
 """OCCT inventory API shared by production pythonocc and OCP validation."""
 try:
  from OCC.Core.GProp import GProp_GProps
- from OCC.Core.BRepGProp import brepgprop_VolumeProperties,brepgprop_SurfaceProperties,brepgprop_LinearProperties
- from OCC.Core.BRepBndLib import brepbndlib_Add
+ from OCC.Core.BRepGProp import brepgprop
+ brepgprop_VolumeProperties=brepgprop.VolumeProperties
+ brepgprop_SurfaceProperties=brepgprop.SurfaceProperties
+ brepgprop_LinearProperties=brepgprop.LinearProperties
+ from OCC.Core.BRepBndLib import brepbndlib
+ brepbndlib_Add=brepbndlib.Add
  from OCC.Core.Bnd import Bnd_Box
  from OCC.Core.TopExp import TopExp_Explorer
  from OCC.Core.TopAbs import TopAbs_FACE,TopAbs_WIRE,TopAbs_SOLID,TopAbs_EDGE,TopAbs_VERTEX
