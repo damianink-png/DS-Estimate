@@ -70,7 +70,6 @@ jobs:
           python tests/test_public_stock_audit.py
           python tests/test_stock_patterns.py
           python tests/test_blank_candidates.py
-          python tests/test_volume_recovery.py
           python tests/test_review_section_frames.py
           python tests/test_normalia_catalog.py
           python tests/test_part_name_evidence.py
@@ -132,6 +131,8 @@ jobs:
         run: |
           conda run -n ds-cad python tests/manufacturing_geometry_test.py
           if ($LASTEXITCODE -ne 0) { throw 'Native CAD geometry or name binding tests failed' }
+          conda run -n ds-cad python tests/test_volume_recovery.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native CAD volume recovery tests failed' }
       - name: Bundle offline CAD engine
         shell: pwsh
         run: |
