@@ -12,6 +12,21 @@ def catalog():
         if path.is_file():return json.loads(path.read_text(encoding='utf-8'))['sections']
     raise FileNotFoundError('Steel section library is not packaged')
 
+# Geometry-first library, independent of the 1792 pinned nominal EN entries.
+# These kinds are recognized from B-Rep topology only. In particular a Z,
+# top-hat, T, solid bar or chamfered rectangle MUST NOT acquire an invented
+# standard, vendor designation, material or manufacturing route.
+GEOMETRIC_SECTION_LIBRARY={
+    'round-bar':'solid round core', 'round-tube':'concentric hollow round',
+    'square-bar':'solid square', 'rectangular-bar':'solid rectangle',
+    'flat-section':'flat solid section', 'square-hollow':'square hollow',
+    'rectangular-hollow':'rectangular hollow', 'angle':'L angle',
+    'channel':'U/C channel', 'tee':'T section', 'i-section':'I/H beam',
+    'zee':'Z/zee section', 'hat':'top-hat/omega section',
+    'polygon-bar':'measured nonstandard convex polygon',
+    'beveled-rectangle':'finished rectangular core with small corner bevels',
+}
+
 FAMILIES={'SHS':'square-hollow','RHS':'rectangular-hollow','CHS':'round-tube',
           'I':'i-section','I_TAPERED':'i-section','U':'channel','U_TAPERED':'channel','L':'angle','L_EQ':'angle','FLAT':'flat-section'}
 def section_size(row):

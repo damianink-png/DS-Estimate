@@ -39,6 +39,38 @@ except ImportError:
 from pathlib import Path
 
 
+def report_progress(stage, current=0, total=0, name=''):
+    print('DS-CAD-UI ' + json.dumps(dict(stage=stage, current=current,
+          total=total, name=name), ensure_ascii=True), file=sys.stderr, flush=True)
+
+
+def repair_volume(solid):
+    """Retry exact integration; only reverse a valid closed negative solid."""
+    try:
+        from OCC.Core.BRepGProp import brepgprop
+        from OCC.Core.BRepCheck import BRepCheck_Analyzer
+        from OCC.Core.GProp import GProp_GProps
+        measure = brepgprop.VolumeProperties
+    except ImportError:
+        from OCP.BRepGProp import BRepGProp
+        from OCP.BRepCheck import BRepCheck_Analyzer
+        from OCP.GProp import GProp_GProps
+        measure = BRepGProp.VolumeProperties_s
+    if solid.IsNull():
+        return None
+    props = GProp_GProps()
+    measure(solid, props)
+    if not BRepCheck_Analyzer(solid).IsValid():
+        return None
+    if props.Mass() < 0:
+        solid = solid.Reversed()
+        props = GProp_GProps()
+        measure(solid, props)
+    if not math.isfinite(props.Mass()) or props.Mass() <= 0:
+        return None
+    return solid, props
+
+
 def planar_plate_cutting_hint(solid, dimensions):
     """Conservative plate cut-loop measurements, not a raw-stock classifier.
 
@@ -144,6 +176,7 @@ def inventory(path, density=7850.0):
     t_start = time.perf_counter()
     try:from .assembly_names import read_occurrences
     except ImportError:from assembly_names import read_occurrences
+    report_progress('Wczytywanie drzewa złożenia STEP')
     occurrences,import_issues=read_occurrences(path)
     timings['readStepSeconds']=round(time.perf_counter()-t_start,3)
     timings['transferStepSeconds']=0
@@ -337,7 +370,8 @@ def inventory(path, density=7850.0):
     max_rigid_checks = max(0, int(os.environ.get("DS_CAD_MAX_RIGID_CHECKS", "120")))
     max_rigid_seconds = max(0.0, float(os.environ.get("DS_CAD_MAX_RIGID_SECONDS", "140")))
     compare_start = time.perf_counter()
-    for occurrence in occurrences:
+    for occurrence_index, occurrence in enumerate(occurrences):
+        report_progress('Objętość, masa i wymiary', occurrence_index, len(occurrences), occurrence.get('name',''))
         solid = occurrence['shape']
         if profile:print('[DS-CAD-DETAIL] '+json.dumps({'solid':len(solids)+1,'name':occurrence.get('name',''),'stage':'properties'}),file=sys.stderr,flush=True)
         property_started = time.perf_counter()
@@ -353,7 +387,12 @@ def inventory(path, density=7850.0):
             transform=solid.Location().Transformation().Multiplied(originals[partner].Location().Transformation().Inverted())
             center=original_centers[partner].Transformed(transform)
         if not math.isfinite(volume) or volume <= 0:
-            raise ValueError(f"Invalid volume for solid {len(solids)+1}")
+            repaired = repair_volume(solid)
+            if repaired is None:
+                raise ValueError(f"Detal {occurrence_index+1} ({occurrence.get('name', 'bez nazwy')}): nie można ustalić dodatniej objętości zamkniętej bryły (wynik {volume!r} mm³). Sprawdź poprawność bryły i eksport STEP w programie CAD. Wycena nie została zatwierdzona.")
+            solid, vp = repaired
+            volume=float(vp.Mass()); center=vp.CentreOfMass()
+            import_issues.append(f"Detal {occurrence_index+1}: ponownie obliczono objętość / skorygowano orientację bryły.")
         bounds = Bnd_Box()
         brepbndlib_Add(solid, bounds)
         xmin,ymin,zmin,xmax,ymax,zmax = bounds.Get()
@@ -370,6 +409,7 @@ def inventory(path, density=7850.0):
                 method = "OCCT_IsPartner"
                 partner_hits += 1
                 break
+        report_progress('Porównywanie geometrii i grupowanie', occurrence_index, len(occurrences), occurrence.get('name',''))
         signature = None
         rigid_eligible = None
         if existing is None:
@@ -444,10 +484,8 @@ def inventory(path, density=7850.0):
         stage_start=time.perf_counter()
         if existing in manufacturing_cache:
             cut_hint,stock_hint,features=copy.deepcopy(manufacturing_cache[existing])
-        elif re.search(r'\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack(?:[\s_-]|$)|^electrical[ _-]enclosure(?:[\s:_-]|$)|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b',occurrence.get('name',''),re.I):
-            cut_hint=None;stock_hint={'kind':'purchased-component','source':'standard component name; routing can be overridden'};features={'bendHint':None}
         else:
-            if profile:print('[DS-CAD-DETAIL] '+json.dumps({'solid':len(solids)+1,'name':occurrence.get('name',''),'stage':'manufacturing'}),file=sys.stderr,flush=True)
+            report_progress('Rozpoznawanie półfabrykatu, grubości i operacji', occurrence_index, len(occurrences), occurrence.get('name',''))
             cut_hint = planar_plate_cutting_hint(solid, dims)
             # Independent evidence for future raw-stock selection; does not affect
             # grouping, cutting-time routing, mass or quote acceptance.
@@ -469,7 +507,64 @@ def inventory(path, density=7850.0):
                                   'contourMm':sheet['estimatedContourMm'],'pierces':1,
                                   'source':sheet['source'],'estimated':True}
             except Exception:pass
+
+        # Independent standard-part detection reads the ORIGINAL B-Rep and
+        # reuses the already measured volume. It never changes stockHint,
+        # cuttingHint, rates, costs, or the source occurrence's geometry.
+        # Cache only after this step so identical verified shapes share results.
+        if existing not in manufacturing_cache:
+            try:
+                try:from .normalia_recognition import recognize_normalia
+                except ImportError:from normalia_recognition import recognize_normalia
+                normalia=recognize_normalia(solid,volume_mm3=volume)
+                if normalia:features['normaliaHint']=normalia
+            except Exception:
+                pass # Normalia is optional evidence, not an import gate.
+            # Stage 1: independent edge-adjacency evidence for as-yet unknown
+            # finished shapes. Analyze each VERIFIED geometry only once, not
+            # every occurrence. Never alter stock, cut time or supplier route.
+            if stock_hint.get('kind')=='unknown':
+                try:
+                    try:from .feature_graph import analyze_face_graph
+                    except ImportError:from feature_graph import analyze_face_graph
+                    features['faceGraphEvidence']=analyze_face_graph(solid)
+                except Exception as graph_error:
+                    features['faceGraphEvidence']={
+                        'status':'unavailable',
+                        'reason':type(graph_error).__name__,
+                        'limitations':'No manufacturing or purchasing inference'}
+            # Stage 2: recognize a finished BODY family from existing
+            # physically measured surfaces, without another expensive
+            # B-Rep traversal or manufacturing/purchasing inference.
+            if stock_hint.get('kind')=='unknown':
+                try:
+                    try:from .finished_part_recognition import recognize_finished_geometry
+                    except ImportError:from finished_part_recognition import recognize_finished_geometry
+                    features['finishedGeometryHint']=recognize_finished_geometry(
+                        stock_hint,volume,features.get('faceGraphEvidence'))
+                except Exception as family_error:
+                    features['finishedGeometryHint']={
+                        'status':'unknown','reason':type(family_error).__name__,
+                        'limitations':'Original stock, cost and production route unchanged'}
             manufacturing_cache[existing]=copy.deepcopy((cut_hint,stock_hint,features))
+        # Enrich EACH XCAF occurrence with its own semantic evidence AFTER
+        # copying/storing geometry results. Even when geometrically identical,
+        # parts can have different names: never leak one name into the cache.
+        try:
+            try:
+                from .part_name_evidence import parse_part_name, compare_name_to_geometry
+            except ImportError:
+                from part_name_evidence import parse_part_name, compare_name_to_geometry
+            label_evidence=parse_part_name(
+                occurrence.get('name'),occurrence.get('nameSource','missing'))
+            if label_evidence:
+                features['nameEvidence']=label_evidence
+                if isinstance(features.get('normaliaHint'),dict):
+                    comparison=compare_name_to_geometry(label_evidence,features['normaliaHint'])
+                    if comparison:
+                        features['normaliaHint']['nameCorroboration']=comparison
+        except Exception:
+            pass  # Names must never break CAD import or a measured cost.
         cutting_hint_seconds+=time.perf_counter()-stage_start
         preview_key=f'shared-tshape-{existing}'
         if preview_key not in previews:
@@ -589,6 +684,7 @@ def inventory(path, density=7850.0):
             f"Some duplicates may remain ungrouped: translation budget={skipped_translation}, "
             f"complex B-Rep={skipped_complex}, degenerate rigid orientation={skipped_degenerate}, "
             f"rigid budget={skipped_rigid}. These are NOT verified duplicates.")
+    report_progress('Geometria przeanalizowana', len(occurrences), len(occurrences))
     return {"engineVersion":"0.7.1","integrationToleranceRelative":1e-7,"source": str(path), "previews":previews,"importIssues":import_issues,"solids": solids, "groups": groups, "count": len(solids), "productCount":len({s.get("productOccurrenceKey",s["id"]) for s in solids}),
             "totalMassKg": sum(x["massKg"] for x in solids),
             "matchingDiagnostics": diagnostics,

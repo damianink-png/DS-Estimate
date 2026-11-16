@@ -11,7 +11,7 @@ import math
 STOCK_KINDS = frozenset({
     "plate-candidate", "flat-section", "square-bar", "rectangular-bar",
     "round-bar", "round-tube", "square-hollow", "rectangular-hollow",
-    "angle", "channel", "tee", "i-section", "unknown"
+    "angle", "channel", "tee", "i-section", "zee", "hat", "polygon-bar", "unknown"
 })
 REQUIRED_DIMENSIONS = {
     "plate-candidate": ("thicknessMm", "widthMm", "lengthMm"),
@@ -25,7 +25,10 @@ REQUIRED_DIMENSIONS = {
     "angle": ("lengthMm", "sectionAreaMm2"),
     "channel": ("lengthMm", "sectionAreaMm2"),
     "tee": ("lengthMm", "sectionAreaMm2"),
+    "zee": ("lengthMm", "sectionAreaMm2"),
+    "hat": ("lengthMm", "sectionAreaMm2"),
     "i-section": ("lengthMm", "sectionAreaMm2"),
+    "polygon-bar": ("widthMm", "heightMm", "lengthMm", "sectionAreaMm2"),
 }
 DIMENSIONS = ("lengthMm", "widthMm", "heightMm", "diameterMm",
               "wallMm", "thicknessMm", "sectionAreaMm2")
@@ -94,10 +97,18 @@ def stock_audit(inventory):
             kind = "unknown"
         elif (not isinstance(raw, dict) or not isinstance(kind, str)
               or kind not in STOCK_KINDS or not finite or missing_required
-              or bad_wall or not _section_area_consistent(kind, hint)):
+              or bad_wall or (kind not in ("square-hollow", "rectangular-hollow")
+                       and not _section_area_consistent(kind, hint))):
             status = "INVALID_HINT"
             reason = reason or "Malformed stock evidence"
             kind = "unknown"
+        elif (kind in ("square-hollow", "rectangular-hollow")
+              and not _section_area_consistent(kind, hint)):
+            # Sharp-corner rectangle arithmetic cannot validate radiused SHS/RHS.
+            # Keep measured B-Rep area and the actual section type, but withhold
+            # geometry certification until independent corner geometry is checked.
+            status = "UNVERIFIED"
+            reason = "Measured hollow-section area differs from sharp-corner formula; rounded corners require B-Rep verification"
         elif kind == "unknown":
             status = "UNKNOWN"
             reason = reason or "No classifier evidence"

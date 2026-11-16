@@ -85,3 +85,22 @@ test('short profile length remains the first allowance dimension instead of the 
  const s={...solid('stub'),volumeMm3:6080,bboxMm:[40,40,20],stockHint:{kind:'square-hollow',lengthMm:20,widthMm:40,heightMm:40,wallMm:2,sectionAreaMm2:304,localDimsMm:[40,40,20]}};
  const p=partValues(s,{...partDefaults(),allowances:[2,0,0,0,0,0]},5);assert.deepEqual(p.dims,[20,40,40]);assert.deepEqual(p.stockDims,[22,40,40]);
 });
+
+test('measured polygonal profile uses actual 15 mm2 section for saw cut, not 5x5 bounding area',()=>{
+ const s={...solid('rib'),bboxMm:[5,5,50],volumeMm3:750,
+  stockHint:{kind:'polygon-bar',widthMm:5,heightMm:5,sectionAreaMm2:15,lengthMm:50,sideCount:4,
+   confidence:'cross-section-consistent',source:'five B-Rep sections'}};
+ const parts=partsList({count:1,solids:[s],groups:[],totalMassKg:750*7850/1e9},{},5);
+ assert.deepEqual(parts[0].dims,[50,5,5]);
+ assert.ok(Math.abs(parts[0].stockMassKg-750*7850/1e9)<1e-9);
+ const cut=planAutomaticCutting(parts);
+ assert.equal(cut.rows[0].method,null);
+ assert.equal(cut.rows[0].sectionArea,15);
+ assert.equal(cut.rows[0].minutes,null); // geometry alone is not procurement/process proof
+ parts[0].cutMethod='saw'; // existing optional correction, never required
+ const approved=planAutomaticCutting(parts);
+ assert.equal(approved.rows[0].method,'saw');
+ assert.equal(approved.rows[0].sectionArea,15);
+ assert.ok(approved.rows[0].minutes>0);
+ assert.equal(automaticOperations(parts,null).bendRows[0].count,0);
+});

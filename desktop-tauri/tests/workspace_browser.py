@@ -8,6 +8,12 @@ fixture['previews']={'A':{'triangles':[[[0,0,0],[.5,0,0],[0,.5,0]]],'partial':Fa
 for solid in fixture['solids']:solid['previewKey']='A'
 shim=r"""
 window.isTauri=true;window.__mockFiles=['C:\\job\\main.step'];window.__calls=[];window.__callbacks={};window.__listeners={};let next=0;
+window.__eventIds={};
+window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(event,eventId){
+ const handler=window.__eventIds[eventId];
+ if(window.__listeners[event]===handler)delete window.__listeners[event];
+ delete window.__callbacks[handler];delete window.__eventIds[eventId];
+}};
 window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},
  transformCallback(fn){let id=++next;window.__callbacks[id]=fn;return id;},
  unregisterCallback(id){delete window.__callbacks[id]},
@@ -15,13 +21,19 @@ window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebvie
  if(cmd==='plugin:dialog|open')return window.__mockFiles;
  if(cmd==='plugin:dialog|save')return args.options.defaultPath;
  if(cmd==='write_report'){window.__savedReport=args.content;return;}
- if(cmd==='plugin:event|listen'){window.__listeners[args.event]=args.handler;return ++next;}
+ if(cmd==='plugin:event|listen'){window.__listeners[args.event]=args.handler;const id=++next;window.__eventIds[id]=args.handler;return id;}
  if(cmd==='plugin:event|unlisten')return;
  if(cmd==='scan_project')return [args.path];
  if(cmd==='step_fingerprint')return 'unchanged-v1';
  if(cmd==='preview_part')return JSON.stringify({triangles:[[[0,0,0],[.5,0,0],[0,.5,0]]],partial:false});
  if(cmd==='analyze_joints'){await new Promise(r=>setTimeout(r,500));return JSON.stringify({engineVersion:'0.7.1',solidCount:2,complete:true,issues:[],candidates:[{id:'solid-1|solid-2',partA:'solid-1',partB:'solid-2',lengthMm:90,contactAreaMm2:200}]});}
- if(cmd==='analyze_step')return JSON.stringify(FIXTURE);
+ if(cmd==='analyze_step'){
+ const handler=window.__listeners['cad-progress'];
+ if(!handler)throw Error('CAD progress listener missing');
+ window.__callbacks[handler]({event:'cad-progress',id:0,payload:[args.path,JSON.stringify({stage:'Rozpoznawanie półfabrykatu',current:1,total:2,name:'Plate P-102'})]});
+ await new Promise(resolve=>window.__finishAnalysis=resolve);
+ return JSON.stringify(FIXTURE);
+ }
  if(cmd==='extract_pdf_text')return 'a4 100 x2';
  throw Error('Unmocked command: '+cmd);
  }};
@@ -40,11 +52,17 @@ try:
   assert page.get_by_role('button',name='Narzędzia',exact=True).count()==0
   assert page.get_by_role('button',name='Detale / materiał',exact=True).count()==0
   page.get_by_role('button',name='Dodaj pliki',exact=True).click()
+  page.get_by_text('Teraz: Plate P-102',exact=True).wait_for()
+  assert page.locator('progress').get_attribute('value')=='1'
+  assert page.locator('progress').get_attribute('max')=='2'
+  assert '50% analizy geometrii' in page.locator('.analysis-progress').inner_text()
+  page.evaluate('window.__finishAnalysis()')
   page.get_by_role('heading',name='Trwa analiza modelu',exact=True).wait_for()
   assert page.get_by_role('button',name='Spawanie',exact=True).count()==0
   try:page.get_by_role('heading',name='Części i materiały',exact=True).wait_for(timeout=15000)
   except Exception:
    print('BODY',page.locator('body').inner_text());print('CALLS',page.evaluate('window.__calls'));print('ERRORS',errors);raise
+  assert page.evaluate("!window.__listeners['cad-progress']")
   assert page.get_by_label('Gatunek solid-1',exact=True).input_value()==''
   assert page.get_by_label('Gęstość solid-1',exact=True).input_value()=='7850'
   page.get_by_label('Gęstość solid-1',exact=True).fill('2700');page.get_by_label('Gęstość solid-1',exact=True).press('Tab')
@@ -107,6 +125,9 @@ try:
   page.set_viewport_size({'width':800,'height':650});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
   page.screenshot(path=str(out/'modules-light-800.png'),full_page=True)
   page.get_by_role('button',name='Pliki projektu',exact=False).first.click();page.get_by_role('button',name='Wyceń ten model',exact=True).click()
+  page.wait_for_function('window.__finishAnalysis && window.__listeners["cad-progress"]')
+  page.get_by_text('Teraz: Plate P-102',exact=True).wait_for()
+  page.evaluate('window.__finishAnalysis()')
   page.get_by_role('heading',name='Części i materiały',exact=True).wait_for()
   assert page.evaluate("window.__calls.filter(x=>x.cmd==='analyze_step').length")==2
   page.get_by_role('button',name='Detale / materiał',exact=True).click();assert page.get_by_label('Gęstość solid-1',exact=True).input_value()=='7850'
@@ -116,7 +137,7 @@ try:
   for i,solid in enumerate(grouped['solids']):solid.update(productIdentityReliable=True,productOccurrenceKey='occ-1',productDefinitionKey='def-1',bodyCount=2,bodyIndex=i)
   group_page=browser.new_page(viewport={'width':1440,'height':1000});group_page.on('pageerror',lambda e:errors.append(str(e)))
   group_page.add_init_script(shim.replace(json.dumps(fixture),json.dumps(grouped)));group_page.goto('http://127.0.0.1:8769')
-  group_page.get_by_role('button',name='Dodaj pliki',exact=True).click();group_page.get_by_role('heading',name='Części i materiały',exact=True).wait_for()
+  group_page.get_by_role('button',name='Dodaj pliki',exact=True).click();group_page.wait_for_function('typeof window.__finishAnalysis === "function"');group_page.evaluate('window.__finishAnalysis()');group_page.get_by_role('heading',name='Części i materiały',exact=True).wait_for()
   group_page.get_by_label('Realizacja solid-1',exact=True).select_option('purchase');assert group_page.get_by_label('Realizacja solid-2',exact=True).input_value()=='purchase'
   group_page.get_by_role('button',name='Naddatki solid-1',exact=True).click();group_page.get_by_label('Cena dostawcy [zł / produkt STEP]',exact=True).fill('42');group_page.get_by_role('button',name='Zapisz detal',exact=True).click()
   group_page.get_by_role('button',name='Zakupy / kooperacja',exact=True).click()

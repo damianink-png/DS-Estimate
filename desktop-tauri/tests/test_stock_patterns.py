@@ -5,8 +5,9 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from cad_backend.stock_patterns import orthogonal_section_kind
-from cad_backend.stock_recognition import _classify_section, recognize_stock
+from cad_backend.stock_patterns import orthogonal_section_kind, convex_polygon_section_kind
+from cad_backend.rotational_features import coaxial_face_groups
+from cad_backend.stock_recognition import _classify_section, _recognize_axis_stock, recognize_stock
 from unittest.mock import patch
 
 
@@ -22,6 +23,131 @@ class StockPatternTests(unittest.TestCase):
             'tee': [(0,0),(5,0),(5,25),(20,25),(20,30),(-15,30),(-15,25),(0,25)],
             'i-section': [(0,0),(40,0),(40,5),(23,5),(23,35),(40,35),(40,40),(0,40),(0,35),(17,35),(17,5),(0,5)],
         }
+
+    def test_zee_and_top_hat_section_library_patterns(self):
+        # Closed straight-edge cross-sections: strict topology, not catalogue
+        # procurement. Check rotations/reflections without loosening tolerances.
+        profiles={
+            'zee':[(0,0),(20,0),(20,35),(30,35),(30,40),
+                   (10,40),(10,5),(0,5)],
+            'hat':[(0,0),(10,0),(10,30),(30,30),(30,0),
+                   (40,0),(40,5),(35,5),(35,35),(5,35),(5,5),(0,5)],
+        }
+        for kind,vertices in profiles.items():
+            for angle in (0,math.radians(31),math.radians(90)):
+                for mirrored in (False,True):
+                    points=[((-x if mirrored else x)*math.cos(angle)-y*math.sin(angle),
+                             (-x if mirrored else x)*math.sin(angle)+y*math.cos(angle))
+                            for x,y in vertices]
+                    with self.subTest(kind=kind,angle=angle,mirrored=mirrored):
+                        measured=orthogonal_section_kind(close(points),.002)
+                        self.assertIsNotNone(measured)
+                        self.assertEqual(measured['kind'],kind)
+                        self.assertGreater(measured['sectionAreaMm2'],0)
+
+    def test_self_touching_orthogonal_section_is_not_standard_stock(self):
+        # Re-entering a non-adjacent vertex makes the contour ambiguous.
+        # Do not certify a bought L/U/T/I section from a self-touching grid.
+        angle = self.profiles()['angle']
+        self.assertEqual(orthogonal_section_kind(close(angle), .002)['kind'], 'angle')
+        for repeated in ((40, 5), (40.0005, 5)):
+            with self.subTest(repeated=repeated):
+                self.assertIsNone(orthogonal_section_kind(
+                    close(angle + [repeated]), .002))
+        # Adjacent split-vertex duplication from STEP topology is allowed.
+        split = angle[:3] + [angle[2]] + angle[3:]
+        self.assertEqual(orthogonal_section_kind(close(split), .002)['kind'], 'angle')
+
+    def test_self_intersecting_star_is_not_polygon_stock(self):
+        # A five-point star has same-sign turns at every vertex, so
+        # cross-product sign checks alone incorrectly infer polygon-bar.
+        vertices=[(40*math.cos(2*math.pi*i/5),
+                   40*math.sin(2*math.pi*i/5))
+                  for i in (0,2,4,1,3)]
+        for shape in (vertices,list(reversed(vertices))):
+            with self.subTest(shape=shape):
+                self.assertIsNone(convex_polygon_section_kind(close(shape),.002))
+        # A simple, genuinely convex non-rectangular section remains valid.
+        convex=[(0,0),(30,0),(40,12),(24,32),(0,20)]
+        measured=convex_polygon_section_kind(close(convex),.002)
+        self.assertIsNotNone(measured)
+        self.assertEqual(measured['kind'],'polygon-bar')
+
+    def test_repeated_vertex_is_not_convex_stock(self):
+        # A non-adjacent repeated/tolerance-close vertex makes a section
+        # self-touching even if no non-adjacent edges cross in their interiors.
+        # Such a boundary must never become an automatically priced bar.
+        base=[(0,0),(30,0),(40,12),(24,32),(0,20)]
+        self.assertEqual(convex_polygon_section_kind(close(base),.002)['kind'],'polygon-bar')
+        for candidate in (
+            [(0,0),(30,0),(40,12),(24,32),(0,20),(40,12)],
+            [(0,0),(30,0),(40,12),(24,32),(0,20),(40.0005,12)],
+        ):
+            with self.subTest(candidate=candidate):
+                self.assertIsNone(convex_polygon_section_kind(close(candidate),.002))
+
+    def test_corner_bevel_is_blank_candidate_not_certified_bar(self):
+        # A lengthwise 5x5 corner chamfer does not make a 40x40 core an
+        # arbitrary polygon bar. Nor does it prove saw/milling operation.
+        points=close([(0,0),(40,0),(40,40),(5,40),(0,35)])
+        edges=[(points[i:i+2],False,None) for i in range(len(points)-1)]
+        geometry=_classify_section(edges,.002)
+        self.assertEqual(geometry['kind'],'beveled-rectangle')
+        self.assertAlmostEqual(geometry['blankSectionAreaMm2'],1600)
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',
+                   return_value=geometry['sectionAreaMm2']*500):
+            result=recognize_stock(None,(0,0,0,40,40,500))
+        self.assertEqual(result['kind'],'unknown')
+        self.assertEqual(result['rawStockCandidate']['kind'],'square-bar')
+        self.assertEqual(result['rawStockCandidate']['confidence'],'geometric-blank-candidate')
+        self.assertEqual(result['finishedSectionEvidence']['bevelCount'],1)
+
+    def test_self_touching_beveled_rectangle_cannot_suggest_blank(self):
+        from cad_backend.stock_patterns import beveled_rectangle_section_kind
+        valid=[(0,0),(40,0),(40,40),(5,40),(0,35)]
+        self.assertEqual(beveled_rectangle_section_kind(close(valid),.002)['kind'],
+                         'beveled-rectangle')
+        # A repeated or tolerance-close non-neighbouring corner is not a
+        # simple section, even if its bounding rectangle and area look valid.
+        for duplicate in ((40,40),(40.0005,40)):
+            points=close(valid+[duplicate])
+            with self.subTest(duplicate=duplicate):
+                self.assertIsNone(beveled_rectangle_section_kind(points,.002))
+                edges=[(points[i:i+2],False,None) for i in range(len(points)-1)]
+                geometry=_classify_section(edges,.002)
+                self.assertFalse(geometry and geometry.get('kind')=='beveled-rectangle')
+
+    def test_inner_diagonal_or_large_removed_corner_is_not_ignored(self):
+        from cad_backend.stock_patterns import beveled_rectangle_section_kind
+        invalid=[
+            [(0,0),(40,0),(40,40),(20,35),(0,40)],
+            [(0,0),(40,0),(40,40),(20,40),(0,20)],
+        ]
+        for vertices in invalid:
+            with self.subTest(vertices=vertices):
+                self.assertIsNone(beveled_rectangle_section_kind(close(vertices),.002))
+
+    def test_position_aware_cylinder_cone_coaxiality(self):
+        # Same direction but 1 mm offset is NOT the same rotational axis.
+        # Opposite directions and shifted points along one infinite line ARE.
+        cylinders=[
+            {'axis':[0,0,1],'axisPointMm':[10,20,0],'radiusMm':6},
+            {'axis':[0,0,-1],'axisPointMm':[10,20,40],'radiusMm':4},
+            {'axis':[0,0,1],'axisPointMm':[11,20,0],'radiusMm':2},
+        ]
+        cones=[{'axis':[0,0,-1],'axisPointMm':[10,20,100],
+                'referenceRadiusMm':7,'semiAngleRad':.78539816}]
+        groups=coaxial_face_groups(cylinders,cones)
+        self.assertEqual(len(groups),2)
+        self.assertEqual(groups[0]['cylinderFaceCount'],2)
+        self.assertEqual(groups[0]['coneFaceCount'],1)
+        self.assertEqual(groups[0]['cylinderRadiiMm'],[4,6])
+        self.assertEqual(groups[1]['cylinderRadiiMm'],[2])
+        self.assertEqual(groups[1]['coneFaceCount'],0)
+        # A direction-only hint cannot certify physical coaxiality.
+        self.assertEqual(coaxial_face_groups(
+            [{'radiusMm':6,'axis':[0,0,1]}],[]),[])
 
     def test_rotated_rhs_sections_and_offset_hole(self):
         # Real OCCT sections may be rotated inside the cutting plane.
@@ -127,6 +253,38 @@ class StockPatternTests(unittest.TestCase):
         self.assertEqual(result['kind'],'unknown')
         self.assertIn('volume',result['reason'])
 
+    def test_independent_volume_evaluated_only_once_for_matching_sections(self):
+        # Large assemblies must not re-run expensive OCCT B-Rep volume
+        # once for candidate stock and again for the final volume gate.
+        pts=[(0,0),(40,0),(40,40),(0,40),(0,0)]
+        edges=[(pts[i:i+2],False,None) for i in range(4)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',return_value=1600000) as volume:
+            result=recognize_stock(object(),(0,0,0,40,40,1000))
+        self.assertEqual(result['kind'],'square-bar')
+        volume.assert_called_once()
+
+    def test_volume_failure_remains_unknown_not_free_stock(self):
+        pts=[(0,0),(40,0),(40,40),(0,40),(0,0)]
+        edges=[(pts[i:i+2],False,None) for i in range(4)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',side_effect=RuntimeError('OCCT unavailable')):
+            result=recognize_stock(object(),(0,0,0,40,40,1000))
+        self.assertEqual(result['kind'],'unknown')
+        self.assertIn('Independent volume check unavailable',result['reason'])
+
+    def test_changing_section_volume_failure_remains_explicit(self):
+        def rect(w):
+            pts=[(0,0),(w,0),(w,40),(0,40),(0,0)]
+            return [(pts[i:i+2],False,None) for i in range(4)]
+        def sample(shape,bounds,axis,fraction):
+            return rect(35 if fraction < .2 else 40)
+        with patch('cad_backend.stock_recognition._section_edges',side_effect=sample), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',side_effect=ValueError('bad volume')):
+            result=recognize_stock(object(),(0,0,0,40,40,1000))
+        self.assertEqual(result['kind'],'unknown')
+        self.assertIn('Independent volume check unavailable',result['reason'])
+
     def test_independent_volume_accepts_prismatic_bar(self):
         pts=[(0,0),(40,0),(40,40),(0,40),(0,0)]
         edges=[(pts[i:i+2],False,None) for i in range(4)]
@@ -134,6 +292,29 @@ class StockPatternTests(unittest.TestCase):
              patch('cad_backend.stock_recognition._measured_solid_volume',return_value=1600000):
             result=recognize_stock(object(),(0,0,0,40,40,1000))
         self.assertEqual(result['kind'],'square-bar')
+
+    def test_long_thin_plate_with_removed_volume_keeps_plate_geometry(self):
+        # Measured major B-Rep faces establish the sheet thickness; five
+        # flat cross-sections alone wrongly suggest a raw flat bar when end
+        # cuts remove volume. Do not infer purchased stock or cutting time.
+        rect=[(0,0),(60,0),(60,10),(0,10),(0,0)]
+        edges=[(rect[i:i+2],False,None) for i in range(4)]
+        bounds=(0,0,0,60,10,565)
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',
+                   return_value=320000):
+            plate=_recognize_axis_stock(object(),bounds,{'kind':'plate-outline','thicknessMm':10})
+            not_measured=_recognize_axis_stock(object(),bounds,None)
+            wrong_thickness=_recognize_axis_stock(object(),bounds,{'kind':'plate-outline','thicknessMm':9})
+        self.assertEqual(plate['kind'],'plate-candidate')
+        self.assertEqual(plate['confidence'],'candidate')
+        self.assertAlmostEqual(plate['thicknessMm'],10)
+        self.assertAlmostEqual(plate['widthMm'],60)
+        self.assertAlmostEqual(plate['lengthMm'],565)
+        self.assertEqual(plate['rawStockCandidate']['kind'],'flat-section')
+        self.assertNotIn('cutTimeH',plate)
+        self.assertEqual(not_measured['kind'],'unknown')
+        self.assertEqual(wrong_thickness['kind'],'unknown')
 
     def test_plate_candidate_requires_consistent_measured_thickness(self):
         bounds=(0,0,0,100,50,10)
@@ -173,6 +354,65 @@ class StockPatternTests(unittest.TestCase):
     def test_rectangle_and_open_profile_are_not_structural_ones(self):
         self.assertIsNone(orthogonal_section_kind(close([(0,0),(10,0),(10,10),(0,10)]), 0.002))
         self.assertIsNone(orthogonal_section_kind([(0,0),(30,0),(30,5),(5,5)], 0.002))
+
+
+    def test_nonstandard_convex_section_never_gets_rectangle_label(self):
+        # Exact cross section from Earthpress 5x5x50 ribs: four sides,
+        # measured metal area 15 mm2 (rather than 25 mm2 from bounding box).
+        points=[(0,0),(5,0),(3,3),(0,5),(0,0)]
+        hint=convex_polygon_section_kind(points,.002)
+        self.assertEqual(hint['kind'],'polygon-bar')
+        self.assertAlmostEqual(hint['sectionAreaMm2'],15.0)
+        edges=[(points[i:i+2],False,None) for i in range(len(points)-1)]
+        self.assertEqual(_classify_section(edges,.002)['kind'],'polygon-bar')
+
+    def test_polygonal_bar_requires_repeated_sections_and_independent_volume(self):
+        points=[(0,0),(5,0),(3,3),(0,5),(0,0)]
+        edges=[(points[i:i+2],False,None) for i in range(len(points)-1)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',return_value=750) as measure:
+            result=recognize_stock(object(),(0,0,0,5,5,50))
+        self.assertEqual(result['kind'],'polygon-bar')
+        self.assertEqual(result['confidence'],'cross-section-consistent')
+        measure.assert_called_once()
+        self.assertAlmostEqual(result['sectionAreaMm2'],15)
+        self.assertEqual(result['lengthMm'],50)
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',return_value=600):
+            missing=recognize_stock(object(),(0,0,0,5,5,50))
+        self.assertEqual(missing['kind'],'unknown')
+        self.assertIn('volume',missing['reason'])
+
+    def test_polygon_profile_rejects_concave_or_nearly_rectangle(self):
+        concave=[(0,0),(6,0),(6,6),(3,3),(0,6),(0,0)]
+        self.assertIsNone(convex_polygon_section_kind(concave,.002))
+        near_rectangle=[(0,0),(80,0),(80.35,40),(0.35,40),(0,0)]
+        self.assertIsNone(convex_polygon_section_kind(near_rectangle,.002))
+        unclosed=[(0,0),(6,0),(6,6),(0,6)]
+        self.assertIsNone(convex_polygon_section_kind(unclosed,.002))
+
+    def test_oversized_finished_solid_preserves_core_but_never_claims_stock(self):
+        # Real Earthpress bodies 10/11 contain coaxial 40/34 mm cylinder faces,
+        # yet the final volume exceeds the straight pipe prism. Recognition of
+        # this core must NOT turn a welded/machined item into a saw-only part.
+        def ring(radius):
+            xy=[(radius*math.cos(2*math.pi*i/64),
+                 radius*math.sin(2*math.pi*i/64)) for i in range(65)]
+            return (xy,True,radius)
+        edges=[ring(20),ring(17)]
+        with patch('cad_backend.stock_recognition._section_edges',return_value=edges), \
+             patch('cad_backend.stock_recognition._measured_solid_volume',return_value=191581.48) as measure:
+            result=recognize_stock(object(),(0,0,0,40,40,369.371))
+        self.assertEqual(result['kind'],'unknown')
+        self.assertNotIn('rawStockCandidate',result)
+        core=result.get('coreSectionCandidate')
+        self.assertIsNotNone(core)
+        self.assertEqual(core['kind'],'round-tube')
+        self.assertAlmostEqual(core['diameterMm'],40)
+        self.assertAlmostEqual(core['wallMm'],3)
+        self.assertEqual(core['confidence'],'geometric-core-only')
+        self.assertGreater(core['finishedVolumeMm3'],core['sectionPrismVolumeMm3'])
+        measure.assert_called_once()
 
 
 def run_suite():

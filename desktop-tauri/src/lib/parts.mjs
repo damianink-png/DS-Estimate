@@ -6,13 +6,17 @@ export const partDefaults=()=>({grade:'',density:7850,price:null,route:'make',su
 const finite=(v,label,min=0)=>{if(typeof v!=='number'||!Number.isFinite(v)||v<min)throw new RangeError(label);return v;};
 export function preferenceFor(s,prefs={}){
  const old=prefs[s.id]??prefs[s.verifiedShapeKey]??{};
- const hardware=/\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack(?:[\s_-]|$)|^electrical[ _-]enclosure(?:[\s:_-]|$)|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b/i.test(s.name??'');
+ const label=s.name??'';
+ // A named HOLE or an assembly reference is not a purchased fastener even if
+ // its name contains ISO 4017, M10, 'bolt', etc. Names never prove purchasing.
+ const featureOrAssembly=/\b(?:hole\w*|bohrung\w*|gewindebohrung\w*|otw[oó]r\w*|gniazdo\w*|pocket\w*|assembly|baugruppe|z[oł]o[zż]eni\w*)\b/i.test(label);
+ const hardware=!featureOrAssembly&&/\b(?:washer|nut|screw|bolt)(?:[\s_-]|$)|\bbottle[ _-]jack(?:[\s_-]|$)|^electrical[ _-]enclosure(?:[\s:_-]|$)|\b(?:DIN|ISO)[ _-]?(?:912|933|934|125|9021|4762|4017|4032)\b/i.test(label);
  return {...partDefaults(),...(hardware?{route:'purchase'}:{}),...old,allowances:old.allowances??[old.allowStart??0,old.allowEnd??0,0,0,0,0]};
 }
 export function detailDimensions(s){
  const h=s.stockHint?.kind==='unknown'&&s.stockHint?.rawStockCandidate?s.stockHint.rawStockCandidate:(s.stockHint??{});
  const spans=[...(s.bboxMm??[])].sort((a,b)=>b-a);
- if(h.lengthMm&&['square-hollow','rectangular-hollow','round-tube','round-bar','square-bar','rectangular-bar','flat-section','angle','channel','tee','i-section'].includes(h.kind))return [h.lengthMm,h.widthMm??h.diameterMm??spans[1],h.heightMm??h.diameterMm??spans[2]];
+ if(h.lengthMm&&['square-hollow','rectangular-hollow','round-tube','round-bar','square-bar','rectangular-bar','polygon-bar','flat-section','angle','channel','tee','i-section'].includes(h.kind))return [h.lengthMm,h.widthMm??h.diameterMm??spans[1],h.heightMm??h.diameterMm??spans[2]];
  if(Array.isArray(h.localDimsMm)&&h.localDimsMm.length===3)return [...h.localDimsMm].sort((a,b)=>b-a);const dims=[...(s.bboxMm??[])].sort((a,b)=>b-a);
  return [h.lengthMm??dims[0],h.widthMm??h.diameterMm??dims[1],h.thicknessMm??h.heightMm??h.diameterMm??dims[2]];
 }
@@ -22,8 +26,35 @@ export function stockVolume(s,dims,stockDims){
  const h=s.stockHint?.rawStockCandidate??s.stockHint??{},v=s.volumeMm3;
  if(Number.isFinite(h.sectionAreaMm2)&&h.sectionAreaMm2>0&&h.lengthMm>0){
   const dw=stockDims[1]-dims[1],dh=stockDims[2]-dims[2];
-  const extra=Math.max(0,stockDims[1]*stockDims[2]-dims[1]*dims[2]);
-  return {volume:Math.max(v,(h.sectionAreaMm2+extra)*stockDims[0]),source:dw||dh?'Przekrój półfabrykatu z naddatkiem zewnętrznym':'Pole przekroju × długość półfabrykatu'};
+  let area=h.sectionAreaMm2,source='Pole przekroju × długość półfabrykatu';
+  if(dw>0||dh>0){
+   // A larger RHS/SHS is NOT a solid rectangle added to a tube: its inner
+   // void remains. The old full-bbox delta could overstate stock mass tenfold.
+   // Keep the same measured wall, and require manual confirmation of the
+   // non-standard enlarged section (or supply a measured blank mass).
+   const wall=h.wallMm;
+   if(['square-hollow','rectangular-hollow'].includes(h.kind)&&
+      Number.isFinite(wall)&&wall>0&&2*wall<Math.min(dims[1],dims[2])){
+    area+=2*wall*(dw+dh);
+    source='Przekrój zamknięty: zachowana grubość ścianki; poszerzony wyrób wymaga potwierdzenia';
+   }else if(['round-tube','round-bar'].includes(h.kind)&&
+     Math.abs(stockDims[1]-stockDims[2])<=Math.max(0.02,stockDims[1]*1e-4)){
+    const delta=stockDims[1]-dims[1];
+    if(h.kind==='round-tube'&&Number.isFinite(wall)&&wall>0&&2*wall<dims[1]){
+     area+=Math.PI*wall*delta;
+     source='Rura: zachowana grubość ścianki; większą średnicę potwierdź w katalogu';
+    }else if(h.kind==='round-bar'){
+     area+=Math.PI/4*(stockDims[1]**2-dims[1]**2);
+     source='Pręt okrągły: zmieniona średnica przygotówki wymaga potwierdzenia';
+    }else throw new RangeError('Naddatek poprzeczny rury: brak wiarygodnej średnicy lub ścianki');
+   }else if(['square-bar','rectangular-bar','flat-section'].includes(h.kind)){
+    area+=stockDims[1]*stockDims[2]-dims[1]*dims[2];
+    source='Pręt pełny: zwiększony przekrój przygotówki wymaga potwierdzenia';
+   }else{
+    throw new RangeError('Naddatek poprzeczny profilu nie wyznacza przekroju. Ustaw tylko naddatek długościowy lub podaj znaną masę półfabrykatu.');
+   }
+  }
+  return {volume:Math.max(v,area*stockDims[0]),source};
  }
  if(['plate','plate-candidate'].includes(h.kind))return {volume:Math.max(v,stockDims.reduce((a,b)=>a*b,1)),source:'Prostokątny półfabrykat blachy; bez optymalizacji rozkroju'};
  return {volume:v*stockDims.reduce((ratio,x,i)=>ratio*x/dims[i],1),source:h.kind==='bent-plate'?'Objętość blachy giętej; kontur bez odpadu rozkroju':'Objętość gotowego detalu × naddatki; półfabrykat nierozpoznany'};
@@ -37,7 +68,7 @@ export function partValues(s,pref={},fallbackPrice=null){
  p.allowances.forEach(v=>finite(v,'Naddatek'));
  const stockDims=dims.map((v,i)=>v+p.allowances[2*i]+p.allowances[2*i+1]);
  const massKg=s.volumeMm3/1e9*p.density;
- const blank=stockVolume(s,dims,stockDims);
+ const blank=p.stockMassKg===null?stockVolume(s,dims,stockDims):{volume:s.volumeMm3,source:'Masa półfabrykatu podana ręcznie'};
  const stockMassKg=p.stockMassKg===null?blank.volume/1e9*p.density:finite(p.stockMassKg,'Masa półfabrykatu');
  const price=typeof fallbackPrice==='object'&&fallbackPrice!==null?(Object.hasOwn(fallbackPrice,p.grade)?fallbackPrice[p.grade]:(fallbackPrice['']??null)):(p.price??fallbackPrice);
  if(price!==null)finite(price,'Cena materiału');

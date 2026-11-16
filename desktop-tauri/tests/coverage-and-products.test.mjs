@@ -1,9 +1,18 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {partsList,commercialUnits} from '../src/lib/parts.mjs';
+import {partsList,commercialUnits,preferenceFor} from '../src/lib/parts.mjs';
 import {automaticOperations,NORMS} from '../src/lib/fabrication.mjs';import {evaluateModules} from '../src/lib/modular-quote.mjs';
 const solid=(id,product='occ-1',definition='def-1')=>({id,name:'Same product name',volumeMm3:10000,bboxMm:[100,10,10],verifiedShapeKey:'same-shape',productIdentityReliable:true,productOccurrenceKey:product,productDefinitionKey:definition,bodyCount:2,stockHint:{kind:'rectangular-bar',lengthMm:100,widthMm:10,heightMm:10,sectionAreaMm2:100}});
 const inv={solids:[solid('a'),solid('b')]};
 const joint={id:'a|b',partA:'a',partB:'b',lengthMm:100};const contacts={complete:true,geometryValid:true,candidates:[joint]};
+test('new XCAF name clues preserve the existing hardware purchase proposal and explicit user override',()=>{
+ const item={...solid('named'),name:'Śruba ISO 4017 M10x95',
+  nameEvidence:{status:'name-only-unverified',normaliaFamily:'hex-head',nominalDesignation:'M10x95'},
+  normaliaHint:{status:'geometry-candidate',families:['hex-head'],catalogCandidates:[{designation:'M10x95'}]}};
+ assert.equal(preferenceFor(item).route,'purchase'); // Existing suggestion, not certification
+ assert.equal(preferenceFor(item,{named:{route:'make'}}).route,'make'); // Explicit preference wins
+ assert.equal(preferenceFor({...item,name:'Profil 40x40x2'}).route,'make');
+});
+
 test('five bodies of a single STEP product produce one supplier charge',()=>{
  const inventory={solids:['a','b','c','d','e'].map(id=>solid(id))},prefs=Object.fromEntries(inventory.solids.map(s=>[s.id,{route:'purchase',supplierPrice:40}]));
  const rows=evaluateModules({inventory,partMaterials:prefs}).modules.find(m=>m.id==='purchased').rows;
@@ -37,4 +46,28 @@ test('unsupported manufacturing geometry does not become zero milling time',()=>
 test('transport charge is independent of an unknown travel duration',()=>{
  const a=automaticOperations(partsList(inv),contacts,{}, {...NORMS,logistics:{...NORMS.logistics,enabled:true,distanceKm:100}});
  assert.equal(a.modules.logistics.ship,null);assert.equal(a.extraRows.logistics[0].autoAmount,400);
+});
+
+test('a named fastener hole or parent assembly never becomes a purchased product',()=>{
+ for(const name of ['Bolt hole M10','ISO 4017 M10 mounting hole',
+                     'DIN 933 M8 Bohrung','Otwór pod śrubę M8',
+                     'Bolt ISO 4017 M20 assembly']){
+  const item={...solid('feature'),name};
+  assert.equal(preferenceFor(item).route,'make',name);
+  assert.equal(preferenceFor(item,{feature:{route:'purchase'}}).route,'purchase',name);
+ }
+});
+
+test('partial contacts cannot certify welding setup',()=>{
+ const result=automaticOperations(partsList(inv),{complete:false,candidates:[]});
+ assert.equal(result.modules.welding.setup,null);
+});
+test('known work cannot conceal unknown bending and CNC preparation',()=>{
+ const items={solids:[solid('a'),{...solid('b'),stockHint:{kind:'unknown'}}]};
+ const parts=partsList(items,{a:{bendCount:1,allowances:[1,1,1,1,1,1]}});
+ const result=automaticOperations(parts,{complete:true,candidates:[]});
+ assert.ok(result.bendRows.some(r=>r.count===1));
+ assert.ok(result.machining.length>0);
+ assert.equal(result.modules.bending.setup,null);
+ assert.equal(result.modules.cnc.program,null);
 });

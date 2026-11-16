@@ -29,7 +29,7 @@ export function weldPlan(contacts,edits={},norms=NORMS.welding){
 export function partBends(p){
  if(p.bendCount!==null)return p.bendCount;
  const k=p.stockKind||p.solid.stockHint?.rawStockCandidate?.kind||p.solid.stockHint?.kind;
- if(['square-hollow','rectangular-hollow','round-tube','angle','channel','i-section','tee','flat-section','round-bar','square-bar','rectangular-bar'].includes(k))return 0;
+ if(['square-hollow','rectangular-hollow','round-tube','angle','channel','i-section','tee','flat-section','round-bar','square-bar','rectangular-bar','polygon-bar'].includes(k))return 0;
  // Cylindrical pairs in an unknown extrusion are not proof of a formed sheet.
  return k==='bent-plate'?p.solid.bendHint?.count??null:['plate-candidate','plate'].includes(k)?0:null;
 }
@@ -55,10 +55,10 @@ export function automaticOperations(parts,contacts,jointEdits={},norms=NORMS){
    turning:graphComplete?operation('Manipulacja podzespołem',groups.reduce((sum,g)=>sum+a.turnMinPart*Math.max(1,g.normalGroups-1)*Math.max(1,Math.sqrt(g.massKg/good(a.heavyKg,'Próg masy',true)),Math.sqrt(g.spanMm/good(a.longMm,'Próg długości',true))),0)):null};
   notes.push('Montaż: '+groups.length+' podzespołów ze styków; części bez aktywnego połączenia pominięto. Manipulacja jest normą na podzespół, nie zaplanowaną kolejnością obrotów.');
  }
- if(n.welding.enabled&&w)result.welding={setup:operation('Przygotowanie',active.length?n.welding.setupMin:0),weld:graphComplete?w.minutes/60:null,clean:graphComplete?operation('Czyszczenie spoin',w.totalLengthMm/1000*n.welding.cleanMinMeter):null};
+ if(n.welding.enabled&&w)result.welding={setup:graphComplete?operation('Przygotowanie',active.length?n.welding.setupMin:0):null,weld:graphComplete?w.minutes/60:null,clean:graphComplete?operation('Czyszczenie spoin',w.totalLengthMm/1000*n.welding.cleanMinMeter):null};
  const bendRows=n.bending.enabled?parts.filter(p=>p.route==='make').map(p=>bendEstimate(p,n.bending)):[];
  if(n.bending.enabled){const unknown=bendRows.some(r=>r.count===null),batches=new Set(bendRows.flatMap(r=>r.batchKeys));
-  result.bending={setup:unknown&&batches.size===0?null:operation('Przezbrojenie',batches.size*n.bending.setupMin),bends:unknown?null:operation('Gięcie',bendRows.reduce((s,r)=>s+(r.minutes??0),0))};
+  result.bending={setup:unknown?null:operation('Przezbrojenie',batches.size*n.bending.setupMin),bends:unknown?null:operation('Gięcie',bendRows.reduce((s,r)=>s+(r.minutes??0),0))};
   notes.push('Gięcie: '+batches.size+' grup materiał / grubość / promień. Czas uwzględnia długość linii, grubość i masę; narzędzia i kolejność są założeniem.');
  }
  const machined=parts.filter(p=>p.route==='make').map(p=>{
@@ -68,7 +68,7 @@ export function automaticOperations(parts,contacts,jointEdits={},norms=NORMS){
  }).filter(r=>r.volumeMm3>1e-3);
  const bevels=active.filter(r=>r.groove?.hasBevel).map(r=>({id:r.id,volumeMm3:Math.max(0,r.groove.sectionMm2-(r.groove.rootGapMm??0)*r.groove.thicknessMm)*r.lengthMm}));
  if(n.cnc.enabled){good(n.cnc.removalCm3Min,'Wydajność CNC',true);good(n.cnc.bevelCm3Min,'Wydajność fazowania',true);
-  result.cnc={program:unknownMachining.length&&!machined.length?null:operation('Przygotowanie CNC',new Set(machined.map(r=>r.part.geometryKey??r.part.id)).size*n.cnc.setupMin),
+  result.cnc={program:unknownMachining.length?null:operation('Przygotowanie CNC',new Set(machined.map(r=>r.part.geometryKey??r.part.id)).size*n.cnc.setupMin),
    milling:unknownMachining.length?null:machined.reduce((s,r)=>s+r.volumeMm3,0)/1000/n.cnc.removalCm3Min/60,drilling:make.length&&n.cnc.drillingMode!==1?null:0,
    bevelSetup:graphComplete?operation('Przygotowanie fazowania',bevels.length?n.cnc.bevelSetupMin:0):null,
    bevel:graphComplete?bevels.reduce((s,r)=>s+r.volumeMm3,0)/1000/n.cnc.bevelCm3Min/60:null};

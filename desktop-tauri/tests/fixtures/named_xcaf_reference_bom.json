@@ -1,0 +1,84 @@
+{
+  "schema": "ds-estimate-independent-xcaf-bom-v1",
+  "assemblyName": "Bolt ISO 4017 M20 assembly",
+  "note": "Independent expected occurrence inventory. Names are evidence only; manufacturing route and purchasing remain unverified.",
+  "items": [
+    {
+      "name": "Kolek walcowy ISO 2338 6x30",
+      "geometry": "pin",
+      "nameFamily": "dowel-pin",
+      "normaliaFamily": "dowel-pin",
+      "nameStatus": "family-compatible"
+    },
+    {
+      "name": "Nakretka DIN 934 M12",
+      "geometry": "pin",
+      "nameFamily": "hex-nut",
+      "normaliaFamily": "dowel-pin",
+      "nameStatus": "conflict"
+    },
+    {
+      "name": "Washer ISO 7089 M8",
+      "geometry": "washer",
+      "nameFamily": "washer",
+      "normaliaFamily": "washer",
+      "nameStatus": "corroborated"
+    },
+    {
+      "name": "Nakretka DIN 934 M6",
+      "geometry": "nut",
+      "nameFamily": "hex-nut",
+      "normaliaFamily": "hex-nut",
+      "nameStatus": "corroborated"
+    },
+    {
+      "name": "Plate 100x60x8",
+      "geometry": "plate",
+      "nameFamily": "plate",
+      "normaliaFamily": null,
+      "nameStatus": null
+    },
+    {
+      "name": "Bolt hole M10",
+      "geometry": "box",
+      "nameFamily": null,
+      "normaliaFamily": null,
+      "nameStatus": null
+    },
+    {
+      "name": "Bohrung für Schraube M12",
+      "geometry": "box",
+      "nameFamily": null,
+      "normaliaFamily": null,
+      "nameStatus": null
+    },
+    {
+      "name": "Otwór pod śrubę M8",
+      "geometry": "box",
+      "nameFamily": null,
+      "normaliaFamily": null,
+      "nameStatus": null
+    },
+    {
+      "name": "ISO 4017 M10 mounting hole",
+      "geometry": "box",
+      "nameFamily": null,
+      "normaliaFamily": null,
+      "nameStatus": null
+    },
+    {
+      "name": "COMPOUND",
+      "geometry": "box",
+      "nameFamily": null,
+      "normaliaFamily": null,
+      "nameStatus": null
+    },
+    {
+      "name": "Profil 40x40x2x500",
+      "geometry": "profile",
+      "nameFamily": "profile",
+      "normaliaFamily": null,
+      "nameStatus": null
+    }
+  ]
+}
